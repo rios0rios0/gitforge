@@ -582,6 +582,9 @@ func normalizeOrgURL(org string) string {
 }
 
 func buildBaseURL(orgName string) string {
+	if orgName == "" {
+		return "https://dev.azure.com"
+	}
 	return "https://dev.azure.com/" + strings.Split(orgName, "/")[0]
 }
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	log "github.com/sirupsen/logrus"
@@ -80,7 +81,7 @@ func GetGpgKey(gpgKeyReader io.Reader) (*openpgp.Entity, error) {
 	var passphrase []byte
 	passphrase, err = term.ReadPassword(0)
 	if err != nil {
-		if strings.TrimSpace(err.Error()) == "inappropriate ioctl for device" {
+		if errors.Is(err, syscall.ENOTTY) {
 			passphrase = []byte("")
 		} else {
 			return nil, fmt.Errorf("failed to read passphrase: %w", err)

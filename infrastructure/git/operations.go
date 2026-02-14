@@ -165,19 +165,19 @@ func PushChangesHTTPS(
 		return err
 	}
 
+	var lastErr error
 	for _, auth := range authMethods {
 		pushOptions.Auth = auth
-		err = repo.Push(pushOptions)
-
-		if err == nil {
+		pushErr := repo.Push(pushOptions)
+		if pushErr == nil {
 			return nil
 		}
+		lastErr = pushErr
 	}
-
-	if err != nil {
-		return fmt.Errorf("could not push changes to remote repository: %w", err)
+	if lastErr != nil {
+		return fmt.Errorf("could not push changes to remote repository: %w", lastErr)
 	}
-	return nil
+	return errors.New("could not push changes to remote repository: no authentication methods attempted")
 }
 
 // GetAuthMethods returns the authentication methods for the given service type.
@@ -213,8 +213,15 @@ func GetRemoteServiceType(repo *git.Repository) (entities.ServiceType, error) {
 
 	var firstRemote string
 	for _, remote := range cfg.Remotes {
+		if len(remote.URLs) == 0 {
+			continue
+		}
 		firstRemote = remote.URLs[0]
 		break
+	}
+
+	if firstRemote == "" {
+		return entities.UNKNOWN, errors.New("no remote URLs configured")
 	}
 
 	return GetServiceTypeByURL(firstRemote), nil
@@ -283,7 +290,10 @@ func GetLatestTag(repo *git.Repository) (*entities.LatestTag, error) {
 		return nil
 	})
 
-	numCommits, _ := GetAmountCommits(repo)
+	numCommits, commitErr := GetAmountCommits(repo)
+	if commitErr != nil {
+		log.Warnf("Could not count commits, assuming 0: %v", commitErr)
+	}
 	if latestTag == nil {
 		if numCommits >= MaxAcceptableInitialCommits {
 			log.Warnf("No tags found in Git history, falling back to '%s'", DefaultGitTag)

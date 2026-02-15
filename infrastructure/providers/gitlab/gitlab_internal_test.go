@@ -498,3 +498,66 @@ func TestHasFileInternal(t *testing.T) {
 		assert.False(t, result)
 	})
 }
+
+func TestCreateBranchWithChangesInternal(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return error when client is nil", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		p := &Provider{token: "test", client: nil}
+		repo := entities.Repository{Organization: "org", Name: "repo"}
+		input := entities.BranchInput{BranchName: "feature"}
+
+		// when
+		err := p.CreateBranchWithChanges(context.Background(), repo, input)
+
+		// then
+		require.Error(t, err)
+	})
+
+	t.Run("should create branch with changes successfully", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("/api/v4/projects/", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				// Handle both branch creation and commit creation
+				resp := map[string]interface{}{
+					"name":       "feature",
+					"short_id":   "abc123",
+					"id":         "abc123def456",
+					"title":      "Add new files",
+					"created_at": "2024-01-01T00:00:00Z",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			}
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := entities.Repository{
+			Organization:  "my-org",
+			Name:          "my-repo",
+			DefaultBranch: "refs/heads/main",
+		}
+		input := entities.BranchInput{
+			BranchName:    "feature",
+			BaseBranch:    "refs/heads/main",
+			CommitMessage: "Add new files",
+			Changes: []entities.FileChange{
+				{Path: "/README.md", Content: "# Hello", ChangeType: "edit"},
+			},
+		}
+
+		// when
+		err := p.CreateBranchWithChanges(context.Background(), repo, input)
+
+		// then
+		require.NoError(t, err)
+	})
+}

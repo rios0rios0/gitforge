@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/rios0rios0/gitforge/support"
 )
 
@@ -152,12 +155,8 @@ func TestDownloadFile(t *testing.T) {
 		data, err := support.DownloadFile(server.URL + "/test.txt")
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if string(data) != expected {
-			t.Errorf("expected %q, got %q", expected, string(data))
-		}
+		require.NoError(t, err)
+		assert.Equal(t, expected, string(data))
 	})
 
 	t.Run("should return error when server returns non-200 status", func(t *testing.T) {
@@ -173,9 +172,7 @@ func TestDownloadFile(t *testing.T) {
 		_, err := support.DownloadFile(server.URL + "/test.txt")
 
 		// then
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
+		require.Error(t, err)
 	})
 
 	t.Run("should return error for invalid URL", func(t *testing.T) {
@@ -188,8 +185,6 @@ func TestDownloadFile(t *testing.T) {
 		_, err := support.DownloadFile(invalidURL)
 
 		// then
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
+		require.Error(t, err)
 	})
 }

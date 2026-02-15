@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/rios0rios0/gitforge/domain/entities"
 )
 
@@ -26,12 +29,8 @@ func TestFindLatestVersion(t *testing.T) {
 		version, err := entities.FindLatestVersion(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "1.2.0" {
-			t.Errorf("expected 1.2.0, got %s", version.String())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1.2.0", version.String())
 	})
 
 	t.Run("should return error when no version found", func(t *testing.T) {
@@ -47,9 +46,7 @@ func TestFindLatestVersion(t *testing.T) {
 		_, err := entities.FindLatestVersion(lines)
 
 		// then
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
+		require.Error(t, err)
 	})
 }
 
@@ -72,12 +69,8 @@ func TestIsChangelogUnreleasedEmpty(t *testing.T) {
 		empty, err := entities.IsChangelogUnreleasedEmpty(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if empty {
-			t.Error("expected false, got true")
-		}
+		require.NoError(t, err)
+		assert.False(t, empty)
 	})
 
 	t.Run("should return true when unreleased is empty", func(t *testing.T) {
@@ -94,12 +87,8 @@ func TestIsChangelogUnreleasedEmpty(t *testing.T) {
 		empty, err := entities.IsChangelogUnreleasedEmpty(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !empty {
-			t.Error("expected true, got false")
-		}
+		require.NoError(t, err)
+		assert.True(t, empty)
 	})
 }
 
@@ -120,9 +109,7 @@ func TestDeduplicateEntries(t *testing.T) {
 		result := entities.DeduplicateEntries(entries)
 
 		// then
-		if len(result) != 2 {
-			t.Errorf("expected 2 entries, got %d: %v", len(result), result)
-		}
+		assert.Len(t, result, 2)
 	})
 
 	t.Run("should return single entry unchanged", func(t *testing.T) {
@@ -135,9 +122,7 @@ func TestDeduplicateEntries(t *testing.T) {
 		result := entities.DeduplicateEntries(entries)
 
 		// then
-		if len(result) != 1 {
-			t.Errorf("expected 1 entry, got %d", len(result))
-		}
+		assert.Len(t, result, 1)
 	})
 
 	t.Run("should return nil for empty input", func(t *testing.T) {
@@ -150,9 +135,7 @@ func TestDeduplicateEntries(t *testing.T) {
 		result := entities.DeduplicateEntries(entries)
 
 		// then
-		if len(result) != 0 {
-			t.Errorf("expected 0 entries, got %d", len(result))
-		}
+		assert.Len(t, result, 0)
 	})
 }
 
@@ -170,12 +153,8 @@ func TestInsertChangelogEntry(t *testing.T) {
 		result := entities.InsertChangelogEntry(content, entries)
 
 		// then
-		if !strings.Contains(result, "- new entry") {
-			t.Error("expected new entry in result")
-		}
-		if !strings.Contains(result, "- existing entry") {
-			t.Error("expected existing entry to remain")
-		}
+		assert.Contains(t, result, "- new entry")
+		assert.Contains(t, result, "- existing entry")
 	})
 
 	t.Run("should create Changed section when missing", func(t *testing.T) {
@@ -189,12 +168,8 @@ func TestInsertChangelogEntry(t *testing.T) {
 		result := entities.InsertChangelogEntry(content, entries)
 
 		// then
-		if !strings.Contains(result, "### Changed") {
-			t.Error("expected Changed section to be created")
-		}
-		if !strings.Contains(result, "- new entry") {
-			t.Error("expected new entry in result")
-		}
+		assert.Contains(t, result, "### Changed")
+		assert.Contains(t, result, "- new entry")
 	})
 
 	t.Run("should return content unchanged when no Unreleased section", func(t *testing.T) {
@@ -208,9 +183,7 @@ func TestInsertChangelogEntry(t *testing.T) {
 		result := entities.InsertChangelogEntry(content, entries)
 
 		// then
-		if result != content {
-			t.Error("expected content to remain unchanged")
-		}
+		assert.Equal(t, content, result)
 	})
 
 	t.Run("should return content unchanged when entries are empty", func(t *testing.T) {
@@ -224,9 +197,7 @@ func TestInsertChangelogEntry(t *testing.T) {
 		result := entities.InsertChangelogEntry(content, entries)
 
 		// then
-		if result != content {
-			t.Error("expected content to remain unchanged")
-		}
+		assert.Equal(t, content, result)
 	})
 }
 
@@ -251,15 +222,9 @@ func TestProcessChangelog(t *testing.T) {
 		version, content, err := entities.ProcessChangelog(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "1.0.1" {
-			t.Errorf("expected 1.0.1, got %s", version.String())
-		}
-		if len(content) == 0 {
-			t.Error("expected non-empty content")
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1.0.1", version.String())
+		assert.NotEmpty(t, content)
 	})
 
 	t.Run("should bump minor version when added entries are present", func(t *testing.T) {
@@ -280,12 +245,8 @@ func TestProcessChangelog(t *testing.T) {
 		version, _, err := entities.ProcessChangelog(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "1.1.0" {
-			t.Errorf("expected 1.1.0, got %s", version.String())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1.1.0", version.String())
 	})
 
 	t.Run("should bump major version when breaking changes are present", func(t *testing.T) {
@@ -306,12 +267,8 @@ func TestProcessChangelog(t *testing.T) {
 		version, _, err := entities.ProcessChangelog(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "2.0.0" {
-			t.Errorf("expected 2.0.0, got %s", version.String())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "2.0.0", version.String())
 	})
 
 	t.Run("should handle new changelog with only unreleased section", func(t *testing.T) {
@@ -329,15 +286,9 @@ func TestProcessChangelog(t *testing.T) {
 		version, content, err := entities.ProcessChangelog(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "1.0.0" {
-			t.Errorf("expected 1.0.0, got %s", version.String())
-		}
-		if len(content) == 0 {
-			t.Error("expected non-empty content")
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1.0.0", version.String())
+		assert.NotEmpty(t, content)
 	})
 
 	t.Run("should return error when unreleased section is empty", func(t *testing.T) {
@@ -356,9 +307,7 @@ func TestProcessChangelog(t *testing.T) {
 		_, _, err := entities.ProcessChangelog(lines)
 
 		// then
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
+		require.Error(t, err)
 	})
 }
 
@@ -380,15 +329,9 @@ func TestProcessNewChangelog(t *testing.T) {
 		version, content, err := entities.ProcessNewChangelog(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "1.0.0" {
-			t.Errorf("expected 1.0.0, got %s", version.String())
-		}
-		if len(content) == 0 {
-			t.Error("expected non-empty content")
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1.0.0", version.String())
+		assert.NotEmpty(t, content)
 	})
 
 	t.Run("should handle changelog with prefix content before unreleased", func(t *testing.T) {
@@ -407,12 +350,8 @@ func TestProcessNewChangelog(t *testing.T) {
 		version, content, err := entities.ProcessNewChangelog(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "1.0.0" {
-			t.Errorf("expected 1.0.0, got %s", version.String())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1.0.0", version.String())
 		// prefix content should be preserved
 		found := false
 		for _, line := range content {
@@ -420,9 +359,7 @@ func TestProcessNewChangelog(t *testing.T) {
 				found = true
 			}
 		}
-		if !found {
-			t.Error("expected prefix content to be preserved")
-		}
+		assert.True(t, found, "expected prefix content to be preserved")
 	})
 
 	t.Run("should handle changelog with no unreleased section", func(t *testing.T) {
@@ -438,12 +375,8 @@ func TestProcessNewChangelog(t *testing.T) {
 		version, _, err := entities.ProcessNewChangelog(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "1.0.0" {
-			t.Errorf("expected 1.0.0, got %s", version.String())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1.0.0", version.String())
 	})
 }
 
@@ -466,12 +399,8 @@ func TestFixSectionHeadings(t *testing.T) {
 		entities.FixSectionHeadings(lines)
 
 		// then
-		if lines[1] != "### Added" {
-			t.Errorf("expected '### Added', got %q", lines[1])
-		}
-		if lines[3] != "### Changed" {
-			t.Errorf("expected '### Changed', got %q", lines[3])
-		}
+		assert.Equal(t, "### Added", lines[1])
+		assert.Equal(t, "### Changed", lines[3])
 	})
 
 	t.Run("should handle all standard section types", func(t *testing.T) {
@@ -500,9 +429,7 @@ func TestFixSectionHeadings(t *testing.T) {
 			"### Security",
 		}
 		for i, line := range lines {
-			if line != expected[i] {
-				t.Errorf("index %d: expected %q, got %q", i, expected[i], line)
-			}
+			assert.Equal(t, expected[i], line, "index %d", i)
 		}
 	})
 }
@@ -524,9 +451,7 @@ func TestUpdateSection(t *testing.T) {
 		_, _, err := entities.UpdateSection(unreleasedSection, *nextVersion)
 
 		// then
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
+		require.Error(t, err)
 	})
 
 	t.Run("should bump patch version for fixed changes", func(t *testing.T) {
@@ -544,15 +469,9 @@ func TestUpdateSection(t *testing.T) {
 		newSection, version, err := entities.UpdateSection(unreleasedSection, *nextVersion)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "2.0.1" {
-			t.Errorf("expected 2.0.1, got %s", version.String())
-		}
-		if len(newSection) == 0 {
-			t.Error("expected non-empty section")
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "2.0.1", version.String())
+		assert.NotEmpty(t, newSection)
 	})
 
 	t.Run("should bump minor version for added changes", func(t *testing.T) {
@@ -570,12 +489,8 @@ func TestUpdateSection(t *testing.T) {
 		_, version, err := entities.UpdateSection(unreleasedSection, *nextVersion)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "1.1.0" {
-			t.Errorf("expected 1.1.0, got %s", version.String())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1.1.0", version.String())
 	})
 
 	t.Run("should bump major version for breaking changes", func(t *testing.T) {
@@ -593,12 +508,8 @@ func TestUpdateSection(t *testing.T) {
 		_, version, err := entities.UpdateSection(unreleasedSection, *nextVersion)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if version.String() != "2.0.0" {
-			t.Errorf("expected 2.0.0, got %s", version.String())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "2.0.0", version.String())
 	})
 }
 
@@ -620,20 +531,12 @@ func TestMakeNewSectionsFromUnreleased(t *testing.T) {
 		result := entities.MakeNewSectionsFromUnreleased(unreleasedSection, *version)
 
 		// then
-		if len(result) == 0 {
-			t.Fatal("expected non-empty result")
-		}
+		require.NotEmpty(t, result)
 
 		joined := strings.Join(result, "\n")
-		if !strings.Contains(joined, "## [Unreleased]") {
-			t.Error("expected new Unreleased header")
-		}
-		if !strings.Contains(joined, "[1.0.0]") {
-			t.Error("expected version 1.0.0 in output")
-		}
-		if !strings.Contains(joined, "### Added") {
-			t.Error("expected Added section in output")
-		}
+		assert.Contains(t, joined, "## [Unreleased]")
+		assert.Contains(t, joined, "[1.0.0]")
+		assert.Contains(t, joined, "### Added")
 	})
 }
 
@@ -671,21 +574,11 @@ func TestParseUnreleasedIntoSections(t *testing.T) {
 		)
 
 		// then
-		if len(*sections["Added"]) != 1 {
-			t.Errorf("expected 1 Added entry, got %d", len(*sections["Added"]))
-		}
-		if len(*sections["Changed"]) != 1 {
-			t.Errorf("expected 1 Changed entry, got %d", len(*sections["Changed"]))
-		}
-		if len(*sections["Fixed"]) != 1 {
-			t.Errorf("expected 1 Fixed entry, got %d", len(*sections["Fixed"]))
-		}
-		if minorChanges != 1 {
-			t.Errorf("expected 1 minor change, got %d", minorChanges)
-		}
-		if patchChanges != 2 {
-			t.Errorf("expected 2 patch changes, got %d", patchChanges)
-		}
+		assert.Len(t, *sections["Added"], 1)
+		assert.Len(t, *sections["Changed"], 1)
+		assert.Len(t, *sections["Fixed"], 1)
+		assert.Equal(t, 1, minorChanges)
+		assert.Equal(t, 2, patchChanges)
 	})
 
 	t.Run("should count breaking changes as major", func(t *testing.T) {
@@ -715,9 +608,7 @@ func TestParseUnreleasedIntoSections(t *testing.T) {
 		)
 
 		// then
-		if majorChanges != 1 {
-			t.Errorf("expected 1 major change, got %d", majorChanges)
-		}
+		assert.Equal(t, 1, majorChanges)
 	})
 }
 
@@ -743,25 +634,13 @@ func TestMakeNewSections(t *testing.T) {
 
 		// then
 		joined := strings.Join(result, "\n")
-		if !strings.Contains(joined, "## [Unreleased]") {
-			t.Error("expected Unreleased header")
-		}
-		if !strings.Contains(joined, "[2.0.0]") {
-			t.Error("expected version in output")
-		}
-		if !strings.Contains(joined, "### Added") {
-			t.Error("expected Added section")
-		}
-		if !strings.Contains(joined, "### Changed") {
-			t.Error("expected Changed section")
-		}
-		if !strings.Contains(joined, "### Fixed") {
-			t.Error("expected Fixed section")
-		}
+		assert.Contains(t, joined, "## [Unreleased]")
+		assert.Contains(t, joined, "[2.0.0]")
+		assert.Contains(t, joined, "### Added")
+		assert.Contains(t, joined, "### Changed")
+		assert.Contains(t, joined, "### Fixed")
 		// Deprecated, Removed, Security should NOT appear since they are empty
-		if strings.Contains(joined, "### Deprecated") {
-			t.Error("did not expect Deprecated section for empty list")
-		}
+		assert.NotContains(t, joined, "### Deprecated")
 	})
 }
 
@@ -782,9 +661,7 @@ func TestFindLatestVersionWithInvalidVersion(t *testing.T) {
 		_, err := entities.FindLatestVersion(lines)
 
 		// then
-		if err == nil {
-			t.Fatal("expected error for invalid version, got nil")
-		}
+		require.Error(t, err)
 	})
 }
 
@@ -806,12 +683,8 @@ func TestIsChangelogUnreleasedEmptyWithNoVersions(t *testing.T) {
 		empty, err := entities.IsChangelogUnreleasedEmpty(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if empty {
-			t.Error("expected false, got true")
-		}
+		require.NoError(t, err)
+		assert.False(t, empty)
 	})
 
 	t.Run("should return true when unreleased is empty and no version exists", func(t *testing.T) {
@@ -827,12 +700,8 @@ func TestIsChangelogUnreleasedEmptyWithNoVersions(t *testing.T) {
 		empty, err := entities.IsChangelogUnreleasedEmpty(lines)
 
 		// then
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !empty {
-			t.Error("expected true, got false")
-		}
+		require.NoError(t, err)
+		assert.True(t, empty)
 	})
 }
 
@@ -852,8 +721,6 @@ func TestDeduplicateEntriesSemanticOverlap(t *testing.T) {
 		result := entities.DeduplicateEntries(entries)
 
 		// then
-		if len(result) != 1 {
-			t.Errorf("expected 1 entry after dedup, got %d: %v", len(result), result)
-		}
+		assert.Len(t, result, 1)
 	})
 }

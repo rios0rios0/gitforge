@@ -2,10 +2,13 @@ package git_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	gitcfg "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -279,6 +282,211 @@ func TestGetLatestTag(t *testing.T) {
 		// then
 		require.Error(t, err)
 	})
+
+	t.Run("should return tag when tag exists", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := createInMemoryRepoWithCommit(t)
+		addTagToRepo(t, repo, "v1.0.0")
+
+		// when
+		latestTag, err := gitops.GetLatestTag(repo)
+
+		// then
+		require.NoError(t, err)
+		require.NotNil(t, latestTag)
+	})
+
+	t.Run("should fall back to default tag when many commits and no tags", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := createInMemoryRepoWithMultipleCommits(t, 6)
+
+		// when
+		latestTag, err := gitops.GetLatestTag(repo)
+
+		// then
+		require.NoError(t, err)
+		require.NotNil(t, latestTag)
+		assert.Equal(t, "0.1.0", latestTag.Tag.String())
+	})
+}
+
+func TestCreateAndSwitchBranch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should create and switch to a new branch", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		headRef, err := repo.Head()
+		require.NoError(t, err)
+
+		// when
+		err = gitops.CreateAndSwitchBranch(repo, wt, "feature-branch", headRef.Hash())
+
+		// then
+		require.NoError(t, err)
+		exists, err := gitops.CheckBranchExists(repo, "feature-branch")
+		require.NoError(t, err)
+		assert.True(t, exists)
+	})
+}
+
+func TestCheckoutBranch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should checkout existing branch", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		// when
+		err = gitops.CheckoutBranch(wt, "master")
+
+		// then
+		require.NoError(t, err)
+	})
+
+	t.Run("should return error for non-existent branch", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		// when
+		err = gitops.CheckoutBranch(wt, "nonexistent-branch")
+
+		// then
+		require.Error(t, err)
+	})
+}
+
+func TestCommitChanges(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should commit changes successfully", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		// Configure git user for commit
+		cfg, err := repo.Config()
+		require.NoError(t, err)
+		cfg.User.Name = "Test User"
+		cfg.User.Email = "test@example.com"
+		err = repo.SetConfig(cfg)
+		require.NoError(t, err)
+
+		// Create a new file to commit
+		newFile := filepath.Join(repoPath, "new-file.txt")
+		err = os.WriteFile(newFile, []byte("new content"), 0o600)
+		require.NoError(t, err)
+		_, err = wt.Add("new-file.txt")
+		require.NoError(t, err)
+
+		// when
+		hash, err := gitops.CommitChanges(wt, "test commit", nil, "Test User", "test@example.com")
+
+		// then
+		require.NoError(t, err)
+		assert.NotEqual(t, plumbing.ZeroHash, hash)
+	})
+}
+
+func TestGetRemoteServiceType(t *testing.T) {
+	t.Run("should return service type for repo with remote", func(t *testing.T) {
+		// given
+		adapter := &mockLocalGitAuthProvider{serviceType: entities.GITHUB}
+		gitops.SetAdapterFinder(&mockAdapterFinder{adapterByURL: adapter})
+
+		repo := createInMemoryRepoWithCommit(t)
+		_, err := repo.CreateRemote(&gitcfg.RemoteConfig{
+			Name: "origin",
+			URLs: []string{"https://github.com/org/repo.git"},
+		})
+		require.NoError(t, err)
+
+		// when
+		serviceType, err := gitops.GetRemoteServiceType(repo)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, entities.GITHUB, serviceType)
+	})
+
+	t.Run("should return error when no remote URLs configured", func(t *testing.T) {
+		// given
+		gitops.SetAdapterFinder(&mockAdapterFinder{adapterByURL: nil})
+		repo := createInMemoryRepoWithCommit(t)
+
+		// when
+		_, err := gitops.GetRemoteServiceType(repo)
+
+		// then
+		require.Error(t, err)
+	})
+}
+
+func TestGetRemoteRepoURLWithRemote(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return remote URL when remote is configured", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := createInMemoryRepoWithCommit(t)
+		expectedURL := "https://github.com/org/repo.git"
+		_, err := repo.CreateRemote(&gitcfg.RemoteConfig{
+			Name: "origin",
+			URLs: []string{expectedURL},
+		})
+		require.NoError(t, err)
+
+		// when
+		result, err := gitops.GetRemoteRepoURL(repo)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, expectedURL, result)
+	})
+}
+
+func TestOpenRepoSuccess(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should open a valid git repository", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		_ = createFilesystemRepoWithCommit(t, repoPath)
+
+		// when
+		repo, err := gitops.OpenRepo(repoPath)
+
+		// then
+		require.NoError(t, err)
+		require.NotNil(t, repo)
+	})
 }
 
 // createInMemoryRepoWithCommit creates an in-memory git repo with one commit.
@@ -314,6 +522,94 @@ func createInMemoryRepoWithCommit(t *testing.T) *git.Repository {
 
 	headRef := plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.Master)
 	err = repo.Storer.SetReference(headRef)
+	require.NoError(t, err)
+
+	return repo
+}
+
+// createInMemoryRepoWithMultipleCommits creates an in-memory repo with N commits.
+func createInMemoryRepoWithMultipleCommits(t *testing.T, n int) *git.Repository {
+	t.Helper()
+
+	repo, err := git.Init(memory.NewStorage(), nil)
+	require.NoError(t, err)
+
+	var prevHash plumbing.Hash
+	for i := range n {
+		sig := &object.Signature{
+			Name:  "Test User",
+			Email: "test@example.com",
+			When:  time.Now().Add(time.Duration(i) * time.Minute),
+		}
+		commitObj := &object.Commit{
+			Author:    *sig,
+			Committer: *sig,
+			Message:   "Commit " + string(rune('A'+i)),
+			TreeHash:  plumbing.ZeroHash,
+		}
+		if i > 0 {
+			commitObj.ParentHashes = []plumbing.Hash{prevHash}
+		}
+
+		obj := repo.Storer.NewEncodedObject()
+		err = commitObj.Encode(obj)
+		require.NoError(t, err)
+
+		prevHash, err = repo.Storer.SetEncodedObject(obj)
+		require.NoError(t, err)
+	}
+
+	ref := plumbing.NewHashReference(plumbing.Master, prevHash)
+	err = repo.Storer.SetReference(ref)
+	require.NoError(t, err)
+
+	headRef := plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.Master)
+	err = repo.Storer.SetReference(headRef)
+	require.NoError(t, err)
+
+	return repo
+}
+
+// addTagToRepo adds a lightweight tag to the in-memory repo.
+func addTagToRepo(t *testing.T, repo *git.Repository, tagName string) {
+	t.Helper()
+
+	headRef, err := repo.Head()
+	require.NoError(t, err)
+
+	tagRef := plumbing.NewHashReference(
+		plumbing.ReferenceName("refs/tags/"+tagName),
+		headRef.Hash(),
+	)
+	err = repo.Storer.SetReference(tagRef)
+	require.NoError(t, err)
+}
+
+// createFilesystemRepoWithCommit creates a git repo on disk with one commit.
+func createFilesystemRepoWithCommit(t *testing.T, path string) *git.Repository {
+	t.Helper()
+
+	repo, err := git.PlainInit(path, false)
+	require.NoError(t, err)
+
+	wt, err := repo.Worktree()
+	require.NoError(t, err)
+
+	// Create a file and commit
+	testFile := filepath.Join(path, "README.md")
+	err = os.WriteFile(testFile, []byte("# Test\n"), 0o600)
+	require.NoError(t, err)
+
+	_, err = wt.Add("README.md")
+	require.NoError(t, err)
+
+	_, err = wt.Commit("Initial commit", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Test User",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+	})
 	require.NoError(t, err)
 
 	return repo

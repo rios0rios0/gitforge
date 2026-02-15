@@ -18,6 +18,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Added
 
+- added comprehensive tests across all packages achieving 83%+ coverage using testify, BDD structure, and parallel execution
 - added GPG signing utilities and SSH signing placeholder
 - added changelog processing: version calculation, entry deduplication, section management, entry insertion
 - added composed provider interfaces: `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`

@@ -430,3 +430,80 @@ func TestGithubRepoToDomain(t *testing.T) {
 		assert.Equal(t, "refs/heads/main", result.DefaultBranch)
 	})
 }
+
+func TestCreateBranchWithChangesInternal(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should create branch with changes successfully", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		baseSHA := "abc123"
+		treeSHA := "tree123"
+		commitSHA := "commit123"
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/git/ref/heads/main", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]interface{}{
+				"ref":    "refs/heads/main",
+				"object": map[string]string{"sha": baseSHA, "type": "commit"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		mux.HandleFunc("GET /repos/my-org/my-repo/git/commits/"+baseSHA, func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]interface{}{
+				"sha":  baseSHA,
+				"tree": map[string]string{"sha": treeSHA},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		mux.HandleFunc("POST /repos/my-org/my-repo/git/trees", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]interface{}{
+				"sha": "newtree123",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		mux.HandleFunc("POST /repos/my-org/my-repo/git/commits", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]interface{}{
+				"sha": commitSHA,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		mux.HandleFunc("POST /repos/my-org/my-repo/git/refs", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]interface{}{
+				"ref":    "refs/heads/feature",
+				"object": map[string]string{"sha": commitSHA},
+			}
+			w.WriteHeader(http.StatusCreated)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := entities.Repository{
+			Organization:  "my-org",
+			Name:          "my-repo",
+			DefaultBranch: "refs/heads/main",
+		}
+		input := entities.BranchInput{
+			BranchName:    "feature",
+			BaseBranch:    "refs/heads/main",
+			CommitMessage: "Add new files",
+			Changes: []entities.FileChange{
+				{Path: "/README.md", Content: "# Hello", ChangeType: "edit"},
+			},
+		}
+
+		// when
+		err := p.CreateBranchWithChanges(context.Background(), repo, input)
+
+		// then
+		require.NoError(t, err)
+	})
+}

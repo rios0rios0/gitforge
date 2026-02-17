@@ -16,6 +16,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Changed
+
+- changed the Go module dependencies to their latest versions
+
 ### Added
 
 - added comprehensive tests across all packages achieving 83%+ coverage using testify, BDD structure, and parallel execution

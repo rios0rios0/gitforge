@@ -3,6 +3,7 @@ package git_test
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -379,7 +380,7 @@ func TestCheckoutBranch(t *testing.T) {
 func TestCommitChanges(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should commit changes successfully", func(t *testing.T) {
+	t.Run("should commit changes successfully with nil signing options", func(t *testing.T) {
 		t.Parallel()
 
 		// given
@@ -388,7 +389,6 @@ func TestCommitChanges(t *testing.T) {
 		wt, err := repo.Worktree()
 		require.NoError(t, err)
 
-		// Configure git user for commit
 		cfg, err := repo.Config()
 		require.NoError(t, err)
 		cfg.User.Name = "Test User"
@@ -396,7 +396,6 @@ func TestCommitChanges(t *testing.T) {
 		err = repo.SetConfig(cfg)
 		require.NoError(t, err)
 
-		// Create a new file to commit
 		newFile := filepath.Join(repoPath, "new-file.txt")
 		err = os.WriteFile(newFile, []byte("new content"), 0o600)
 		require.NoError(t, err)
@@ -404,11 +403,158 @@ func TestCommitChanges(t *testing.T) {
 		require.NoError(t, err)
 
 		// when
-		hash, err := gitops.CommitChanges(wt, "test commit", nil, "Test User", "test@example.com")
+		hash, err := gitops.CommitChanges(repo, wt, "test commit", nil, "Test User", "test@example.com")
 
 		// then
 		require.NoError(t, err)
 		assert.NotEqual(t, plumbing.ZeroHash, hash)
+	})
+
+	t.Run("should commit changes with empty signing options", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		cfg, err := repo.Config()
+		require.NoError(t, err)
+		cfg.User.Name = "Test User"
+		cfg.User.Email = "test@example.com"
+		err = repo.SetConfig(cfg)
+		require.NoError(t, err)
+
+		newFile := filepath.Join(repoPath, "file2.txt")
+		err = os.WriteFile(newFile, []byte("content"), 0o600)
+		require.NoError(t, err)
+		_, err = wt.Add("file2.txt")
+		require.NoError(t, err)
+
+		// when
+		hash, err := gitops.CommitChanges(repo, wt, "test commit", &gitops.SigningOptions{}, "Test User", "test@example.com")
+
+		// then
+		require.NoError(t, err)
+		assert.NotEqual(t, plumbing.ZeroHash, hash)
+	})
+
+	t.Run("should include signed-off-by in commit message", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		cfg, err := repo.Config()
+		require.NoError(t, err)
+		cfg.User.Name = "Test User"
+		cfg.User.Email = "test@example.com"
+		err = repo.SetConfig(cfg)
+		require.NoError(t, err)
+
+		newFile := filepath.Join(repoPath, "file3.txt")
+		err = os.WriteFile(newFile, []byte("content"), 0o600)
+		require.NoError(t, err)
+		_, err = wt.Add("file3.txt")
+		require.NoError(t, err)
+
+		// when
+		hash, err := gitops.CommitChanges(repo, wt, "my commit msg", nil, "John Doe", "john@example.com")
+
+		// then
+		require.NoError(t, err)
+		commitObj, err := repo.CommitObject(hash)
+		require.NoError(t, err)
+		assert.Contains(t, commitObj.Message, "Signed-off-by: John Doe <john@example.com>")
+	})
+
+	t.Run("should return error when SSH key path is invalid", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		_, err := exec.LookPath("ssh-keygen")
+		if err != nil {
+			t.Skip("ssh-keygen not available")
+		}
+
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		cfg, err := repo.Config()
+		require.NoError(t, err)
+		cfg.User.Name = "Test User"
+		cfg.User.Email = "test@example.com"
+		err = repo.SetConfig(cfg)
+		require.NoError(t, err)
+
+		newFile := filepath.Join(repoPath, "file4.txt")
+		err = os.WriteFile(newFile, []byte("content"), 0o600)
+		require.NoError(t, err)
+		_, err = wt.Add("file4.txt")
+		require.NoError(t, err)
+
+		opts := &gitops.SigningOptions{SSHKeyPath: "/tmp/nonexistent-key-xyz"}
+
+		// when
+		hash, err := gitops.CommitChanges(repo, wt, "test commit", opts, "Test User", "test@example.com")
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "SSH commit signing failed")
+		assert.Equal(t, plumbing.ZeroHash, hash)
+	})
+
+	t.Run("should sign commit with valid SSH key", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		_, err := exec.LookPath("ssh-keygen")
+		if err != nil {
+			t.Skip("ssh-keygen not available")
+		}
+
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		cfg, err := repo.Config()
+		require.NoError(t, err)
+		cfg.User.Name = "Test User"
+		cfg.User.Email = "test@example.com"
+		err = repo.SetConfig(cfg)
+		require.NoError(t, err)
+
+		newFile := filepath.Join(repoPath, "file5.txt")
+		err = os.WriteFile(newFile, []byte("content"), 0o600)
+		require.NoError(t, err)
+		_, err = wt.Add("file5.txt")
+		require.NoError(t, err)
+
+		// Generate a temporary SSH key for signing
+		keyPath := filepath.Join(t.TempDir(), "test_ed25519")
+		cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-N", "", "-q")
+		require.NoError(t, cmd.Run())
+
+		opts := &gitops.SigningOptions{SSHKeyPath: keyPath}
+
+		// when
+		hash, err := gitops.CommitChanges(repo, wt, "signed commit", opts, "Test User", "test@example.com")
+
+		// then
+		require.NoError(t, err)
+		assert.NotEqual(t, plumbing.ZeroHash, hash)
+
+		// Verify the commit has an SSH signature
+		commitObj, err := repo.CommitObject(hash)
+		require.NoError(t, err)
+		assert.Contains(t, commitObj.PGPSignature, "-----BEGIN SSH SIGNATURE-----")
 	})
 }
 

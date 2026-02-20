@@ -1,8 +1,10 @@
 package git
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 
 	"github.com/rios0rios0/gitforge/domain/entities"
 	domainRepos "github.com/rios0rios0/gitforge/domain/repositories"
+	"github.com/rios0rios0/gitforge/infrastructure/signing"
 )
 
 // AdapterFinder provides adapter lookup capabilities without circular dependencies.
@@ -111,11 +114,20 @@ func CheckoutBranch(w *git.Worktree, branchName string) error {
 	return nil
 }
 
-// CommitChanges commits the changes in the given worktree with optional GPG signing.
+// SigningOptions configures commit signing behavior.
+// When nil or zero-valued, no signing is performed.
+type SigningOptions struct {
+	GPGKey     *openpgp.Entity // used for GPG signing
+	SSHKeyPath string          // used for SSH signing (path to the private key file)
+}
+
+// CommitChanges commits the changes in the given worktree with optional signing.
+// Pass repo when SSH signing is needed (to manipulate the stored commit object).
 func CommitChanges(
+	repo *git.Repository,
 	workTree *git.Worktree,
 	commitMessage string,
-	signKey *openpgp.Entity,
+	opts *SigningOptions,
 	name string,
 	email string,
 ) (plumbing.Hash, error) {
@@ -124,11 +136,80 @@ func CommitChanges(
 	signoff := fmt.Sprintf("\n\nSigned-off-by: %s <%s>", name, email)
 	commitMessage += signoff
 
-	commit, err := workTree.Commit(commitMessage, &git.CommitOptions{SignKey: signKey})
+	var gpgKey *openpgp.Entity
+	if opts != nil {
+		gpgKey = opts.GPGKey
+	}
+
+	hash, err := workTree.Commit(commitMessage, &git.CommitOptions{SignKey: gpgKey})
 	if err != nil {
 		return plumbing.ZeroHash, fmt.Errorf("could not commit changes: %w", err)
 	}
-	return commit, nil
+
+	if opts != nil && opts.SSHKeyPath != "" {
+		hash, err = applySSHSignature(repo, hash, opts.SSHKeyPath)
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+	}
+
+	return hash, nil
+}
+
+// applySSHSignature reads an unsigned commit, signs it with SSH, and stores the signed version.
+func applySSHSignature(repo *git.Repository, hash plumbing.Hash, sshKeyPath string) (plumbing.Hash, error) {
+	commitObj, err := repo.CommitObject(hash)
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("could not read commit for SSH signing: %w", err)
+	}
+
+	// Encode the commit without signature to get the signable content
+	unsignedObj := repo.Storer.NewEncodedObject()
+	if err = commitObj.Encode(unsignedObj); err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("could not encode commit for SSH signing: %w", err)
+	}
+
+	reader, err := unsignedObj.Reader()
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("could not read encoded commit: %w", err)
+	}
+
+	content, err := io.ReadAll(reader)
+	reader.Close()
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("could not read commit content: %w", err)
+	}
+
+	signature, err := signing.SignSSHCommit(context.Background(), content, sshKeyPath)
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("SSH commit signing failed: %w", err)
+	}
+
+	// Store a new commit object with the signature
+	commitObj.PGPSignature = signature
+	signedObj := repo.Storer.NewEncodedObject()
+	if err = commitObj.Encode(signedObj); err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("could not encode signed commit: %w", err)
+	}
+
+	newHash, err := repo.Storer.SetEncodedObject(signedObj)
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("could not store signed commit: %w", err)
+	}
+
+	// Update HEAD reference to point to the new signed commit
+	head, err := repo.Head()
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("could not get HEAD for SSH signing: %w", err)
+	}
+
+	newRef := plumbing.NewHashReference(head.Name(), newHash)
+	if err = repo.Storer.SetReference(newRef); err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("could not update HEAD after SSH signing: %w", err)
+	}
+
+	log.Info("Successfully applied SSH signature to commit")
+	return newHash, nil
 }
 
 // PushChangesSSH pushes the changes to the remote repository over SSH.

@@ -19,12 +19,11 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Changed
 
 - changed the Go module dependencies to their latest versions
-- changed the Go module dependencies to their latest versions
-- changed the Go module dependencies to their latest versions
-- changed the Go module dependencies to their latest versions
+- changed `CommitChanges` signature to accept `*SigningOptions` and `*git.Repository` instead of `*openpgp.Entity`
 
 ### Added
 
+- added SSH commit signing support using `ssh-keygen -Y sign` in `infrastructure/signing/ssh.go`
 - added comprehensive tests across all packages achieving 83%+ coverage using testify, BDD structure, and parallel execution
 - added GPG signing utilities and SSH signing placeholder
 - added changelog processing: version calculation, entry deduplication, section management, entry insertion

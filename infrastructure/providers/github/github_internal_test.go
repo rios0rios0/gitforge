@@ -51,7 +51,7 @@ func TestDiscoverRepositoriesInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /orgs/my-org/repos", func(w http.ResponseWriter, _ *http.Request) {
-			repos := []map[string]interface{}{
+			repos := []map[string]any{
 				{
 					"id":             1,
 					"name":           "repo-a",
@@ -88,7 +88,7 @@ func TestDiscoverRepositoriesInternal(t *testing.T) {
 			_, _ = w.Write([]byte(`{"message": "Not Found"}`))
 		})
 		mux.HandleFunc("GET /users/my-user/repos", func(w http.ResponseWriter, _ *http.Request) {
-			repos := []map[string]interface{}{
+			repos := []map[string]any{
 				{
 					"id":             2,
 					"name":           "user-repo",
@@ -124,7 +124,7 @@ func TestCreatePullRequestInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("POST /repos/my-org/my-repo/pulls", func(w http.ResponseWriter, _ *http.Request) {
-			pr := map[string]interface{}{
+			pr := map[string]any{
 				"number":   42,
 				"title":    "Test PR",
 				"html_url": "https://github.com/my-org/my-repo/pull/42",
@@ -169,7 +169,7 @@ func TestPullRequestExistsInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /repos/my-org/my-repo/pulls", func(w http.ResponseWriter, _ *http.Request) {
-			prs := []map[string]interface{}{
+			prs := []map[string]any{
 				{"number": 1, "title": "Existing PR"},
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -223,7 +223,7 @@ func TestGetFileContentInternal(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /repos/my-org/my-repo/contents/README.md", func(w http.ResponseWriter, _ *http.Request) {
 			// GitHub returns base64-encoded content
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				"type":     "file",
 				"encoding": "base64",
 				"content":  "SGVsbG8gV29ybGQ=", // "Hello World" base64
@@ -259,8 +259,8 @@ func TestListFilesInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /repos/my-org/my-repo/git/trees/main", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
-				"tree": []map[string]interface{}{
+			resp := map[string]any{
+				"tree": []map[string]any{
 					{"path": "README.md", "type": "blob", "sha": "abc123"},
 					{"path": "src", "type": "tree", "sha": "def456"},
 				},
@@ -296,7 +296,7 @@ func TestGetTagsInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /repos/my-org/my-repo/tags", func(w http.ResponseWriter, _ *http.Request) {
-			resp := []map[string]interface{}{
+			resp := []map[string]any{
 				{"name": "v1.0.0", "commit": map[string]string{"sha": "abc"}},
 				{"name": "v2.0.0", "commit": map[string]string{"sha": "def"}},
 			}
@@ -327,7 +327,7 @@ func TestHasFileInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /repos/my-org/my-repo/contents/README.md", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				"type":     "file",
 				"encoding": "base64",
 				"content":  "SGVsbG8=",
@@ -444,7 +444,7 @@ func TestCreateBranchWithChangesInternal(t *testing.T) {
 
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /repos/my-org/my-repo/git/ref/heads/main", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				"ref":    "refs/heads/main",
 				"object": map[string]string{"sha": baseSHA, "type": "commit"},
 			}
@@ -452,7 +452,7 @@ func TestCreateBranchWithChangesInternal(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(resp)
 		})
 		mux.HandleFunc("GET /repos/my-org/my-repo/git/commits/"+baseSHA, func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				"sha":  baseSHA,
 				"tree": map[string]string{"sha": treeSHA},
 			}
@@ -460,21 +460,21 @@ func TestCreateBranchWithChangesInternal(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(resp)
 		})
 		mux.HandleFunc("POST /repos/my-org/my-repo/git/trees", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				"sha": "newtree123",
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 		})
 		mux.HandleFunc("POST /repos/my-org/my-repo/git/commits", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				"sha": commitSHA,
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 		})
 		mux.HandleFunc("POST /repos/my-org/my-repo/git/refs", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				"ref":    "refs/heads/feature",
 				"object": map[string]string{"sha": commitSHA},
 			}

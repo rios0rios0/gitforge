@@ -2,9 +2,11 @@ package signing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -19,18 +21,23 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file for SSH signing: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if cerr := tmpFile.Close(); cerr != nil {
+			log.WithError(cerr).Warn("failed to close temp file for SSH signing")
+		}
+		if rerr := os.Remove(tmpFile.Name()); rerr != nil { //nolint:gosec // tmpFile.Name() is not user-controlled
+			log.WithError(rerr).Warn("failed to remove temp file for SSH signing")
+		}
+	}()
 
 	if _, err = tmpFile.Write(commitContent); err != nil {
-		tmpFile.Close()
 		return "", fmt.Errorf("failed to write commit content for SSH signing: %w", err)
 	}
-	tmpFile.Close()
 
 	sigFile := tmpFile.Name() + ".sig"
 	defer os.Remove(sigFile)
 
-	cmd := exec.CommandContext(
+	cmd := exec.CommandContext( //nolint:gosec // signingKeyPath is validated by ReadSSHSigningKey
 		ctx, "ssh-keygen",
 		"-Y", "sign",
 		"-f", signingKeyPath,
@@ -42,7 +49,7 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 		return "", fmt.Errorf("ssh-keygen signing failed: %w (output: %s)", err, strings.TrimSpace(string(output)))
 	}
 
-	sigBytes, err := os.ReadFile(sigFile)
+	sigBytes, err := os.ReadFile(sigFile) //nolint:gosec // derived from tmpFile.Name(), not user-controlled
 	if err != nil {
 		return "", fmt.Errorf("failed to read SSH signature file: %w", err)
 	}
@@ -55,19 +62,28 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 // It expands ~ to the home directory and verifies the file exists.
 func ReadSSHSigningKey(signingKey string) (string, error) {
 	if signingKey == "" {
-		return "", fmt.Errorf("no SSH signing key configured (user.signingkey is empty)")
+		return "", errors.New("no SSH signing key configured (user.signingkey is empty)")
 	}
 
-	if strings.HasPrefix(signingKey, "~") {
+	if strings.HasPrefix(signingKey, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("failed to expand home directory: %w", err)
 		}
-		signingKey = home + signingKey[1:]
+		signingKey = filepath.Join(home, signingKey[2:])
+	} else if signingKey == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to expand home directory: %w", err)
+		}
+		signingKey = home
 	}
 
-	if _, err := os.Stat(signingKey); os.IsNotExist(err) {
-		return "", fmt.Errorf("SSH signing key file not found: %s", signingKey)
+	if _, err := os.Stat(signingKey); err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("SSH signing key file not found: %s", signingKey)
+		}
+		return "", fmt.Errorf("failed to stat SSH signing key file %s: %w", signingKey, err)
 	}
 
 	return signingKey, nil

@@ -39,7 +39,7 @@ func (s *stubProvider) DiscoverRepositories(
 func (s *stubProvider) CreatePullRequest(
 	_ context.Context, _ entities.Repository, _ entities.PullRequestInput,
 ) (*entities.PullRequest, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // test stub, method is not exercised
 }
 
 func (s *stubProvider) PullRequestExists(

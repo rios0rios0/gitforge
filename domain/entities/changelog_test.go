@@ -135,7 +135,7 @@ func TestDeduplicateEntries(t *testing.T) {
 		result := entities.DeduplicateEntries(entries)
 
 		// then
-		assert.Len(t, result, 0)
+		assert.Empty(t, result)
 	})
 }
 

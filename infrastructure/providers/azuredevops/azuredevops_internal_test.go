@@ -169,7 +169,7 @@ func TestDiscoverRepositories(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /my-org/_apis/projects", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				"value": []map[string]string{
 					{"id": "proj-1", "name": "ProjectA"},
 				},
@@ -178,8 +178,8 @@ func TestDiscoverRepositories(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(resp)
 		})
 		mux.HandleFunc("GET /my-org/proj-1/_apis/git/repositories", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
-				"value": []map[string]interface{}{
+			resp := map[string]any{
+				"value": []map[string]any{
 					{
 						"id":            "repo-1",
 						"name":          "RepoA",
@@ -217,10 +217,13 @@ func TestGetFileContent(t *testing.T) {
 
 		// given
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /my-org/my-project/_apis/git/repositories/repo-1/items", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("file content here"))
-		})
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/items",
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("file content here"))
+			},
+		)
 		server := httptest.NewServer(mux)
 		defer server.Close()
 
@@ -248,16 +251,19 @@ func TestListFiles(t *testing.T) {
 
 		// given
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /my-org/my-project/_apis/git/repositories/repo-1/items", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
-				"value": []map[string]interface{}{
-					{"objectId": "abc", "gitObjectType": "blob", "path": "/README.md"},
-					{"objectId": "def", "gitObjectType": "tree", "path": "/src"},
-				},
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
-		})
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/items",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"value": []map[string]any{
+						{"objectId": "abc", "gitObjectType": "blob", "path": "/README.md"},
+						{"objectId": "def", "gitObjectType": "tree", "path": "/src"},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
 		server := httptest.NewServer(mux)
 		defer server.Close()
 
@@ -285,16 +291,19 @@ func TestGetTags(t *testing.T) {
 
 		// given
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /my-org/my-project/_apis/git/repositories/repo-1/refs", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
-				"value": []map[string]string{
-					{"name": "refs/tags/v1.0.0"},
-					{"name": "refs/tags/v2.0.0"},
-				},
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
-		})
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/refs",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"value": []map[string]string{
+						{"name": "refs/tags/v1.0.0"},
+						{"name": "refs/tags/v2.0.0"},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
 		server := httptest.NewServer(mux)
 		defer server.Close()
 
@@ -324,10 +333,13 @@ func TestHasFile(t *testing.T) {
 
 		// given
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /my-org/my-project/_apis/git/repositories/repo-1/items", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("content"))
-		})
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/items",
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("content"))
+			},
+		)
 		server := httptest.NewServer(mux)
 		defer server.Close()
 
@@ -350,9 +362,12 @@ func TestHasFile(t *testing.T) {
 
 		// given
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /my-org/my-project/_apis/git/repositories/repo-1/items", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-		})
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/items",
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+		)
 		server := httptest.NewServer(mux)
 		defer server.Close()
 
@@ -379,11 +394,14 @@ func TestPullRequestExists(t *testing.T) {
 
 		// given
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]int{"count": 1}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
-		})
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]int{"count": 1}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
 		server := httptest.NewServer(mux)
 		defer server.Close()
 
@@ -407,11 +425,14 @@ func TestPullRequestExists(t *testing.T) {
 
 		// given
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]int{"count": 0}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
-		})
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]int{"count": 0}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
 		server := httptest.NewServer(mux)
 		defer server.Close()
 
@@ -439,16 +460,19 @@ func TestCreatePullRequest(t *testing.T) {
 
 		// given
 		mux := http.NewServeMux()
-		mux.HandleFunc("POST /my-org/my-project/_apis/git/repositories/repo-1/pullrequests", func(w http.ResponseWriter, _ *http.Request) {
-			resp := map[string]interface{}{
-				"pullRequestId": 42,
-				"title":         "Test PR",
-				"url":           "https://dev.azure.com/org/project/_git/repo/pullrequest/42",
-				"status":        "active",
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
-		})
+		mux.HandleFunc(
+			"POST /my-org/my-project/_apis/git/repositories/repo-1/pullrequests",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"pullRequestId": 42,
+					"title":         "Test PR",
+					"url":           "https://dev.azure.com/org/project/_git/repo/pullrequest/42",
+					"status":        "active",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
 		server := httptest.NewServer(mux)
 		defer server.Close()
 

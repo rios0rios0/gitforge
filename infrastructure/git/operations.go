@@ -122,7 +122,7 @@ type SigningOptions struct {
 }
 
 // CommitChanges commits the changes in the given worktree with optional signing.
-// Pass repo when SSH signing is needed (to manipulate the stored commit object).
+// The repo parameter is required for SSH signing and can be the same repository from which the worktree was obtained.
 func CommitChanges(
 	repo *git.Repository,
 	workTree *git.Worktree,
@@ -132,6 +132,10 @@ func CommitChanges(
 	email string,
 ) (plumbing.Hash, error) {
 	log.Info("Committing changes")
+
+	if opts != nil && opts.GPGKey != nil && opts.SSHKeyPath != "" {
+		return plumbing.ZeroHash, errors.New("cannot use both GPG and SSH signing simultaneously")
+	}
 
 	signoff := fmt.Sprintf("\n\nSigned-off-by: %s <%s>", name, email)
 	commitMessage += signoff
@@ -173,9 +177,13 @@ func applySSHSignature(repo *git.Repository, hash plumbing.Hash, sshKeyPath stri
 	if err != nil {
 		return plumbing.ZeroHash, fmt.Errorf("could not read encoded commit: %w", err)
 	}
+	defer func() {
+		if cerr := reader.Close(); cerr != nil {
+			log.WithError(cerr).Warn("failed to close commit reader after SSH signing")
+		}
+	}()
 
 	content, err := io.ReadAll(reader)
-	reader.Close()
 	if err != nil {
 		return plumbing.ZeroHash, fmt.Errorf("could not read commit content: %w", err)
 	}

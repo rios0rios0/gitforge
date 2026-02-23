@@ -56,7 +56,7 @@ func (m *mockLocalGitAuthProvider) DiscoverRepositories(
 func (m *mockLocalGitAuthProvider) CreatePullRequest(
 	_ context.Context, _ entities.Repository, _ entities.PullRequestInput,
 ) (*entities.PullRequest, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // test stub, method is not exercised
 }
 func (m *mockLocalGitAuthProvider) PullRequestExists(
 	_ context.Context, _ entities.Repository, _ string,
@@ -433,7 +433,14 @@ func TestCommitChanges(t *testing.T) {
 		require.NoError(t, err)
 
 		// when
-		hash, err := gitops.CommitChanges(repo, wt, "test commit", &gitops.SigningOptions{}, "Test User", "test@example.com")
+		hash, err := gitops.CommitChanges(
+			repo,
+			wt,
+			"test commit",
+			&gitops.SigningOptions{},
+			"Test User",
+			"test@example.com",
+		)
 
 		// then
 		require.NoError(t, err)

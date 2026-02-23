@@ -131,7 +131,7 @@ func (p *Provider) CreatePullRequest(
 ) (*entities.PullRequest, error) {
 	baseURL := buildBaseURL(repo.Organization)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"sourceRefName": input.SourceBranch,
 		"targetRefName": input.TargetBranch,
 		"title":         input.Title,
@@ -166,7 +166,7 @@ func (p *Provider) CreatePullRequest(
 	}
 
 	if input.AutoComplete {
-		updateBody := map[string]interface{}{
+		updateBody := map[string]any{
 			"autoCompleteSetBy": map[string]string{"id": "me"},
 		}
 		updateEndpoint := fmt.Sprintf(
@@ -347,9 +347,9 @@ func (p *Provider) CreateBranchWithChanges(
 		return fmt.Errorf("failed to get base branch commit: %w", err)
 	}
 
-	var fileChanges []map[string]interface{}
+	var fileChanges []map[string]any
 	for _, change := range input.Changes {
-		entry := map[string]interface{}{
+		entry := map[string]any{
 			"changeType": change.ChangeType,
 			"item": map[string]string{
 				"path": change.Path,
@@ -362,14 +362,14 @@ func (p *Provider) CreateBranchWithChanges(
 		fileChanges = append(fileChanges, entry)
 	}
 
-	pushBody := map[string]interface{}{
+	pushBody := map[string]any{
 		"refUpdates": []map[string]string{
 			{
 				"name":        "refs/heads/" + input.BranchName,
 				"oldObjectId": allZeroObjectID,
 			},
 		},
-		"commits": []map[string]interface{}{
+		"commits": []map[string]any{
 			{
 				"comment": input.CommitMessage,
 				"changes": fileChanges,
@@ -520,7 +520,7 @@ func (p *Provider) getCommitID(
 func (p *Provider) doRequest(
 	ctx context.Context,
 	baseURL, method, endpoint string,
-	body interface{},
+	body any,
 ) ([]byte, error) {
 	resp, _, err := p.doRequestWithHeaders(ctx, baseURL, method, endpoint, body)
 	return resp, err
@@ -529,7 +529,7 @@ func (p *Provider) doRequest(
 func (p *Provider) doRequestWithHeaders(
 	ctx context.Context,
 	baseURL, method, endpoint string,
-	body interface{},
+	body any,
 ) ([]byte, http.Header, error) {
 	var reqBody io.Reader
 	if body != nil {
@@ -550,7 +550,7 @@ func (p *Provider) doRequestWithHeaders(
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.httpClient.Do(req) //nolint:gosec // URL is constructed from trusted config, not user input
 	if err != nil {
 		return nil, nil, fmt.Errorf("request failed: %w", err)
 	}

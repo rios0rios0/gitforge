@@ -105,7 +105,7 @@ func (p *Provider) discoverGroupProjects(
 	var allRepos []entities.Repository
 	opts := &gl.ListGroupProjectsOptions{
 		ListOptions:      gl.ListOptions{PerPage: perPage},
-		IncludeSubGroups: gl.Ptr(true),
+		IncludeSubGroups: new(true),
 	}
 
 	for {
@@ -136,7 +136,7 @@ func (p *Provider) discoverUserProjects(
 	var allRepos []entities.Repository
 	opts := &gl.ListProjectsOptions{
 		ListOptions: gl.ListOptions{PerPage: perPage},
-		Owned:       gl.Ptr(true),
+		Owned:       new(true),
 	}
 
 	for {
@@ -194,11 +194,11 @@ func (p *Provider) CreatePullRequest(
 	mr, _, err := p.client.MergeRequests.CreateMergeRequest(
 		pid,
 		&gl.CreateMergeRequestOptions{
-			Title:              gl.Ptr(input.Title),
-			Description:        gl.Ptr(input.Description),
-			SourceBranch:       gl.Ptr(sourceBranch),
-			TargetBranch:       gl.Ptr(targetBranch),
-			RemoveSourceBranch: gl.Ptr(true),
+			Title:              new(input.Title),
+			Description:        new(input.Description),
+			SourceBranch:       new(sourceBranch),
+			TargetBranch:       new(targetBranch),
+			RemoveSourceBranch: new(true),
 		},
 		gl.WithContext(ctx),
 	)
@@ -228,8 +228,8 @@ func (p *Provider) PullRequestExists(
 	mrs, _, err := p.client.MergeRequests.ListProjectMergeRequests(
 		pid,
 		&gl.ListProjectMergeRequestsOptions{
-			SourceBranch: gl.Ptr(sourceBranch),
-			State:        gl.Ptr(state),
+			SourceBranch: new(sourceBranch),
+			State:        new(state),
 		},
 		gl.WithContext(ctx),
 	)
@@ -270,7 +270,7 @@ func (p *Provider) GetFileContent(
 	branch := strings.TrimPrefix(repo.DefaultBranch, "refs/heads/")
 	raw, _, err := p.client.RepositoryFiles.GetRawFile(
 		repo.Organization+"/"+repo.Name, path,
-		&gl.GetRawFileOptions{Ref: gl.Ptr(branch)},
+		&gl.GetRawFileOptions{Ref: new(branch)},
 		gl.WithContext(ctx),
 	)
 	if err != nil {
@@ -294,7 +294,7 @@ func (p *Provider) ListFiles(
 	var allFiles []entities.File
 	opts := &gl.ListTreeOptions{
 		ListOptions: gl.ListOptions{PerPage: perPage},
-		Ref:         gl.Ptr(branch),
+		Ref:         new(branch),
 		Recursive:   &recursive,
 	}
 
@@ -386,8 +386,8 @@ func (p *Provider) CreateBranchWithChanges(
 	baseBranch := strings.TrimPrefix(input.BaseBranch, "refs/heads/")
 
 	_, _, err := p.client.Branches.CreateBranch(pid, &gl.CreateBranchOptions{
-		Branch: gl.Ptr(input.BranchName),
-		Ref:    gl.Ptr(baseBranch),
+		Branch: new(input.BranchName),
+		Ref:    new(baseBranch),
 	}, gl.WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create branch: %w", err)
@@ -414,8 +414,8 @@ func (p *Provider) CreateBranchWithChanges(
 	_, _, err = p.client.Commits.CreateCommit(
 		pid,
 		&gl.CreateCommitOptions{
-			Branch:        gl.Ptr(input.BranchName),
-			CommitMessage: gl.Ptr(input.CommitMessage),
+			Branch:        new(input.BranchName),
+			CommitMessage: new(input.CommitMessage),
 			Actions:       actions,
 		},
 		gl.WithContext(ctx),

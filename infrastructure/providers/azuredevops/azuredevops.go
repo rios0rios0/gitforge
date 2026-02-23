@@ -219,9 +219,7 @@ func (p *Provider) CloneURL(repo entities.Repository) string {
 
 	parsed, err := url.Parse(remoteURL)
 	if err != nil {
-		return strings.Replace(
-			remoteURL, "https://", "https://pat:"+p.token+"@", 1,
-		)
+		return remoteURL
 	}
 
 	parsed.User = url.UserPassword("pat", p.token)

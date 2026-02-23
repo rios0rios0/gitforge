@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -220,12 +221,15 @@ func (p *Provider) CloneURL(repo entities.Repository) string {
 			repo.Organization, repo.Name,
 		)
 	}
-	return strings.Replace(
-		remoteURL,
-		"https://",
-		"https://x-access-token:"+p.token+"@",
-		1,
-	)
+
+	parsed, err := url.Parse(remoteURL)
+	if err != nil {
+		return remoteURL
+	}
+
+	parsed.User = url.UserPassword("x-access-token", p.token)
+
+	return parsed.String()
 }
 
 // --- FileAccessProvider ---

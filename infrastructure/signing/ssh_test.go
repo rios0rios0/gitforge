@@ -44,7 +44,7 @@ func TestReadSSHSigningKey(t *testing.T) {
 		assert.Contains(t, err.Error(), "not found")
 	})
 
-	t.Run("should expand tilde and return path when file exists", func(t *testing.T) {
+	t.Run("should return absolute path when file exists", func(t *testing.T) {
 		t.Parallel()
 
 		// given
@@ -55,6 +55,27 @@ func TestReadSSHSigningKey(t *testing.T) {
 
 		// when
 		result, err := signing.ReadSSHSigningKey(keyFile)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, keyFile, result)
+	})
+
+	t.Run("should expand tilde and return path when file exists", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		home, err := os.UserHomeDir()
+		require.NoError(t, err)
+
+		// use a unique filename directly under home to avoid needing MkdirAll
+		keyFile := filepath.Join(home, ".gitforge_test_tilde_expand_key")
+		err = os.WriteFile(keyFile, []byte("fake-key"), 0o600)
+		require.NoError(t, err)
+		defer os.Remove(keyFile)
+
+		// when
+		result, err := signing.ReadSSHSigningKey("~/.gitforge_test_tilde_expand_key")
 
 		// then
 		require.NoError(t, err)

@@ -49,11 +49,11 @@ func TestGitlabProjectToDomain(t *testing.T) {
 
 		// given
 		proj := &gl.Project{
-			ID:             123,
-			Path:           "my-project",
-			DefaultBranch:  "develop",
-			HTTPURLToRepo:  "https://gitlab.com/my-org/my-project.git",
-			SSHURLToRepo:   "git@gitlab.com:my-org/my-project.git",
+			ID:            123,
+			Path:          "my-project",
+			DefaultBranch: "develop",
+			HTTPURLToRepo: "https://gitlab.com/my-org/my-project.git",
+			SSHURLToRepo:  "git@gitlab.com:my-org/my-project.git",
 		}
 
 		// when
@@ -113,7 +113,7 @@ func TestDiscoverRepositoriesInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /api/v4/groups/my-org/projects", func(w http.ResponseWriter, _ *http.Request) {
-			projects := []map[string]interface{}{
+			projects := []map[string]any{
 				{
 					"id":               1,
 					"path":             "repo-a",
@@ -150,7 +150,7 @@ func TestDiscoverRepositoriesInternal(t *testing.T) {
 			_, _ = w.Write([]byte(`{"message": "404 Group Not Found"}`))
 		})
 		mux.HandleFunc("GET /api/v4/projects", func(w http.ResponseWriter, _ *http.Request) {
-			projects := []map[string]interface{}{
+			projects := []map[string]any{
 				{
 					"id":               2,
 					"path":             "user-repo",
@@ -202,7 +202,7 @@ func TestCreatePullRequestInternal(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/api/v4/projects/", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost {
-				mr := map[string]interface{}{
+				mr := map[string]any{
 					"iid":     42,
 					"title":   "Test MR",
 					"web_url": "https://gitlab.com/my-org/my-repo/-/merge_requests/42",
@@ -259,7 +259,7 @@ func TestPullRequestExistsInternal(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/api/v4/projects/", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
-				mrs := []map[string]interface{}{
+				mrs := []map[string]any{
 					{"iid": 1, "title": "Existing MR"},
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -374,7 +374,7 @@ func TestListFilesInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("/api/v4/projects/", func(w http.ResponseWriter, _ *http.Request) {
-			nodes := []map[string]interface{}{
+			nodes := []map[string]any{
 				{"id": "abc123", "name": "README.md", "type": "blob", "path": "README.md"},
 				{"id": "def456", "name": "src", "type": "tree", "path": "src"},
 			}
@@ -423,7 +423,7 @@ func TestGetTagsInternal(t *testing.T) {
 		// given
 		mux := http.NewServeMux()
 		mux.HandleFunc("/api/v4/projects/", func(w http.ResponseWriter, _ *http.Request) {
-			tags := []map[string]interface{}{
+			tags := []map[string]any{
 				{"name": "v1.0.0"},
 				{"name": "v2.0.0"},
 			}
@@ -525,7 +525,7 @@ func TestCreateBranchWithChangesInternal(t *testing.T) {
 		mux.HandleFunc("/api/v4/projects/", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost {
 				// Handle both branch creation and commit creation
-				resp := map[string]interface{}{
+				resp := map[string]any{
 					"name":       "feature",
 					"short_id":   "abc123",
 					"id":         "abc123def456",

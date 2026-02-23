@@ -83,7 +83,7 @@ func TestProviderCloneURL(t *testing.T) {
 		t.Parallel()
 
 		// given
-		provider := azuredevops.NewProvider("my-token")
+		provider := azuredevops.NewProvider("$test-token")
 		repo := entities.Repository{
 			Organization: "my-org",
 			Project:      "my-project",
@@ -95,14 +95,14 @@ func TestProviderCloneURL(t *testing.T) {
 		result := provider.CloneURL(repo)
 
 		// then
-		assert.Equal(t, "https://pat:my-token@dev.azure.com/my-org/my-project/_git/my-repo", result)
+		assert.Equal(t, "https://pat:$test-token@dev.azure.com/my-org/my-project/_git/my-repo", result)
 	})
 
 	t.Run("should construct clone URL when remote URL is empty", func(t *testing.T) {
 		t.Parallel()
 
 		// given
-		provider := azuredevops.NewProvider("my-token")
+		provider := azuredevops.NewProvider("$test-token")
 		repo := entities.Repository{
 			Organization: "my-org",
 			Project:      "my-project",
@@ -113,7 +113,7 @@ func TestProviderCloneURL(t *testing.T) {
 		result := provider.CloneURL(repo)
 
 		// then
-		assert.Equal(t, "https://pat:my-token@dev.azure.com/my-org/my-project/_git/my-repo", result)
+		assert.Equal(t, "https://pat:$test-token@dev.azure.com/my-org/my-project/_git/my-repo", result)
 	})
 }
 
@@ -179,7 +179,7 @@ func TestProviderGetAuthMethods(t *testing.T) {
 		t.Parallel()
 
 		// given
-		provider := azuredevops.NewProvider("my-token")
+		provider := azuredevops.NewProvider("$test-token")
 
 		// when
 		lgap, ok := provider.(repositories.LocalGitAuthProvider)

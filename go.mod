@@ -7,6 +7,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.3.0
 	github.com/go-git/go-git/v5 v5.16.5
 	github.com/google/go-github/v66 v66.0.0
+	github.com/rios0rios0/testkit v0.0.0-20260214183626-8263c467c4cd
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1

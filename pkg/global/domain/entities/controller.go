@@ -1,0 +1,10 @@
+package entities
+
+import "github.com/spf13/cobra"
+
+// Controller is the interface that all CLI controllers must implement.
+// Controllers bridge the Cobra CLI framework with domain commands.
+type Controller interface {
+	GetBind() ControllerBind
+	Execute(command *cobra.Command, arguments []string) error
+}

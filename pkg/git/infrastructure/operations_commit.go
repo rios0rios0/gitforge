@@ -14,6 +14,7 @@ import (
 
 // CommitChanges commits the changes in the given worktree with optional signing.
 // The repo parameter is required when using a CommitSigner that produces post-commit signatures (e.g. SSH).
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func CommitChanges(
 	repo *git.Repository,
 	workTree *git.Worktree,

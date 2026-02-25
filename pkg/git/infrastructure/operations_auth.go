@@ -14,6 +14,7 @@ import (
 
 // GetAuthMethods returns the authentication methods for the given service type.
 // It delegates to the appropriate adapter based on the service type.
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func (o *GitOperations) GetAuthMethods(
 	service globalEntities.ServiceType,
 	username string,
@@ -37,6 +38,7 @@ func (o *GitOperations) GetAuthMethods(
 }
 
 // GetRemoteServiceType returns the type of the remote service (e.g. GitHub, GitLab).
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func (o *GitOperations) GetRemoteServiceType(repo *git.Repository) (globalEntities.ServiceType, error) {
 	cfg, err := repo.Config()
 	if err != nil {
@@ -60,6 +62,7 @@ func (o *GitOperations) GetRemoteServiceType(repo *git.Repository) (globalEntiti
 }
 
 // GetServiceTypeByURL returns the type of the remote service by URL.
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func (o *GitOperations) GetServiceTypeByURL(remoteURL string) globalEntities.ServiceType {
 	adapter := o.adapterFinder.GetAdapterByURL(remoteURL)
 	if adapter != nil {

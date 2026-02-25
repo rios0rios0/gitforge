@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	gh "github.com/google/go-github/v66/github"
-	globalDomain "github.com/rios0rios0/gitforge/pkg/global/domain"
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/pkg/global/domain/helpers"
 )
 
 func (p *Provider) GetFileContent(
@@ -88,7 +88,7 @@ func (p *Provider) GetTags(
 		opts.Page = resp.NextPage
 	}
 
-	globalDomain.SortVersionsDescending(allTags)
+	globalHelpers.SortVersionsDescending(allTags)
 	return allTags, nil
 }
 

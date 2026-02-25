@@ -1,4 +1,4 @@
-package infrastructure
+package helpers
 
 import (
 	"context"
@@ -43,6 +43,7 @@ func ExportGpgKey(ctx context.Context, gpgKeyID string, gpgKeyExportPath string)
 
 // GetGpgKeyReader returns a reader for the GPG key.
 // The appName parameter is used for default key path generation (e.g. "autobump" -> ~/.gnupg/autobump-{keyID}.asc).
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func GetGpgKeyReader(ctx context.Context, gpgKeyID string, gpgKeyPath string, appName string) (io.Reader, error) {
 	if gpgKeyPath == "" {
 		gpgKeyPath = os.ExpandEnv(fmt.Sprintf("$HOME/.gnupg/%s-%s.asc", appName, gpgKeyID))
@@ -66,6 +67,7 @@ func GetGpgKeyReader(ctx context.Context, gpgKeyID string, gpgKeyPath string, ap
 
 // GetGpgKey returns a GPG key entity from the given reader,
 // prompting for the passphrase to decrypt the key.
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func GetGpgKey(gpgKeyReader io.Reader) (*openpgp.Entity, error) {
 	entityList, err := openpgp.ReadArmoredKeyRing(gpgKeyReader)
 	if err != nil {

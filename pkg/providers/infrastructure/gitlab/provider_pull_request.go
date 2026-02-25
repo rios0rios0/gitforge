@@ -22,14 +22,17 @@ func (p *Provider) CreatePullRequest(
 	sourceBranch := strings.TrimPrefix(input.SourceBranch, "refs/heads/")
 	targetBranch := strings.TrimPrefix(input.TargetBranch, "refs/heads/")
 
+	title := input.Title
+	description := input.Description
+	removeSourceBranch := true
 	mr, _, err := p.client.MergeRequests.CreateMergeRequest(
 		pid,
 		&gl.CreateMergeRequestOptions{
-			Title:              new(input.Title),
-			Description:        new(input.Description),
-			SourceBranch:       new(sourceBranch),
-			TargetBranch:       new(targetBranch),
-			RemoveSourceBranch: new(true),
+			Title:              &title,
+			Description:        &description,
+			SourceBranch:       &sourceBranch,
+			TargetBranch:       &targetBranch,
+			RemoveSourceBranch: &removeSourceBranch,
 		},
 		gl.WithContext(ctx),
 	)
@@ -59,8 +62,8 @@ func (p *Provider) PullRequestExists(
 	mrs, _, err := p.client.MergeRequests.ListProjectMergeRequests(
 		pid,
 		&gl.ListProjectMergeRequestsOptions{
-			SourceBranch: new(sourceBranch),
-			State:        new(state),
+			SourceBranch: &sourceBranch,
+			State:        &state,
 		},
 		gl.WithContext(ctx),
 	)

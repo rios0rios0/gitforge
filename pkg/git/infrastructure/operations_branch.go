@@ -10,6 +10,7 @@ import (
 )
 
 // CheckBranchExists checks if a given Git branch exists (local or remote).
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func CheckBranchExists(repo *git.Repository, branchName string) (bool, error) {
 	refs, err := repo.References()
 	if err != nil {
@@ -37,6 +38,7 @@ func CheckBranchExists(repo *git.Repository, branchName string) (bool, error) {
 }
 
 // CreateAndSwitchBranch creates a new branch and switches to it.
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func CreateAndSwitchBranch(
 	repo *git.Repository,
 	workTree *git.Worktree,
@@ -54,6 +56,7 @@ func CreateAndSwitchBranch(
 }
 
 // CheckoutBranch switches to the given branch.
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func CheckoutBranch(w *git.Worktree, branchName string) error {
 	log.Infof("Switching to branch '%s'", branchName)
 	err := w.Checkout(&git.CheckoutOptions{

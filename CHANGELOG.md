@@ -16,6 +16,20 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added "Exported for use by autobump/autoupdate" clarifying comments to all exported functions that have no callers within gitforge itself
+
+### Fixed
+
+- fixed GitLab provider compilation errors caused by invalid `new(value)` usage; replaced with `&variable` address-of expressions
+- fixed `config_test.go` directly testing the `FindConfigFile` helper function; removed helper tests to respect the rule that helpers are tested through their callers
+- added `LoadConfig` to `pkg/config/infrastructure/` as the parent caller for the orphaned `DownloadFile`/`ReadData` infrastructure helpers
+- added `ReadUserConfig` to `pkg/git/infrastructure/` as the parent caller for the orphaned `GetGlobalGitConfig`/`GetOptionFromConfig` git config helpers
+- filled in the empty `pkg/config/domain/entities/config.go` placeholder with `Config` struct, `NewConfig()`, and `Validate()` method
+- filled in the empty `pkg/config/domain/helpers/finder.go` placeholder with `FindConfigFile()` function
+- restored `pkg/config/domain/entities/provider_config.go` with `ResolveToken()` as a method on `ProviderConfig` (replacing the old free function)
+
 ### Changed
 
 - changed the Go module dependencies to their latest versions
@@ -28,6 +42,15 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - moved providers to `pkg/providers/infrastructure/`
 - moved registry to `pkg/registry/infrastructure/`
 - moved signing to `pkg/signing/infrastructure/`
+- moved changelog code from `pkg/changelog/domain/` into `pkg/changelog/domain/entities/`
+- refactored `ResolveToken` from free function to `ProviderConfig` method, added `Config` entity with `Validate()`
+- moved `FindConfigFile` to `pkg/config/domain/helpers/`
+- moved config infrastructure helpers (`DownloadFile`, `ReadData`) to `pkg/config/infrastructure/helpers/`
+- moved `AdapterFinder` interface from `pkg/git/infrastructure/` to `pkg/git/domain/entities/`
+- moved git config helpers (`GetGlobalGitConfig`, `GetOptionFromConfig`) to `pkg/git/infrastructure/helpers/gitconfig.go` (renamed from `config.go` for clarity)
+- moved `SortVersionsDescending` and `NormalizeVersion` to `pkg/global/domain/helpers/`
+- moved signing helpers (`SignSSHCommit`, `ReadSSHSigningKey`, GPG helpers) to `pkg/signing/infrastructure/helpers/`
+- extracted test builders (`AdapterFinderStubBuilder`, `ForgeProviderStubBuilder`, `RepositoryDiscovererStubBuilder`) to `test/builders/`
 - distributed `support/` utilities into their consuming domains
 - renamed shared kernel from `pkg/forge/` to `pkg/global/` and split entities into `pkg/global/domain/entities/` with one entity per file
 - extracted test doubles to `test/doubles/` using builder pattern with `testkit` library

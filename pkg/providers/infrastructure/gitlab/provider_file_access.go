@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	globalDomain "github.com/rios0rios0/gitforge/pkg/global/domain"
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/pkg/global/domain/helpers"
 	gl "gitlab.com/gitlab-org/api/client-go"
 )
 
@@ -22,7 +22,7 @@ func (p *Provider) GetFileContent(
 	branch := strings.TrimPrefix(repo.DefaultBranch, "refs/heads/")
 	raw, _, err := p.client.RepositoryFiles.GetRawFile(
 		repo.Organization+"/"+repo.Name, path,
-		&gl.GetRawFileOptions{Ref: new(branch)},
+		&gl.GetRawFileOptions{Ref: &branch},
 		gl.WithContext(ctx),
 	)
 	if err != nil {
@@ -46,7 +46,7 @@ func (p *Provider) ListFiles(
 	var allFiles []globalEntities.File
 	opts := &gl.ListTreeOptions{
 		ListOptions: gl.ListOptions{PerPage: perPage},
-		Ref:         new(branch),
+		Ref:         &branch,
 		Recursive:   &recursive,
 	}
 
@@ -112,7 +112,7 @@ func (p *Provider) GetTags(
 		opts.Page = resp.NextPage
 	}
 
-	globalDomain.SortVersionsDescending(allTags)
+	globalHelpers.SortVersionsDescending(allTags)
 	return allTags, nil
 }
 
@@ -137,9 +137,10 @@ func (p *Provider) CreateBranchWithChanges(
 	pid := repo.Organization + "/" + repo.Name
 	baseBranch := strings.TrimPrefix(input.BaseBranch, "refs/heads/")
 
+	branchName := input.BranchName
 	_, _, err := p.client.Branches.CreateBranch(pid, &gl.CreateBranchOptions{
-		Branch: new(input.BranchName),
-		Ref:    new(baseBranch),
+		Branch: &branchName,
+		Ref:    &baseBranch,
 	}, gl.WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create branch: %w", err)
@@ -163,11 +164,13 @@ func (p *Provider) CreateBranchWithChanges(
 		})
 	}
 
+	commitBranch := input.BranchName
+	commitMessage := input.CommitMessage
 	_, _, err = p.client.Commits.CreateCommit(
 		pid,
 		&gl.CreateCommitOptions{
-			Branch:        new(input.BranchName),
-			CommitMessage: new(input.CommitMessage),
+			Branch:        &commitBranch,
+			CommitMessage: &commitMessage,
 			Actions:       actions,
 		},
 		gl.WithContext(ctx),

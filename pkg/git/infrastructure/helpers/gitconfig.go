@@ -1,4 +1,4 @@
-package infrastructure
+package helpers
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 )
 
 // GetGlobalGitConfig reads the global git configuration file and returns a config.Config object.
+// Consumed internally by ReadUserConfig; also exported for direct use by autobump (github.com/rios0rios0/autobump).
 func GetGlobalGitConfig() (*config.Config, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -39,6 +40,7 @@ func GetGlobalGitConfig() (*config.Config, error) {
 }
 
 // GetOptionFromConfig gets a Git option from local and global Git config.
+// Consumed internally by ReadUserConfig; also exported for direct use by autobump (github.com/rios0rios0/autobump).
 func GetOptionFromConfig(cfg, globalCfg *config.Config, section string, option string) string {
 	opt := cfg.Raw.Section(section).Option(option)
 	if opt == "" {

@@ -1,4 +1,4 @@
-package infrastructure
+package helpers
 
 import (
 	"context"
@@ -60,6 +60,7 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 
 // ReadSSHSigningKey resolves the SSH signing key path from the git config value.
 // It expands ~ to the home directory and verifies the file exists.
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func ReadSSHSigningKey(signingKey string) (string, error) {
 	if signingKey == "" {
 		return "", errors.New("no SSH signing key configured (user.signingkey is empty)")

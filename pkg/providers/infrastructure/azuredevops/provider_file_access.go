@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"strings"
 
-	globalDomain "github.com/rios0rios0/gitforge/pkg/global/domain"
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/pkg/global/domain/helpers"
 )
 
 func (p *Provider) GetFileContent(
@@ -105,7 +105,7 @@ func (p *Provider) GetTags(
 		tags = append(tags, strings.TrimPrefix(ref.Name, "refs/tags/"))
 	}
 
-	globalDomain.SortVersionsDescending(tags)
+	globalHelpers.SortVersionsDescending(tags)
 	return tags, nil
 }
 

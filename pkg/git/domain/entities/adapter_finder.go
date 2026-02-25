@@ -1,4 +1,4 @@
-package infrastructure
+package entities
 
 import (
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"

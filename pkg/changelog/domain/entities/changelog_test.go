@@ -1,4 +1,4 @@
-package domain_test
+package entities_test
 
 import (
 	"strings"
@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	domain "github.com/rios0rios0/gitforge/pkg/changelog/domain"
+	domain "github.com/rios0rios0/gitforge/pkg/changelog/domain/entities"
 )
 
 func TestFindLatestVersion(t *testing.T) {

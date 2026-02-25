@@ -14,6 +14,7 @@ import (
 )
 
 // GetRemoteRepoURL returns the URL of the remote repository.
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func GetRemoteRepoURL(repo *git.Repository) (string, error) {
 	remote, err := repo.Remote("origin")
 	if err != nil {
@@ -47,6 +48,7 @@ func GetAmountCommits(repo *git.Repository) (int, error) {
 }
 
 // GetLatestTag finds the latest tag in the Git history.
+// Exported for use by autobump (github.com/rios0rios0/autobump).
 func GetLatestTag(repo *git.Repository) (*globalEntities.LatestTag, error) {
 	tags, err := repo.Tags()
 	if err != nil {

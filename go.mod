@@ -14,6 +14,7 @@ require (
 	gitlab.com/gitlab-org/api/client-go v1.41.0
 	golang.org/x/mod v0.33.0
 	golang.org/x/term v0.40.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -37,7 +38,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.2 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.50.0 // indirect
@@ -45,5 +46,4 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

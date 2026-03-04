@@ -57,6 +57,38 @@ type FileAccessProvider interface {
 	CreateBranchWithChanges(ctx context.Context, repo entities.Repository, input entities.BranchInput) error
 }
 
+// ReviewProvider extends ForgeProvider with pull request review operations.
+// This is used by tools that review pull requests (e.g. code-guru).
+type ReviewProvider interface {
+	ForgeProvider
+
+	// ListOpenPullRequests returns all open/active pull requests for a repository.
+	ListOpenPullRequests(
+		ctx context.Context, repo entities.Repository,
+	) ([]entities.PullRequestDetail, error)
+
+	// GetPullRequestDiff returns the full unified diff for a specific pull request.
+	GetPullRequestDiff(
+		ctx context.Context, repo entities.Repository, prID int,
+	) (string, error)
+
+	// GetPullRequestFiles returns the list of changed files in a pull request.
+	GetPullRequestFiles(
+		ctx context.Context, repo entities.Repository, prID int,
+	) ([]entities.PullRequestFile, error)
+
+	// PostPullRequestComment posts a general comment on a pull request.
+	PostPullRequestComment(
+		ctx context.Context, repo entities.Repository, prID int, body string,
+	) error
+
+	// PostPullRequestThreadComment posts an inline/thread comment on a specific file and line.
+	PostPullRequestThreadComment(
+		ctx context.Context, repo entities.Repository, prID int,
+		filePath string, line int, body string,
+	) error
+}
+
 // LocalGitAuthProvider extends ForgeProvider with local git authentication.
 // This is used by tools that perform local git operations (clone, push) via go-git.
 type LocalGitAuthProvider interface {

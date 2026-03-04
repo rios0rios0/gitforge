@@ -24,3 +24,22 @@ type PullRequest struct {
 	URL    string
 	Status string
 }
+
+// PullRequestDetail extends PullRequest with review-relevant metadata.
+type PullRequestDetail struct {
+	PullRequest
+
+	SourceBranch string
+	TargetBranch string
+	Author       string
+}
+
+// PullRequestFile represents a single file changed in a pull request.
+type PullRequestFile struct {
+	Path      string
+	OldPath   string
+	Status    string // "added", "modified", "deleted", "renamed"
+	Additions int
+	Deletions int
+	Patch     string // unified diff patch for this file
+}

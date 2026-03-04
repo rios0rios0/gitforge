@@ -87,6 +87,24 @@ func (r *ProviderRegistry) GetAdapterByServiceType(
 	return nil
 }
 
+// GetReviewProvider returns a configured ReviewProvider instance for the given name and token.
+// It returns an error if the provider does not implement ReviewProvider.
+func (r *ProviderRegistry) GetReviewProvider(
+	name, token string,
+) (domainRepos.ReviewProvider, error) {
+	provider, err := r.Get(name, token)
+	if err != nil {
+		return nil, err
+	}
+
+	reviewProvider, ok := provider.(domainRepos.ReviewProvider)
+	if !ok {
+		return nil, fmt.Errorf("provider %q does not implement ReviewProvider", name)
+	}
+
+	return reviewProvider, nil
+}
+
 // Names returns the list of registered provider factory names.
 func (r *ProviderRegistry) Names() []string {
 	names := make([]string, 0, len(r.factories))

@@ -21,8 +21,8 @@ type ProviderConfig struct {
 // ResolveToken expands ${ENV_VAR} references in the token string and,
 // if the result is a path to an existing file, reads the token from it.
 // Exported for use by autobump and autoupdate when resolving provider credentials.
-func (self *ProviderConfig) ResolveToken() string {
-	raw := self.Token
+func (p *ProviderConfig) ResolveToken() string {
+	raw := p.Token
 	if raw == "" {
 		return raw
 	}

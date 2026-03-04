@@ -84,13 +84,13 @@ func (r *ProviderRegistry) GetAdapterByServiceType(
 // It returns an error if the provider does not implement ReviewProvider.
 func (r *ProviderRegistry) GetReviewProvider(
 	name, token string,
-) (domainRepos.ReviewProvider, error) {
+) (globalEntities.ReviewProvider, error) {
 	provider, err := r.Get(name, token)
 	if err != nil {
 		return nil, err
 	}
 
-	reviewProvider, ok := provider.(domainRepos.ReviewProvider)
+	reviewProvider, ok := provider.(globalEntities.ReviewProvider)
 	if !ok {
 		return nil, fmt.Errorf("provider %q does not implement ReviewProvider", name)
 	}

@@ -21,8 +21,8 @@ func NewConfig(providers []ProviderConfig) *Config {
 }
 
 // Validate checks that all provider entries are complete and returns an error if any are invalid.
-func (self *Config) Validate() error {
-	for i, p := range self.Providers {
+func (c *Config) Validate() error {
+	for i, p := range c.Providers {
 		if p.Type == "" {
 			return fmt.Errorf(
 				"%w: providers[%d].type is required",

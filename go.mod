@@ -7,7 +7,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.4.0
 	github.com/go-git/go-git/v5 v5.17.0
 	github.com/google/go-github/v66 v66.0.0
-	github.com/rios0rios0/testkit v0.0.0-20260214183626-8263c467c4cd
+	github.com/rios0rios0/testkit v0.0.0-20260305013341-7c23bf17b0cc
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
@@ -38,7 +38,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.2 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.51.0 // indirect

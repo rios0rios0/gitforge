@@ -67,6 +67,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - refactored signing from free functions to `GPGSigner` and `SSHSigner` structs implementing `CommitSigner` interface
 - split each provider (`github.go`, `gitlab.go`, `azuredevops.go`) into `provider.go`, `provider_discovery.go`, `provider_pull_request.go`, `provider_file_access.go` (plus `provider_http.go` and `provider_url.go` for Azure DevOps)
 - removed global `adapterFinder` variable in favor of constructor injection via `GitOperations` struct
+- changed the Go module dependencies to their latest versions
 
 ### Added
 

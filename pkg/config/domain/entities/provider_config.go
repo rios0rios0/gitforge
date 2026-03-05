@@ -14,15 +14,17 @@ var envVarPattern = regexp.MustCompile(`\$\{([^}]+)}`)
 // ProviderConfig describes a single Git hosting provider instance.
 type ProviderConfig struct {
 	Type          string   `yaml:"type"`          // "github", "gitlab", "azuredevops"
-	Token         string   `yaml:"token"`         // inline, ${ENV_VAR}, or file path
+	Token         string   `yaml:"token"`        // inline, ${ENV_VAR}, or file path
 	Organizations []string `yaml:"organizations"` // org names or URLs to scan
 }
 
-// ResolveToken expands ${ENV_VAR} references in the token string and,
-// if the result is a path to an existing file, reads the token from it.
-// Exported for use by autobump and autoupdate when resolving provider credentials.
-func (p *ProviderConfig) ResolveToken() string {
-	raw := p.Token
+// ResolveToken resolves a raw token string by expanding ${ENV_VAR} references
+// with their corresponding environment variable values. If the fully expanded
+// result is a path to an existing file, the token is read from that file
+// (with leading/trailing whitespace trimmed). This standalone function is
+// useful when callers need to resolve a token string that is not tied to a
+// specific ProviderConfig instance.
+func ResolveToken(raw string) string {
 	if raw == "" {
 		return raw
 	}
@@ -47,4 +49,11 @@ func (p *ProviderConfig) ResolveToken() string {
 	}
 
 	return resolved
+}
+
+// ResolveToken expands ${ENV_VAR} references in the provider's token string
+// and, if the result is a path to an existing file, reads the token from it.
+// It delegates to the standalone ResolveToken function using p.Token as input.
+func (p *ProviderConfig) ResolveToken() string {
+	return ResolveToken(p.Token)
 }

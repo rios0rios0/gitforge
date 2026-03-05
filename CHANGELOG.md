@@ -99,6 +99,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Fixed
 
+- fixed `CommitChanges` to set the `Author` field in `CommitOptions` using the already-passed `name`/`email` parameters, preventing "author field is required" errors in CI environments without global git config
+- removed broken `.gitleaks.toml` allowlist that caused gitleaks to reject the config on newer versions
 - fixed `gochecknoglobals` findings by converting global variables to functions in URL parser
 - fixed `testifylint` findings by using `require.Error` instead of `assert.Error` for fatal error checks in URL parser tests
 - fixed `tparallel` findings by adding `t.Parallel()` to all subtests in URL parser tests

@@ -1,8 +1,0 @@
-[allowlist]
-# False positives from historical commits (pre-refactor file paths).
-# - Test files use fake tokens ("my-token") in URL assertions
-# - Provider source files construct clone URLs with embedded tokens (standard git auth pattern)
-commits = [
-  "273981a9ebf9d8dbbd2b1c3fdd441a21644bc0ae",
-  "33e88aa6129e5439f4d42627b84529331910b368",
-]

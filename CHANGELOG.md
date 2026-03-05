@@ -24,6 +24,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - added `StageAll` helper to stage all changes in the worktree (go-git equivalent of `git add -A`)
 - added `CloneRepo` to `GitOperations` for cloning remote repositories with multi-auth retry and adapter-based URL preparation
 
+### Changed
+
+- replaced raw struct literals in tests with testkit builders for consistent test data construction
+
 ### Fixed
 
 - fixed GitLab provider compilation errors caused by invalid `new(value)` usage; replaced with `&variable` address-of expressions

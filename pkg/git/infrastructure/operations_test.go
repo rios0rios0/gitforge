@@ -589,6 +589,137 @@ func TestOpenRepoSuccess(t *testing.T) {
 	})
 }
 
+func TestWorktreeIsClean(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return true when worktree has no changes", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		// when
+		clean, err := gitops.WorktreeIsClean(wt)
+
+		// then
+		require.NoError(t, err)
+		assert.True(t, clean)
+	})
+
+	t.Run("should return false when worktree has untracked file", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		err = os.WriteFile(filepath.Join(repoPath, "untracked.txt"), []byte("new"), 0o600)
+		require.NoError(t, err)
+
+		// when
+		clean, err := gitops.WorktreeIsClean(wt)
+
+		// then
+		require.NoError(t, err)
+		assert.False(t, clean)
+	})
+
+	t.Run("should return false when worktree has modified file", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		err = os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("modified content"), 0o600)
+		require.NoError(t, err)
+
+		// when
+		clean, err := gitops.WorktreeIsClean(wt)
+
+		// then
+		require.NoError(t, err)
+		assert.False(t, clean)
+	})
+}
+
+func TestStageAll(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should stage new files", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		err = os.WriteFile(filepath.Join(repoPath, "new-file.txt"), []byte("content"), 0o600)
+		require.NoError(t, err)
+
+		// when
+		err = gitops.StageAll(wt)
+
+		// then
+		require.NoError(t, err)
+		status, err := wt.Status()
+		require.NoError(t, err)
+		assert.Equal(t, git.Added, status.File("new-file.txt").Staging)
+	})
+
+	t.Run("should stage modified files", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		err = os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("updated"), 0o600)
+		require.NoError(t, err)
+
+		// when
+		err = gitops.StageAll(wt)
+
+		// then
+		require.NoError(t, err)
+		status, err := wt.Status()
+		require.NoError(t, err)
+		assert.Equal(t, git.Modified, status.File("README.md").Staging)
+	})
+
+	t.Run("should stage deleted files", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repoPath := t.TempDir()
+		repo := createFilesystemRepoWithCommit(t, repoPath)
+		wt, err := repo.Worktree()
+		require.NoError(t, err)
+
+		err = os.Remove(filepath.Join(repoPath, "README.md"))
+		require.NoError(t, err)
+
+		// when
+		err = gitops.StageAll(wt)
+
+		// then
+		require.NoError(t, err)
+		status, err := wt.Status()
+		require.NoError(t, err)
+		assert.Equal(t, git.Deleted, status.File("README.md").Staging)
+	})
+}
+
 // createInMemoryRepoWithCommit creates an in-memory git repo with one commit.
 func createInMemoryRepoWithCommit(t *testing.T) *git.Repository {
 	t.Helper()

@@ -33,79 +33,159 @@ make sast    # CodeQL, Semgrep, Trivy, Hadolint, Gitleaks
 
 ## Architecture
 
-The project follows **Clean Architecture** with dependencies always pointing inward toward the domain layer. As a library, it exposes packages that consumers import.
+The project follows **Clean Architecture** organized as DDD-style bounded contexts under `pkg/`. Each bounded context owns its own `domain/` and `infrastructure/` sub-packages. Dependencies always point inward toward the domain layer.
 
 ### Repository Structure
 
 ```
 gitforge/
-├── domain/
-│   ├── entities/
-│   │   ├── repository.go         # Repository, ServiceType, BranchStatus, LatestTag,
-│   │   │                         #   RepositoryDiscoverer interface
-│   │   ├── pull_request.go       # PullRequest, PullRequestInput, BranchInput
-│   │   ├── file.go               # File, FileChange
-│   │   ├── config.go             # ProviderConfig, ResolveToken, FindConfigFile,
-│   │   │                         #   ValidateProviders
-│   │   ├── changelog.go          # Full changelog toolkit: ProcessChangelog,
-│   │   │                         #   InsertChangelogEntry, FindLatestVersion,
-│   │   │                         #   DeduplicateEntries, UpdateSection, etc.
-│   │   ├── changelog_test.go     # BDD tests for changelog processing
-│   │   ├── config_test.go        # BDD tests for config utilities
-│   │   └── controller.go         # Controller interface, ControllerBind (Cobra bridge)
-│   └── repositories/
-│       └── provider.go           # ForgeProvider, FileAccessProvider,
-│                                 #   LocalGitAuthProvider interfaces
-├── infrastructure/
-│   ├── providers/
-│   │   ├── github/
-│   │   │   └── github.go         # GitHub: discovery, file ops, PR, local auth
-│   │   ├── gitlab/
-│   │   │   └── gitlab.go         # GitLab: discovery, file ops, MR, local auth
-│   │   └── azuredevops/
-│   │       └── azuredevops.go    # Azure DevOps: discovery, file ops, PR, local auth
-│   ├── git/
-│   │   ├── operations.go         # Local git: open, branch, commit (GPG), push
-│   │   │                         #   (SSH/HTTPS), tag, remote detection (go-git)
-│   │   └── config.go             # GetGlobalGitConfig, GetOptionFromConfig
-│   ├── signing/
-│   │   ├── gpg.go                # GPG key export, loading, passphrase decryption
-│   │   └── ssh.go                # SSH signing placeholder (future)
+├── pkg/
+│   ├── changelog/
+│   │   └── domain/entities/
+│   │       ├── changelog.go           # Changelog struct: NewChangelog, Lines, IsUnreleasedEmpty, FindLatestVersion
+│   │       ├── changelog_dedup.go     # DeduplicateEntries: token-overlap semantic deduplication
+│   │       ├── changelog_insert.go    # InsertChangelogEntry: inserts bullets under Unreleased/Changed
+│   │       ├── changelog_processor.go # Changelog.Process, Changelog.ProcessNew
+│   │       ├── changelog_section.go   # UpdateSection, MakeNewSections, ParseUnreleasedIntoSections, FixSectionHeadings
+│   │       └── changelog_test.go      # BDD tests for changelog processing
 │   ├── config/
-│   │   └── loader.go             # ReadData (file path or URL)
-│   └── registry/
-│       └── registry.go           # ProviderRegistry: factory + adapter patterns,
-│                                 #   DiscovererFactory support
-├── support/
-│   ├── utils.go                  # ReadLines, WriteLines, DownloadFile, StripUsernameFromURL
-│   ├── utils_test.go             # BDD tests for file I/O and URL utils
-│   ├── version.go                # SortVersionsDescending, NormalizeVersion
-│   └── version_test.go           # BDD tests for version sorting
+│   │   ├── domain/
+│   │   │   ├── entities/
+│   │   │   │   ├── config.go          # Config struct: NewConfig, Validate, ErrConfigKeyMissing
+│   │   │   │   ├── config_test.go     # BDD tests for Config.Validate and ProviderConfig.ResolveToken
+│   │   │   │   └── provider_config.go # ProviderConfig struct: ResolveToken (env var / file path expansion)
+│   │   │   └── helpers/
+│   │   │       └── finder.go          # FindConfigFile: searches standard locations for app config files
+│   │   └── infrastructure/
+│   │       ├── config_loader.go       # LoadConfig: reads and validates YAML config from file or URL
+│   │       └── helpers/
+│   │           ├── download.go        # HTTP download helper
+│   │           └── loader.go          # ReadData: reads content from file path or HTTP/HTTPS URL
+│   ├── git/
+│   │   ├── domain/entities/
+│   │   │   └── adapter_finder.go      # AdapterFinder interface: GetAdapterByServiceType, GetAdapterByURL
+│   │   └── infrastructure/
+│   │       ├── operations.go          # GitOperations struct: NewGitOperations, OpenRepo; error sentinels
+│   │       ├── operations_auth.go     # Authentication method resolution
+│   │       ├── operations_branch.go   # Branch creation
+│   │       ├── operations_clone.go    # Repository cloning
+│   │       ├── operations_commit.go   # Commit creation (GPG/SSH signing)
+│   │       ├── operations_push.go     # Push (SSH/HTTPS)
+│   │       ├── operations_repo.go     # Repository-level helpers
+│   │       ├── operations_test.go     # BDD tests for git operations
+│   │       ├── operations_worktree.go # Worktree management
+│   │       ├── url_parser.go          # ParseRemoteURL: detects ServiceType from remote URL
+│   │       ├── url_parser_test.go     # BDD tests for URL parsing
+│   │       ├── user_config.go         # Git user config lookup
+│   │       └── helpers/
+│   │           ├── gitconfig.go       # GetGlobalGitConfig, GetOptionFromConfig
+│   │           └── ssh.go             # SSH key helpers
+│   ├── global/
+│   │   └── domain/
+│   │       ├── entities/
+│   │       │   ├── branch_input.go          # BranchInput struct
+│   │       │   ├── branch_status.go         # BranchStatus enum: BranchCreated, BranchExistsWithPR, BranchExistsNoPR
+│   │       │   ├── commit_signer.go         # CommitSigner interface: Sign(ctx, content) (string, error)
+│   │       │   ├── controller.go            # Controller interface: GetBind(), Execute() error
+│   │       │   ├── controller_bind.go       # ControllerBind struct (Cobra bridge)
+│   │       │   ├── file.go                  # File struct: Path, ObjectID, IsDir
+│   │       │   ├── file_access_provider.go  # FileAccessProvider interface (extends ForgeProvider)
+│   │       │   ├── file_change.go           # FileChange struct: Path, Content, ChangeType
+│   │       │   ├── forge_provider.go        # ForgeProvider interface (base)
+│   │       │   ├── latest_tag.go            # LatestTag struct: Tag (*semver.Version), Date
+│   │       │   ├── local_git_auth_provider.go # LocalGitAuthProvider interface (extends ForgeProvider)
+│   │       │   ├── pull_request.go          # PullRequest struct: ID, Title, URL, Status
+│   │       │   ├── pull_request_detail.go   # PullRequestDetail struct (embeds PullRequest + SourceBranch, TargetBranch, Author)
+│   │       │   ├── pull_request_file.go     # PullRequestFile struct: Path, OldPath, Status, Additions, Deletions, Patch
+│   │       │   ├── pull_request_input.go    # PullRequestInput struct
+│   │       │   ├── repository.go            # Repository struct
+│   │       │   ├── repository_discoverer.go # RepositoryDiscoverer interface: Name(), DiscoverRepositories()
+│   │       │   ├── review_provider.go       # ReviewProvider interface (extends ForgeProvider)
+│   │       │   └── service_type.go          # ServiceType enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT
+│   │       └── helpers/
+│   │           └── versions.go              # SortVersionsDescending, NormalizeVersion
+│   ├── providers/
+│   │   └── infrastructure/
+│   │       ├── github/
+│   │       │   ├── provider.go              # Provider struct: NewProvider, Name, MatchesURL, AuthToken, CloneURL, GetServiceType, ...
+│   │       │   ├── provider_discovery.go    # DiscoverRepositories
+│   │       │   ├── provider_file_access.go  # GetFileContent, ListFiles, GetTags, HasFile, CreateBranchWithChanges
+│   │       │   ├── provider_pull_request.go # CreatePullRequest, PullRequestExists
+│   │       │   ├── provider_review.go       # ListOpenPullRequests, GetPullRequestDiff, GetPullRequestFiles, PostPullRequestComment, PostPullRequestThreadComment
+│   │       │   ├── github_internal_test.go  # Internal BDD tests (httptest server)
+│   │       │   └── github_test.go           # External BDD tests
+│   │       ├── gitlab/
+│   │       │   ├── provider.go              # Provider struct for GitLab
+│   │       │   ├── provider_discovery.go    # DiscoverRepositories
+│   │       │   ├── provider_file_access.go  # File access operations
+│   │       │   ├── provider_pull_request.go # MR creation / existence check
+│   │       │   ├── gitlab_internal_test.go  # Internal BDD tests (httptest server)
+│   │       │   └── gitlab_test.go           # External BDD tests
+│   │       └── azuredevops/
+│   │           ├── provider.go              # Provider struct for Azure DevOps
+│   │           ├── provider_discovery.go    # DiscoverRepositories
+│   │           ├── provider_file_access.go  # File access operations
+│   │           ├── provider_http.go         # HTTP transport helpers
+│   │           ├── provider_pull_request.go # PR creation / existence check
+│   │           ├── provider_review.go       # PR review operations
+│   │           ├── provider_url.go          # URL construction helpers
+│   │           ├── azuredevops_internal_test.go # Internal BDD tests (redirectTransport)
+│   │           └── azuredevops_test.go      # External BDD tests
+│   ├── registry/
+│   │   └── infrastructure/
+│   │       ├── discoverer_factory.go  # DiscovererFactory type (func(token) RepositoryDiscoverer)
+│   │       ├── provider_factory.go    # ProviderFactory type (func(token) ForgeProvider)
+│   │       ├── provider_registry.go   # ProviderRegistry: RegisterFactory/Adapter/Discoverer, Get, GetDiscoverer, GetAdapterByURL, GetAdapterByServiceType, GetReviewProvider, Names
+│   │       └── registry_test.go       # BDD tests for registry
+│   └── signing/
+│       └── infrastructure/
+│           ├── gpg_signer.go   # GPGSigner struct: NewGPGSigner, Key, Sign
+│           ├── ssh_signer.go   # SSHSigner struct: NewSSHSigner, Sign
+│           └── helpers/
+│               ├── gpg.go      # GPG key export, loading, passphrase decryption
+│               └── ssh.go      # SSH signing via ssh-keygen
+├── test/
+│   ├── doubles/
+│   │   ├── adapter_finder_stub.go          # AdapterFinderStub (mock AdapterFinder)
+│   │   ├── auth_stub.go                    # Authentication mock
+│   │   ├── commit_signer_stub.go           # CommitSignerStub (mock CommitSigner)
+│   │   ├── forge_provider_stub.go          # ForgeProviderStub (mock ForgeProvider + LocalGitAuthProvider)
+│   │   └── repository_discoverer_stub.go   # RepositoryDiscovererStub (mock RepositoryDiscoverer)
+│   └── builders/
+│       ├── adapter_finder_stub_builder.go          # Builder for AdapterFinderStub
+│       ├── forge_provider_stub_builder.go          # Builder for ForgeProviderStub
+│       └── repository_discoverer_stub_builder.go   # Builder for RepositoryDiscovererStub
 ├── Makefile                      # Imports pipeline scripts (lint, test, sast)
 ├── go.mod                        # Module: github.com/rios0rios0/gitforge (Go 1.26)
 └── .github/
-    └── workflows/default.yaml    # CI/CD pipeline
+    └── workflows/default.yaml    # CI/CD pipeline (delegates to rios0rios0/pipelines go-library workflow)
 ```
 
 ### Layer Responsibilities
 
-| Layer                          | Directory                   | Responsibility                                                                                                                             |
-|--------------------------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| **Domain / Entities**          | `domain/entities/`          | Core business objects (`Repository`, `PullRequest`, `File`, etc.), changelog processing, config utilities. No infrastructure dependencies. |
-| **Domain / Repositories**      | `domain/repositories/`      | Provider interfaces (`ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`). Contracts only — no implementations.                  |
-| **Infrastructure / Providers** | `infrastructure/providers/` | GitHub, GitLab, Azure DevOps implementations satisfying all three provider interfaces.                                                     |
-| **Infrastructure / Git**       | `infrastructure/git/`       | Local git operations via go-git: branch, commit, push, tag, remote detection.                                                              |
-| **Infrastructure / Signing**   | `infrastructure/signing/`   | GPG key management and commit signing. SSH signing placeholder.                                                                            |
-| **Infrastructure / Config**    | `infrastructure/config/`    | Configuration data reading (file or URL).                                                                                                  |
-| **Infrastructure / Registry**  | `infrastructure/registry/`  | Factory-based provider and discoverer registries.                                                                                          |
-| **Support**                    | `support/`                  | Shared utilities: file I/O, HTTP downloads, URL manipulation, semantic version sorting.                                                    |
+| Layer                              | Directory                                    | Responsibility                                                                                                                        |
+|------------------------------------|----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| **Changelog / Domain**             | `pkg/changelog/domain/entities/`             | `Changelog` struct with processing, insertion, deduplication, and section management. No infrastructure dependencies.                |
+| **Config / Domain**                | `pkg/config/domain/entities/`                | `Config` and `ProviderConfig` structs; `FindConfigFile` helper. No infrastructure dependencies.                                       |
+| **Config / Infrastructure**        | `pkg/config/infrastructure/`                 | `LoadConfig`: reads YAML from file or URL and validates it.                                                                           |
+| **Git / Domain**                   | `pkg/git/domain/entities/`                   | `AdapterFinder` interface. No infrastructure dependencies.                                                                            |
+| **Git / Infrastructure**           | `pkg/git/infrastructure/`                    | `GitOperations` struct (go-git): branch, commit, push, tag, remote detection, URL parsing. Injected with `AdapterFinder`.             |
+| **Global / Domain**                | `pkg/global/domain/entities/`                | All shared interfaces (`ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, `CommitSigner`, etc.) and value objects. |
+| **Global / Helpers**               | `pkg/global/domain/helpers/`                 | `SortVersionsDescending`, `NormalizeVersion`.                                                                                         |
+| **Providers / Infrastructure**     | `pkg/providers/infrastructure/{github,gitlab,azuredevops}/` | Concrete provider implementations satisfying `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`.  |
+| **Registry / Infrastructure**      | `pkg/registry/infrastructure/`               | `ProviderRegistry`: factory + adapter patterns, `DiscovererFactory` support, `GetReviewProvider`.                                     |
+| **Signing / Infrastructure**       | `pkg/signing/infrastructure/`                | `GPGSigner` and `SSHSigner` — both implement `CommitSigner`.                                                                          |
+| **Test Doubles**                   | `test/doubles/` and `test/builders/`         | Stubs and builder helpers for isolated unit testing without real Git hosting connections.                                             |
 
 ### Key Design Patterns
 
-- **Interface composition**: `ForgeProvider` (base) -> `FileAccessProvider` (adds API file ops) -> `LocalGitAuthProvider` (adds go-git auth). Each concrete provider implements all three.
-- **Adapter pattern**: Consumers type-assert to the interface level they need (`ForgeProvider`, `FileAccessProvider`, or `LocalGitAuthProvider`).
+- **DDD bounded contexts**: Each sub-domain (`changelog`, `config`, `git`, `global`, `providers`, `registry`, `signing`) owns its own `domain/` and `infrastructure/` sub-packages under `pkg/`.
+- **Interface composition**: `ForgeProvider` (base) -> `FileAccessProvider` (adds API file ops) / `ReviewProvider` (adds PR review ops) / `LocalGitAuthProvider` (adds go-git auth). Each concrete provider implements all four.
+- **Adapter pattern**: Consumers type-assert to the interface level they need (`ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, or `LocalGitAuthProvider`).
 - **Factory pattern**: `ProviderRegistry` creates providers by name + token via registered factory functions.
-- **Registry pattern**: `ProviderRegistry` supports both factory-based creation and direct adapter lookup by URL or service type.
+- **Registry pattern**: `ProviderRegistry` supports factory-based creation, direct adapter lookup by URL or service type, and `GetReviewProvider`.
+- **Dependency injection**: `GitOperations` receives an `AdapterFinder` (implemented by `ProviderRegistry`) to resolve auth methods without circular imports.
+- **Test doubles**: `test/doubles/` and `test/builders/` provide stubs and builder helpers consumed by all package-level tests.
 
 ### Provider Interface Hierarchy
 
@@ -118,6 +198,10 @@ ForgeProvider (base)
 │   ├── GetFileContent(), ListFiles(), GetTags(), HasFile()
 │   └── CreateBranchWithChanges()
 │
+├── ReviewProvider (extends ForgeProvider)
+│   ├── ListOpenPullRequests(), GetPullRequestDiff(), GetPullRequestFiles()
+│   └── PostPullRequestComment(), PostPullRequestThreadComment()
+│
 └── LocalGitAuthProvider (extends ForgeProvider)
     ├── GetServiceType(), PrepareCloneURL(), ConfigureTransport()
     └── GetAuthMethods()
@@ -125,46 +209,78 @@ ForgeProvider (base)
 
 ### Key Domain Types
 
-| Type                  | File              | Purpose                                                                                                     |
-|-----------------------|-------------------|-------------------------------------------------------------------------------------------------------------|
-| `Repository`          | `repository.go`   | Git repository with fields: ID, Name, Organization, Project, DefaultBranch, RemoteURL, SSHURL, ProviderName |
-| `ServiceType`         | `repository.go`   | Enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT                                           |
-| `PullRequest`         | `pull_request.go` | PR entity: ID, Title, URL, Status                                                                           |
-| `PullRequestInput`    | `pull_request.go` | PR creation input: SourceBranch, TargetBranch, Title, Description, AutoComplete                             |
-| `BranchInput`         | `pull_request.go` | Branch creation input: BranchName, BaseBranch, Changes, CommitMessage                                       |
-| `File` / `FileChange` | `file.go`         | File entry and file modification structs                                                                    |
-| `ProviderConfig`      | `config.go`       | Provider config: Type, Token, Organizations                                                                 |
-| `LatestTag`           | `repository.go`   | Latest git tag: Tag (*semver.Version), Date                                                                 |
-| `BranchStatus`        | `repository.go`   | Enum: BranchCreated, BranchExistsWithPR, BranchExistsNoPR                                                   |
-| `Controller`          | `controller.go`   | CLI controller interface (Cobra bridge): GetBind(), Execute() error                                         |
+| Type                    | Package path                              | Purpose                                                                                                          |
+|-------------------------|-------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| `Repository`            | `pkg/global/domain/entities`              | Git repository: ID, Name, Organization, Project, DefaultBranch, RemoteURL, SSHURL, ProviderName                 |
+| `ServiceType`           | `pkg/global/domain/entities`              | Enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT                                               |
+| `PullRequest`           | `pkg/global/domain/entities`              | PR entity: ID, Title, URL, Status                                                                                |
+| `PullRequestDetail`     | `pkg/global/domain/entities`              | Extends `PullRequest` with SourceBranch, TargetBranch, Author (used by `ReviewProvider`)                        |
+| `PullRequestFile`       | `pkg/global/domain/entities`              | Changed file in a PR: Path, OldPath, Status, Additions, Deletions, Patch                                        |
+| `PullRequestInput`      | `pkg/global/domain/entities`              | PR creation input: SourceBranch, TargetBranch, Title, Description, AutoComplete                                  |
+| `BranchInput`           | `pkg/global/domain/entities`              | Branch creation input: BranchName, BaseBranch, Changes, CommitMessage                                           |
+| `File` / `FileChange`   | `pkg/global/domain/entities`              | File entry and file modification structs                                                                         |
+| `LatestTag`             | `pkg/global/domain/entities`              | Latest git tag: Tag (*semver.Version), Date                                                                      |
+| `BranchStatus`          | `pkg/global/domain/entities`              | Enum: BranchCreated, BranchExistsWithPR, BranchExistsNoPR                                                       |
+| `Controller`            | `pkg/global/domain/entities`              | CLI controller interface (Cobra bridge): GetBind(), Execute() error                                              |
+| `CommitSigner`          | `pkg/global/domain/entities`              | Interface: Sign(ctx, commitContent) (string, error) — implemented by GPGSigner and SSHSigner                    |
+| `AdapterFinder`         | `pkg/git/domain/entities`                 | Interface: GetAdapterByServiceType(), GetAdapterByURL() — implemented by ProviderRegistry                        |
+| `Config`                | `pkg/config/domain/entities`              | Full app config: Providers []ProviderConfig; methods: NewConfig(), Validate()                                    |
+| `ProviderConfig`        | `pkg/config/domain/entities`              | Provider config: Type, Token, Organizations; method: ResolveToken()                                              |
+| `Changelog`             | `pkg/changelog/domain/entities`           | Changelog document: NewChangelog(lines), Lines(), IsUnreleasedEmpty(), FindLatestVersion(), Process(), ProcessNew() |
+| `GPGSigner`             | `pkg/signing/infrastructure`              | GPG commit signer: NewGPGSigner(key), Key(), Sign()                                                              |
+| `SSHSigner`             | `pkg/signing/infrastructure`              | SSH commit signer: NewSSHSigner(keyPath), Sign()                                                                 |
+| `GitOperations`         | `pkg/git/infrastructure`                  | Local git operations: NewGitOperations(finder), plus methods for branch/commit/push/clone/tag                    |
+| `ProviderRegistry`      | `pkg/registry/infrastructure`             | Provider registry: RegisterFactory/Adapter/Discoverer, Get, GetDiscoverer, GetAdapterByURL, GetAdapterByServiceType, GetReviewProvider, Names |
 
-### Key Domain Functions
+### Key Domain Functions and Methods
 
-- `ProcessChangelog(lines) (*semver.Version, []string, error)` -- processes changelog, calculates next version based on changes (major/minor/patch)
-- `InsertChangelogEntry(content, entries) string` -- inserts bullet entries under Unreleased/Changed
-- `FindLatestVersion(lines) (*semver.Version, error)` -- finds highest version in changelog
-- `DeduplicateEntries(entries) []string` -- removes exact duplicates and merges semantically overlapping entries using token overlap
-- `UpdateSection(unreleased, version) ([]string, *semver.Version, error)` -- updates unreleased section, deduplicates, sorts, calculates version bump
-- `ResolveToken(raw) string` -- expands `${ENV_VAR}` references and reads from file if path exists
-- `FindConfigFile(appName) (string, error)` -- searches standard locations for `.{appName}.yaml` config files
-- `ValidateProviders(providers) error` -- validates provider config entries (type, token, organizations)
+**Changelog** (`pkg/changelog/domain/entities`):
+- `NewChangelog(lines []string) *Changelog` -- constructs a changelog from lines
+- `(c *Changelog) Process() (*semver.Version, []string, error)` -- calculates next version and new content from existing changelog
+- `(c *Changelog) ProcessNew() (*semver.Version, []string, error)` -- handles changelogs with only an [Unreleased] section (releases as 1.0.0)
+- `(c *Changelog) FindLatestVersion() (*semver.Version, error)` -- finds the highest released version
+- `(c *Changelog) IsUnreleasedEmpty() (bool, error)` -- checks if the [Unreleased] section has any entries
+- `InsertChangelogEntry(content string, entries []string) string` -- inserts bullet entries under Unreleased/Changed
+- `DeduplicateEntries(entries []string) []string` -- removes exact duplicates and semantically overlapping entries
+- `UpdateSection(unreleased []string, version semver.Version) ([]string, *semver.Version, error)` -- deduplicates, sorts, and calculates version bump
+
+**Config** (`pkg/config/domain/entities` and `pkg/config/domain/helpers`):
+- `NewConfig(providers []ProviderConfig) *Config` -- constructs a Config
+- `(c *Config) Validate() error` -- validates all provider entries (type, token, organizations)
+- `(p *ProviderConfig) ResolveToken() string` -- expands `${ENV_VAR}` references and reads from file if path exists
+- `FindConfigFile(appName string) (string, error)` -- searches standard locations for `.{appName}.yaml` config files
+
+**Config infrastructure** (`pkg/config/infrastructure`):
+- `LoadConfig(path string) (*Config, error)` -- reads, parses, and validates a YAML config from file or URL
+
+**Git** (`pkg/git/infrastructure`):
+- `NewGitOperations(finder AdapterFinder) *GitOperations` -- creates a GitOperations instance
+- `OpenRepo(projectPath string) (*git.Repository, error)` -- opens a local git repository
+
+**Signing** (`pkg/signing/infrastructure`):
+- `NewGPGSigner(key *openpgp.Entity) *GPGSigner` -- creates a GPG commit signer
+- `NewSSHSigner(keyPath string) *SSHSigner` -- creates an SSH commit signer
+
+**Version helpers** (`pkg/global/domain/helpers`):
+- `SortVersionsDescending(versions []string)` -- sorts version strings descending by semver
+- `NormalizeVersion(version string) string` -- ensures a "v" prefix for semver compatibility
 
 ## Consumer Projects
 
 This library is imported by two projects:
 
-| Project        | What it uses                                                                                                                   |
-|----------------|--------------------------------------------------------------------------------------------------------------------------------|
-| **autobump**   | Entities, changelog processing, git operations, GPG signing, provider adapters (via `LocalGitAuthProvider`), support utilities |
-| **autoupdate** | Entities, provider implementations (via `FileAccessProvider`), config utilities, changelog insertion, registry                 |
+| Project        | What it uses                                                                                                                          |
+|----------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| **autobump**   | Changelog processing, git operations, GPG/SSH signing, provider adapters (via `LocalGitAuthProvider`), config loading                 |
+| **autoupdate** | Provider implementations (via `FileAccessProvider`), config loading, changelog insertion, registry, `ReviewProvider` (via autoreview) |
 
 ### Adding New Shared Functionality
 
 When adding features to gitforge:
 
 1. Consider whether the feature is truly shared (needed by both consumers) or project-specific.
-2. Place domain concepts in `domain/entities/` or `domain/repositories/`.
-3. Place implementations in the appropriate `infrastructure/` sub-package.
+2. Place domain concepts in the appropriate `pkg/<context>/domain/entities/` package.
+3. Place implementations in the corresponding `pkg/<context>/infrastructure/` package.
 4. Ensure backward compatibility — exported type changes break consumers.
 5. After changes, verify both consumer projects still compile: run `go build ./...` in each.
 
@@ -176,15 +292,44 @@ When adding features to gitforge:
 - Test descriptions use `"should ... when ..."` format via `t.Run()` subtests.
 - Unit tests use `t.Parallel()` at both parent and subtest level.
 - Tests that use `t.Setenv` or `t.Chdir` must NOT call `t.Parallel()` on that subtest (Go restriction).
+- Tests that mutate global state (e.g., `SetAdapterFinder`) must NOT call `t.Parallel()`.
+- All tests use `testify` (`assert`/`require`) — never bare `t.Error`/`t.Fatal`.
+
+### Test Infrastructure
+
+`test/doubles/` contains stub implementations of all key interfaces:
+
+| Stub                        | Implements                              |
+|-----------------------------|-----------------------------------------|
+| `ForgeProviderStub`         | `ForgeProvider`, `LocalGitAuthProvider` |
+| `RepositoryDiscovererStub`  | `RepositoryDiscoverer`                  |
+| `AdapterFinderStub`         | `AdapterFinder`                         |
+| `CommitSignerStub`          | `CommitSigner`                          |
+| `AuthStub`                  | go-git `transport.AuthMethod`           |
+
+`test/builders/` provides builder-pattern helpers for constructing stubs in tests.
 
 ### Test Files
 
-| File                                | Tests                                                                                   |
-|-------------------------------------|-----------------------------------------------------------------------------------------|
-| `domain/entities/changelog_test.go` | FindLatestVersion, IsChangelogUnreleasedEmpty, DeduplicateEntries, InsertChangelogEntry |
-| `domain/entities/config_test.go`    | ResolveToken (env var, file, inline), FindConfigFile, ValidateProviders                 |
-| `support/utils_test.go`             | ReadLines, WriteLines, StripUsernameFromURL                                             |
-| `support/version_test.go`           | SortVersionsDescending, NormalizeVersion                                                |
+| File                                                                | Tests                                                                              |
+|---------------------------------------------------------------------|------------------------------------------------------------------------------------|
+| `pkg/changelog/domain/entities/changelog_test.go`                  | FindLatestVersion, IsUnreleasedEmpty, DeduplicateEntries, InsertChangelogEntry     |
+| `pkg/config/domain/entities/config_test.go`                        | Config.Validate, ProviderConfig.ResolveToken (env var, file, inline)               |
+| `pkg/git/infrastructure/operations_test.go`                        | NewGitOperations, branch/commit/push/clone/tag operations                          |
+| `pkg/git/infrastructure/url_parser_test.go`                        | ParseRemoteURL (GitHub, GitLab, Azure DevOps, SSH, HTTPS)                          |
+| `pkg/providers/infrastructure/github/github_test.go`               | NewProvider, Name, MatchesURL, GetServiceType                                      |
+| `pkg/providers/infrastructure/github/github_internal_test.go`      | DiscoverRepositories, CreatePullRequest, file access (httptest server)             |
+| `pkg/providers/infrastructure/gitlab/gitlab_test.go`               | NewProvider, Name, MatchesURL, GetServiceType                                      |
+| `pkg/providers/infrastructure/gitlab/gitlab_internal_test.go`      | DiscoverRepositories, CreatePullRequest, file access (httptest server)             |
+| `pkg/providers/infrastructure/azuredevops/azuredevops_test.go`     | NewProvider, Name, MatchesURL, GetServiceType                                      |
+| `pkg/providers/infrastructure/azuredevops/azuredevops_internal_test.go` | DiscoverRepositories, file access (redirectTransport to httptest server)      |
+| `pkg/registry/infrastructure/registry_test.go`                     | NewProviderRegistry, Get, GetDiscoverer, GetAdapterByURL, GetReviewProvider        |
+
+### Provider Test Patterns
+
+- **GitHub / GitLab**: Override the SDK `BaseURL` to point to an `httptest.Server`.
+- **Azure DevOps**: Use a `redirectTransport` that rewrites hardcoded `dev.azure.com` URLs to an `httptest.Server`.
+- All provider tests use the **internal** package (`package github`, not `github_test`) so they can access unexported fields.
 
 ### Running Tests
 

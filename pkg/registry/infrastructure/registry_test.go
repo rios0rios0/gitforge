@@ -8,6 +8,7 @@ import (
 
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 	infrastructure "github.com/rios0rios0/gitforge/pkg/registry/infrastructure"
+	"github.com/rios0rios0/gitforge/test/builders"
 	"github.com/rios0rios0/gitforge/test/doubles"
 )
 
@@ -35,7 +36,7 @@ func TestProviderRegistryGet(t *testing.T) {
 		// given
 		reg := infrastructure.NewProviderRegistry()
 		reg.RegisterFactory("test", func(token string) globalEntities.ForgeProvider {
-			return &doubles.ForgeProviderStub{NameValue: "test", TokenValue: token}
+			return builders.NewForgeProviderStubBuilder().WithName("test").WithToken(token).Build().(*doubles.ForgeProviderStub)
 		})
 
 		// when
@@ -70,7 +71,7 @@ func TestProviderRegistryGetDiscoverer(t *testing.T) {
 		// given
 		reg := infrastructure.NewProviderRegistry()
 		reg.RegisterDiscoverer("test", func(_ string) globalEntities.RepositoryDiscoverer {
-			return &doubles.RepositoryDiscovererStub{NameValue: "test"}
+			return builders.NewRepositoryDiscovererStubBuilder().WithName("test").Build().(*doubles.RepositoryDiscovererStub)
 		})
 
 		// when
@@ -103,7 +104,7 @@ func TestProviderRegistryGetAdapterByURL(t *testing.T) {
 
 		// given
 		reg := infrastructure.NewProviderRegistry()
-		adapter := &doubles.ForgeProviderStub{NameValue: "github", MatchURLValue: "https://github.com/org/repo"}
+		adapter := builders.NewForgeProviderStubBuilder().WithName("github").WithMatchURL("https://github.com/org/repo").Build().(*doubles.ForgeProviderStub)
 		reg.RegisterAdapter(adapter)
 
 		// when
@@ -119,7 +120,7 @@ func TestProviderRegistryGetAdapterByURL(t *testing.T) {
 
 		// given
 		reg := infrastructure.NewProviderRegistry()
-		adapter := &doubles.ForgeProviderStub{NameValue: "github", MatchURLValue: "https://github.com/org/repo"}
+		adapter := builders.NewForgeProviderStubBuilder().WithName("github").WithMatchURL("https://github.com/org/repo").Build().(*doubles.ForgeProviderStub)
 		reg.RegisterAdapter(adapter)
 
 		// when
@@ -138,7 +139,7 @@ func TestProviderRegistryGetAdapterByServiceType(t *testing.T) {
 
 		// given
 		reg := infrastructure.NewProviderRegistry()
-		adapter := &doubles.ForgeProviderStub{NameValue: "github", ServiceTypeValue: globalEntities.GITHUB}
+		adapter := builders.NewForgeProviderStubBuilder().WithName("github").WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
 		reg.RegisterAdapter(adapter)
 
 		// when
@@ -154,7 +155,7 @@ func TestProviderRegistryGetAdapterByServiceType(t *testing.T) {
 
 		// given
 		reg := infrastructure.NewProviderRegistry()
-		adapter := &doubles.ForgeProviderStub{NameValue: "github", ServiceTypeValue: globalEntities.GITHUB}
+		adapter := builders.NewForgeProviderStubBuilder().WithName("github").WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
 		reg.RegisterAdapter(adapter)
 
 		// when
@@ -188,10 +189,10 @@ func TestProviderRegistryNames(t *testing.T) {
 		// given
 		reg := infrastructure.NewProviderRegistry()
 		reg.RegisterFactory("github", func(_ string) globalEntities.ForgeProvider {
-			return &doubles.ForgeProviderStub{NameValue: "github"}
+			return builders.NewForgeProviderStubBuilder().WithName("github").Build().(*doubles.ForgeProviderStub)
 		})
 		reg.RegisterFactory("gitlab", func(_ string) globalEntities.ForgeProvider {
-			return &doubles.ForgeProviderStub{NameValue: "gitlab"}
+			return builders.NewForgeProviderStubBuilder().WithName("gitlab").Build().(*doubles.ForgeProviderStub)
 		})
 
 		// when

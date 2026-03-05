@@ -8,6 +8,7 @@ import (
 
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 	"github.com/rios0rios0/gitforge/pkg/providers/infrastructure/azuredevops"
+	"github.com/rios0rios0/gitforge/test/builders"
 )
 
 func TestNewProvider(t *testing.T) {
@@ -83,12 +84,12 @@ func TestProviderCloneURL(t *testing.T) {
 
 		// given
 		provider := azuredevops.NewProvider("$test-token")
-		repo := globalEntities.Repository{
-			Organization: "my-org",
-			Project:      "my-project",
-			Name:         "my-repo",
-			RemoteURL:    "https://dev.azure.com/my-org/my-project/_git/my-repo",
-		}
+		repo := builders.NewRepositoryBuilder().
+			WithOrganization("my-org").
+			WithProject("my-project").
+			WithName("my-repo").
+			WithRemoteURL("https://dev.azure.com/my-org/my-project/_git/my-repo").
+			Build().(globalEntities.Repository)
 
 		// when
 		result := provider.CloneURL(repo)
@@ -102,11 +103,12 @@ func TestProviderCloneURL(t *testing.T) {
 
 		// given
 		provider := azuredevops.NewProvider("$test-token")
-		repo := globalEntities.Repository{
-			Organization: "my-org",
-			Project:      "my-project",
-			Name:         "my-repo",
-		}
+		repo := builders.NewRepositoryBuilder().
+			WithOrganization("my-org").
+			WithProject("my-project").
+			WithName("my-repo").
+			WithRemoteURL("").
+			Build().(globalEntities.Repository)
 
 		// when
 		result := provider.CloneURL(repo)

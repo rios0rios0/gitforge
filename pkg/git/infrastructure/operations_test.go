@@ -19,13 +19,14 @@ import (
 	gitops "github.com/rios0rios0/gitforge/pkg/git/infrastructure"
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 	signingInfra "github.com/rios0rios0/gitforge/pkg/signing/infrastructure"
+	"github.com/rios0rios0/gitforge/test/builders"
 	"github.com/rios0rios0/gitforge/test/doubles"
 )
 
 func TestNewGitOperations(t *testing.T) {
 	t.Run("should create GitOperations without panic", func(t *testing.T) {
 		// given
-		finder := &doubles.AdapterFinderStub{}
+		finder := builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub)
 
 		// when / then — should not panic
 		assert.NotPanics(t, func() {
@@ -37,7 +38,7 @@ func TestNewGitOperations(t *testing.T) {
 func TestGetServiceTypeByURL(t *testing.T) {
 	t.Run("should return BITBUCKET for bitbucket.org URL", func(t *testing.T) {
 		// given
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByURLValue: nil})
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		rawURL := "https://bitbucket.org/org/repo.git"
 
 		// when
@@ -49,7 +50,7 @@ func TestGetServiceTypeByURL(t *testing.T) {
 
 	t.Run("should return CODECOMMIT for git-codecommit URL", func(t *testing.T) {
 		// given
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByURLValue: nil})
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		rawURL := "https://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-repo"
 
 		// when
@@ -61,7 +62,7 @@ func TestGetServiceTypeByURL(t *testing.T) {
 
 	t.Run("should return UNKNOWN for unrecognized URL", func(t *testing.T) {
 		// given
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByURLValue: nil})
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		rawURL := "https://custom-git.example.com/repo.git"
 
 		// when
@@ -73,8 +74,10 @@ func TestGetServiceTypeByURL(t *testing.T) {
 
 	t.Run("should return adapter service type when adapter matches", func(t *testing.T) {
 		// given
-		adapter := &doubles.ForgeProviderStub{ServiceTypeValue: globalEntities.GITHUB}
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByURLValue: adapter})
+		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
+		ops := gitops.NewGitOperations(
+			builders.NewAdapterFinderStubBuilder().WithAdapterByURL(adapter).Build().(*doubles.AdapterFinderStub),
+		)
 		rawURL := "https://github.com/org/repo.git"
 
 		// when
@@ -88,7 +91,7 @@ func TestGetServiceTypeByURL(t *testing.T) {
 func TestGetAuthMethods(t *testing.T) {
 	t.Run("should return error when no adapter found", func(t *testing.T) {
 		// given
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByServiceTypeValue: nil})
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 
 		// when
 		_, err := ops.GetAuthMethods(globalEntities.UNKNOWN, "user")
@@ -99,11 +102,10 @@ func TestGetAuthMethods(t *testing.T) {
 
 	t.Run("should return error when adapter returns no auth methods", func(t *testing.T) {
 		// given
-		adapter := &doubles.ForgeProviderStub{
-			ServiceTypeValue: globalEntities.GITHUB,
-			AuthMethodsValue: nil,
-		}
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByServiceTypeValue: adapter})
+		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
+		ops := gitops.NewGitOperations(
+			builders.NewAdapterFinderStubBuilder().WithAdapterByServiceType(adapter).Build().(*doubles.AdapterFinderStub),
+		)
 
 		// when
 		_, err := ops.GetAuthMethods(globalEntities.GITHUB, "user")
@@ -114,13 +116,13 @@ func TestGetAuthMethods(t *testing.T) {
 
 	t.Run("should return auth methods when adapter provides them", func(t *testing.T) {
 		// given
-		adapter := &doubles.ForgeProviderStub{
-			ServiceTypeValue: globalEntities.GITHUB,
-			AuthMethodsValue: []transport.AuthMethod{
-				&doubles.AuthStub{},
-			},
-		}
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByServiceTypeValue: adapter})
+		adapter := builders.NewForgeProviderStubBuilder().
+			WithServiceType(globalEntities.GITHUB).
+			WithAuthMethods([]transport.AuthMethod{&doubles.AuthStub{}}).
+			Build().(*doubles.ForgeProviderStub)
+		ops := gitops.NewGitOperations(
+			builders.NewAdapterFinderStubBuilder().WithAdapterByServiceType(adapter).Build().(*doubles.AdapterFinderStub),
+		)
 
 		// when
 		methods, err := ops.GetAuthMethods(globalEntities.GITHUB, "user")
@@ -515,8 +517,10 @@ func TestCommitChanges(t *testing.T) {
 func TestGetRemoteServiceType(t *testing.T) {
 	t.Run("should return service type for repo with remote", func(t *testing.T) {
 		// given
-		adapter := &doubles.ForgeProviderStub{ServiceTypeValue: globalEntities.GITHUB}
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByURLValue: adapter})
+		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
+		ops := gitops.NewGitOperations(
+			builders.NewAdapterFinderStubBuilder().WithAdapterByURL(adapter).Build().(*doubles.AdapterFinderStub),
+		)
 
 		repo := createInMemoryRepoWithCommit(t)
 		_, err := repo.CreateRemote(&gitcfg.RemoteConfig{
@@ -535,7 +539,7 @@ func TestGetRemoteServiceType(t *testing.T) {
 
 	t.Run("should return error when no remote URLs configured", func(t *testing.T) {
 		// given
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{AdapterByURLValue: nil})
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		repo := createInMemoryRepoWithCommit(t)
 
 		// when
@@ -853,10 +857,7 @@ func TestCloneRepo(t *testing.T) {
 		t.Parallel()
 
 		// given
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{
-			AdapterByURLValue:         nil,
-			AdapterByServiceTypeValue: nil,
-		})
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		dir := t.TempDir()
 
 		// when
@@ -871,13 +872,11 @@ func TestCloneRepo(t *testing.T) {
 		t.Parallel()
 
 		// given
-		adapter := &doubles.ForgeProviderStub{
-			ServiceTypeValue: globalEntities.GITHUB,
-		}
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{
-			AdapterByURLValue:         adapter,
-			AdapterByServiceTypeValue: adapter,
-		})
+		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().
+			WithAdapterByURL(adapter).
+			WithAdapterByServiceType(adapter).
+			Build().(*doubles.AdapterFinderStub))
 		dir := t.TempDir()
 		authMethods := []transport.AuthMethod{&doubles.AuthStub{}}
 
@@ -893,13 +892,11 @@ func TestCloneRepo(t *testing.T) {
 		t.Parallel()
 
 		// given
-		adapter := &doubles.ForgeProviderStub{
-			ServiceTypeValue: globalEntities.GITHUB,
-		}
-		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{
-			AdapterByURLValue:         adapter,
-			AdapterByServiceTypeValue: adapter,
-		})
+		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().
+			WithAdapterByURL(adapter).
+			WithAdapterByServiceType(adapter).
+			Build().(*doubles.AdapterFinderStub))
 		dir := t.TempDir()
 		authMethods := []transport.AuthMethod{&doubles.AuthStub{}}
 

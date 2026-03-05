@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/rios0rios0/gitforge/pkg/config/domain/entities"
+	"github.com/rios0rios0/gitforge/test/builders"
 )
 
 func TestConfigValidate(t *testing.T) {
@@ -21,7 +22,11 @@ func TestConfigValidate(t *testing.T) {
 
 		// given
 		cfg := entities.NewConfig([]entities.ProviderConfig{
-			{Type: "github", Token: "ghp_test", Organizations: []string{"my-org"}},
+			builders.NewProviderConfigBuilder().
+				WithType("github").
+				WithToken("ghp_test").
+				WithOrganizations([]string{"my-org"}).
+				Build().(entities.ProviderConfig),
 		})
 
 		// when
@@ -36,7 +41,11 @@ func TestConfigValidate(t *testing.T) {
 
 		// given
 		cfg := entities.NewConfig([]entities.ProviderConfig{
-			{Type: "", Token: "ghp_test", Organizations: []string{"my-org"}},
+			builders.NewProviderConfigBuilder().
+				WithType("").
+				WithToken("ghp_test").
+				WithOrganizations([]string{"my-org"}).
+				Build().(entities.ProviderConfig),
 		})
 
 		// when
@@ -52,7 +61,11 @@ func TestConfigValidate(t *testing.T) {
 
 		// given
 		cfg := entities.NewConfig([]entities.ProviderConfig{
-			{Type: "github", Token: "", Organizations: []string{"my-org"}},
+			builders.NewProviderConfigBuilder().
+				WithType("github").
+				WithToken("").
+				WithOrganizations([]string{"my-org"}).
+				Build().(entities.ProviderConfig),
 		})
 
 		// when
@@ -68,7 +81,11 @@ func TestConfigValidate(t *testing.T) {
 
 		// given
 		cfg := entities.NewConfig([]entities.ProviderConfig{
-			{Type: "github", Token: "ghp_test", Organizations: []string{}},
+			builders.NewProviderConfigBuilder().
+				WithType("github").
+				WithToken("ghp_test").
+				WithOrganizations([]string{}).
+				Build().(entities.ProviderConfig),
 		})
 
 		// when
@@ -87,7 +104,7 @@ func TestProviderConfigResolveToken(t *testing.T) {
 		t.Parallel()
 
 		// given
-		p := entities.ProviderConfig{Token: ""}
+		p := builders.NewProviderConfigBuilder().WithToken("").Build().(entities.ProviderConfig)
 
 		// when
 		result := p.ResolveToken()
@@ -100,7 +117,7 @@ func TestProviderConfigResolveToken(t *testing.T) {
 		t.Parallel()
 
 		// given
-		p := entities.ProviderConfig{Token: "${GITFORGE_NONEXISTENT_VAR_12345}"}
+		p := builders.NewProviderConfigBuilder().WithToken("${GITFORGE_NONEXISTENT_VAR_12345}").Build().(entities.ProviderConfig)
 
 		// when
 		result := p.ResolveToken()
@@ -113,7 +130,7 @@ func TestProviderConfigResolveToken(t *testing.T) {
 		t.Parallel()
 
 		// given
-		p := entities.ProviderConfig{Token: "ghp_abc123"}
+		p := builders.NewProviderConfigBuilder().WithToken("ghp_abc123").Build().(entities.ProviderConfig)
 
 		// when
 		result := p.ResolveToken()
@@ -130,7 +147,7 @@ func TestProviderConfigResolveToken(t *testing.T) {
 		tokenFile := filepath.Join(tmpDir, "token.txt")
 		err := os.WriteFile(tokenFile, []byte("  file-token  \n"), 0o600)
 		require.NoError(t, err)
-		p := entities.ProviderConfig{Token: tokenFile}
+		p := builders.NewProviderConfigBuilder().WithToken(tokenFile).Build().(entities.ProviderConfig)
 
 		// when
 		result := p.ResolveToken()
@@ -143,7 +160,7 @@ func TestProviderConfigResolveToken(t *testing.T) {
 func TestProviderConfigResolveTokenEnvVar(t *testing.T) {
 	// given — cannot use t.Parallel with t.Setenv
 	t.Setenv("GITFORGE_TEST_TOKEN", "my-secret-token")
-	p := entities.ProviderConfig{Token: "${GITFORGE_TEST_TOKEN}"}
+	p := builders.NewProviderConfigBuilder().WithToken("${GITFORGE_TEST_TOKEN}").Build().(entities.ProviderConfig)
 
 	// when
 	result := p.ResolveToken()

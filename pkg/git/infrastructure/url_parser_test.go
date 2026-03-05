@@ -14,6 +14,8 @@ func TestParseRemoteURL(t *testing.T) {
 	t.Parallel()
 
 	t.Run("should parse GitHub SSH URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "git@github.com:rios0rios0/autobump.git"
 
@@ -29,6 +31,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should parse GitHub HTTPS URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://github.com/rios0rios0/autobump.git"
 
@@ -44,6 +48,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should parse GitHub HTTPS URL without .git suffix", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://github.com/rios0rios0/autobump"
 
@@ -58,6 +64,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should parse GitLab SSH URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "git@gitlab.com:mygroup/myrepo.git"
 
@@ -73,6 +81,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should parse GitLab SSH URL with nested groups", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "git@gitlab.com:group/subgroup/myrepo.git"
 
@@ -87,6 +97,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should parse GitLab HTTPS URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://gitlab.com/mygroup/myrepo.git"
 
@@ -101,6 +113,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should parse GitLab HTTPS URL with nested groups", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://gitlab.com/group/subgroup/myrepo.git"
 
@@ -115,6 +129,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should parse Azure DevOps SSH URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "git@ssh.dev.azure.com:v3/myorg/myproject/myrepo"
 
@@ -130,6 +146,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should parse Azure DevOps HTTPS URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://dev.azure.com/myorg/myproject/_git/myrepo"
 
@@ -145,6 +163,8 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 
 	t.Run("should return error for empty URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := ""
 
@@ -152,11 +172,13 @@ func TestParseRemoteURL(t *testing.T) {
 		_, err := infrastructure.ParseRemoteURL(rawURL)
 
 		// then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty remote URL")
 	})
 
 	t.Run("should return error for unsupported URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://bitbucket.org/owner/repo.git"
 
@@ -164,7 +186,7 @@ func TestParseRemoteURL(t *testing.T) {
 		_, err := infrastructure.ParseRemoteURL(rawURL)
 
 		// then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported remote URL format")
 	})
 }
@@ -173,6 +195,8 @@ func TestParsePullRequestURL(t *testing.T) {
 	t.Parallel()
 
 	t.Run("should parse GitHub PR URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://github.com/rios0rios0/code-guru/pull/42"
 
@@ -189,6 +213,8 @@ func TestParsePullRequestURL(t *testing.T) {
 	})
 
 	t.Run("should parse Azure DevOps PR URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://dev.azure.com/myorg/myproject/_git/myrepo/pullrequest/123"
 
@@ -205,6 +231,8 @@ func TestParsePullRequestURL(t *testing.T) {
 	})
 
 	t.Run("should return error for unsupported host", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://gitlab.com/org/repo/merge_requests/1"
 
@@ -212,11 +240,13 @@ func TestParsePullRequestURL(t *testing.T) {
 		_, err := infrastructure.ParsePullRequestURL(rawURL)
 
 		// then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported provider host")
 	})
 
 	t.Run("should return error for invalid GitHub URL format", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://github.com/org/repo"
 
@@ -224,11 +254,13 @@ func TestParsePullRequestURL(t *testing.T) {
 		_, err := infrastructure.ParsePullRequestURL(rawURL)
 
 		// then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid GitHub PR URL format")
 	})
 
 	t.Run("should return error for invalid PR ID", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://github.com/org/repo/pull/abc"
 
@@ -236,11 +268,13 @@ func TestParsePullRequestURL(t *testing.T) {
 		_, err := infrastructure.ParsePullRequestURL(rawURL)
 
 		// then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid PR ID")
 	})
 
 	t.Run("should return error for empty URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := ""
 
@@ -248,11 +282,13 @@ func TestParsePullRequestURL(t *testing.T) {
 		_, err := infrastructure.ParsePullRequestURL(rawURL)
 
 		// then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty pull request URL")
 	})
 
 	t.Run("should return error for invalid Azure DevOps PR URL format", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		rawURL := "https://dev.azure.com/myorg/myproject/myrepo"
 
@@ -260,7 +296,7 @@ func TestParsePullRequestURL(t *testing.T) {
 		_, err := infrastructure.ParsePullRequestURL(rawURL)
 
 		// then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid Azure DevOps PR URL format")
 	})
 }

@@ -18,6 +18,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Added
 
+- added `ParseRemoteURL` and `ParsePullRequestURL` in `pkg/git/infrastructure/` to provide unified Git remote and PR URL parsing for all consumers (autobump, autoupdate, code-guru)
 - added "Exported for use by autobump/autoupdate" clarifying comments to all exported functions that have no callers within gitforge itself
 
 ### Fixed

@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -32,24 +33,31 @@ type remoteURLParser func(cleaned string) (*RemoteURLInfo, bool)
 // prURLParser defines a function that attempts to parse PR URL path segments.
 type prURLParser func(segments []string) (*PullRequestURLInfo, error)
 
-// remoteURLParsers maps URL detection predicates to their parsing functions.
-// Each entry is tried in order; the first match wins.
-var remoteURLParsers = []struct {
+// remoteURLParserEntry pairs a URL detection predicate with its parsing function.
+type remoteURLParserEntry struct {
 	matches func(string) bool
 	parse   remoteURLParser
-}{
-	{matchesGitHubSSH, parseGitHubSSHRemote},
-	{matchesGitHubHTTPS, parseGitHubHTTPSRemote},
-	{matchesGitLabSSH, parseGitLabSSHRemote},
-	{matchesGitLabHTTPS, parseGitLabHTTPSRemote},
-	{matchesAzureDevOpsSSH, parseAzureDevOpsSSHRemote},
-	{matchesAzureDevOpsHTTPS, parseAzureDevOpsHTTPSRemote},
 }
 
-// prURLParsers maps host substrings to their PR URL parsing functions.
-var prURLParsers = map[string]prURLParser{
-	"github.com":    parseGitHubPRURL,
-	"dev.azure.com": parseAzureDevOpsPRURL,
+// getRemoteURLParsers returns the ordered list of remote URL parsers.
+// Each entry is tried in order; the first match wins.
+func getRemoteURLParsers() []remoteURLParserEntry {
+	return []remoteURLParserEntry{
+		{matchesGitHubSSH, parseGitHubSSHRemote},
+		{matchesGitHubHTTPS, parseGitHubHTTPSRemote},
+		{matchesGitLabSSH, parseGitLabSSHRemote},
+		{matchesGitLabHTTPS, parseGitLabHTTPSRemote},
+		{matchesAzureDevOpsSSH, parseAzureDevOpsSSHRemote},
+		{matchesAzureDevOpsHTTPS, parseAzureDevOpsHTTPSRemote},
+	}
+}
+
+// getPRURLParsers returns the map of host substrings to their PR URL parsing functions.
+func getPRURLParsers() map[string]prURLParser {
+	return map[string]prURLParser{
+		"github.com":    parseGitHubPRURL,
+		"dev.azure.com": parseAzureDevOpsPRURL,
+	}
 }
 
 // ParseRemoteURL extracts provider, organization, project, and repository name from a Git remote URL.
@@ -62,12 +70,12 @@ var prURLParsers = map[string]prURLParser{
 //   - Azure DevOps HTTPS:   https://dev.azure.com/org/project/_git/repo
 func ParseRemoteURL(rawURL string) (*RemoteURLInfo, error) {
 	if rawURL == "" {
-		return nil, fmt.Errorf("empty remote URL")
+		return nil, errors.New("empty remote URL")
 	}
 
 	cleaned := strings.TrimSuffix(rawURL, ".git")
 
-	for _, entry := range remoteURLParsers {
+	for _, entry := range getRemoteURLParsers() {
 		if entry.matches(cleaned) {
 			info, ok := entry.parse(cleaned)
 			if ok {
@@ -85,7 +93,7 @@ func ParseRemoteURL(rawURL string) (*RemoteURLInfo, error) {
 //   - Azure DevOps:  https://dev.azure.com/{org}/{project}/_git/{repo}/pullrequest/{id}
 func ParsePullRequestURL(rawURL string) (*PullRequestURLInfo, error) {
 	if rawURL == "" {
-		return nil, fmt.Errorf("empty pull request URL")
+		return nil, errors.New("empty pull request URL")
 	}
 
 	parsed, err := url.Parse(rawURL)
@@ -96,7 +104,7 @@ func ParsePullRequestURL(rawURL string) (*PullRequestURLInfo, error) {
 	host := strings.ToLower(parsed.Host)
 	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
 
-	for hostKey, parser := range prURLParsers {
+	for hostKey, parser := range getPRURLParsers() {
 		if strings.Contains(host, hostKey) {
 			return parser(segments)
 		}
@@ -148,11 +156,11 @@ func matchesGitLabSSH(cleaned string) bool {
 }
 
 func parseGitLabSSHRemote(cleaned string) (*RemoteURLInfo, bool) {
-	colonIdx := strings.Index(cleaned, ":")
-	if colonIdx < 0 {
+	_, after, ok := strings.Cut(cleaned, ":")
+	if !ok {
 		return nil, false
 	}
-	path := cleaned[colonIdx+1:]
+	path := after
 	parts := strings.Split(path, "/")
 	if len(parts) < 2 { //nolint:mnd // group/repo
 		return nil, false
@@ -221,8 +229,8 @@ func parseAzureDevOpsHTTPSRemote(cleaned string) (*RemoteURLInfo, bool) {
 
 func parseGitHubPRURL(segments []string) (*PullRequestURLInfo, error) {
 	// Expected: {org}/{repo}/pull/{id}
-	if len(segments) < 4 || segments[2] != "pull" { //nolint:mnd // org/repo/pull/id
-		return nil, fmt.Errorf("invalid GitHub PR URL format, expected: /{org}/{repo}/pull/{id}")
+	if len(segments) < 4 || segments[2] != "pull" {
+		return nil, errors.New("invalid GitHub PR URL format, expected: /{org}/{repo}/pull/{id}")
 	}
 
 	prID, err := strconv.Atoi(segments[3])
@@ -240,8 +248,8 @@ func parseGitHubPRURL(segments []string) (*PullRequestURLInfo, error) {
 
 func parseAzureDevOpsPRURL(segments []string) (*PullRequestURLInfo, error) {
 	// Expected: {org}/{project}/_git/{repo}/pullrequest/{id}
-	if len(segments) < 6 || segments[2] != "_git" || segments[4] != "pullrequest" { //nolint:mnd // full path
-		return nil, fmt.Errorf(
+	if len(segments) < 6 || segments[2] != "_git" || segments[4] != "pullrequest" {
+		return nil, errors.New(
 			"invalid Azure DevOps PR URL format, expected: /{org}/{project}/_git/{repo}/pullrequest/{id}",
 		)
 	}

@@ -845,3 +845,70 @@ func createFilesystemRepoWithCommit(t *testing.T, path string) *git.Repository {
 
 	return repo
 }
+
+func TestCloneRepo(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return error when no auth methods provided", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{
+			AdapterByURLValue:         nil,
+			AdapterByServiceTypeValue: nil,
+		})
+		dir := t.TempDir()
+
+		// when
+		_, err := ops.CloneRepo("https://unknown-host.example.com/repo.git", dir, nil)
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no authentication methods provided")
+	})
+
+	t.Run("should return error when all auth methods fail", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		adapter := &doubles.ForgeProviderStub{
+			ServiceTypeValue: globalEntities.GITHUB,
+		}
+		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{
+			AdapterByURLValue:         adapter,
+			AdapterByServiceTypeValue: adapter,
+		})
+		dir := t.TempDir()
+		authMethods := []transport.AuthMethod{&doubles.AuthStub{}}
+
+		// when
+		_, err := ops.CloneRepo("https://github.com/nonexistent/repo.git", dir, authMethods)
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to clone")
+	})
+
+	t.Run("should prepare clone URL via adapter when adapter is found", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		adapter := &doubles.ForgeProviderStub{
+			ServiceTypeValue: globalEntities.GITHUB,
+		}
+		ops := gitops.NewGitOperations(&doubles.AdapterFinderStub{
+			AdapterByURLValue:         adapter,
+			AdapterByServiceTypeValue: adapter,
+		})
+		dir := t.TempDir()
+		authMethods := []transport.AuthMethod{&doubles.AuthStub{}}
+
+		// when — clone will fail because the URL is not a real remote,
+		// but the adapter's PrepareCloneURL and ConfigureTransport are called
+		_, err := ops.CloneRepo("https://github.com/org/repo.git", dir, authMethods)
+
+		// then — error from go-git because the URL is not reachable
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to clone")
+	})
+}

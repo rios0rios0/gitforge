@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	log "github.com/sirupsen/logrus"
 
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
@@ -28,7 +30,13 @@ func CommitChanges(
 	signoff := fmt.Sprintf("\n\nSigned-off-by: %s <%s>", name, email)
 	commitMessage += signoff
 
-	hash, err := workTree.Commit(commitMessage, &git.CommitOptions{})
+	hash, err := workTree.Commit(commitMessage, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  name,
+			Email: email,
+			When:  time.Now(),
+		},
+	})
 	if err != nil {
 		return plumbing.ZeroHash, fmt.Errorf("could not commit changes: %w", err)
 	}

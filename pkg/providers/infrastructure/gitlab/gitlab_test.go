@@ -8,6 +8,7 @@ import (
 
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 	"github.com/rios0rios0/gitforge/pkg/providers/infrastructure/gitlab"
+	"github.com/rios0rios0/gitforge/test/builders"
 )
 
 func TestNewProvider(t *testing.T) {
@@ -93,11 +94,11 @@ func TestProviderCloneURL(t *testing.T) {
 
 		// given
 		provider := gitlab.NewProvider("$test-token")
-		repo := globalEntities.Repository{
-			Organization: "my-org",
-			Name:         "my-repo",
-			RemoteURL:    "https://gitlab.com/my-org/my-repo.git",
-		}
+		repo := builders.NewRepositoryBuilder().
+			WithOrganization("my-org").
+			WithName("my-repo").
+			WithRemoteURL("https://gitlab.com/my-org/my-repo.git").
+			Build().(globalEntities.Repository)
 
 		// when
 		result := provider.CloneURL(repo)
@@ -111,10 +112,11 @@ func TestProviderCloneURL(t *testing.T) {
 
 		// given
 		provider := gitlab.NewProvider("$test-token")
-		repo := globalEntities.Repository{
-			Organization: "my-org",
-			Name:         "my-repo",
-		}
+		repo := builders.NewRepositoryBuilder().
+			WithOrganization("my-org").
+			WithName("my-repo").
+			WithRemoteURL("").
+			Build().(globalEntities.Repository)
 
 		// when
 		result := provider.CloneURL(repo)

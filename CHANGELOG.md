@@ -96,3 +96,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 - removed unused `ReadLines` and `WriteLines` utilities from `pkg/global/domain/fileutils.go`
 - removed direct utility tests (`fileutils_test.go`, `versions_test.go`) in favor of indirect testing through callers
+
+### Fixed
+
+- fixed `gochecknoglobals` findings by converting global variables to functions in URL parser
+- fixed `testifylint` findings by using `require.Error` instead of `assert.Error` for fatal error checks in URL parser tests
+- fixed `tparallel` findings by adding `t.Parallel()` to all subtests in URL parser tests
+

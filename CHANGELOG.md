@@ -20,6 +20,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 - added `ParseRemoteURL` and `ParsePullRequestURL` in `pkg/git/infrastructure/` to provide unified Git remote and PR URL parsing for all consumers (autobump, autoupdate, code-guru)
 - added "Exported for use by autobump/autoupdate" clarifying comments to all exported functions that have no callers within gitforge itself
+- added `WorktreeIsClean` helper to check whether a worktree has uncommitted changes (go-git equivalent of `git status --porcelain`)
+- added `StageAll` helper to stage all changes in the worktree (go-git equivalent of `git add -A`)
 
 ### Fixed
 

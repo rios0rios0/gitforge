@@ -10,8 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// InitialReleaseVersion is the version used when no version is found in the changelog.
-// When a changelog only has [Unreleased] section, we bump directly to 0.1.0.
+// InitialReleaseVersion is the version used when no previous release version is present in the changelog.
 const InitialReleaseVersion = "0.1.0"
 
 var (

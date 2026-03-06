@@ -31,6 +31,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Fixed
 
+- changed default initial release version from `1.0.0` to `0.1.0` for projects with no previous tags
 - fixed GitLab provider compilation errors caused by invalid `new(value)` usage; replaced with `&variable` address-of expressions
 - fixed `config_test.go` directly testing the `FindConfigFile` helper function; removed helper tests to respect the rule that helpers are tested through their callers
 - added `LoadConfig` to `pkg/config/infrastructure/` as the parent caller for the orphaned `DownloadFile`/`ReadData` infrastructure helpers

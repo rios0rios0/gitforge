@@ -28,7 +28,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - added `CommitSigner` interface in `pkg/global/domain/entities/` for abstracting commit signing
 - added `GPGSigner` and `SSHSigner` structs in `pkg/signing/infrastructure/` implementing `CommitSigner`
 - added `LoadConfig` to `pkg/config/infrastructure/` as the parent caller for the orphaned `DownloadFile`/`ReadData` infrastructure helpers
-- added `ParseRemoteURL` and `ParsePullRequestURL` in `pkg/git/infrastructure/` to provide unified Git remote and PR URL parsing for all consumers (`autobump`, autoupdate, code-guru)
+- added `ParseRemoteURL` and `ParsePullRequestURL` in `pkg/git/infrastructure/` to provide unified Git remote and PR URL parsing for all consumers (`autobump`, `autoupdate`, `code-guru`)
 - added `ReadUserConfig` to `pkg/git/infrastructure/` as the parent caller for the orphaned `GetGlobalGitConfig`/`GetOptionFromConfig` git config helpers
 - added `StageAll` helper to stage all changes in the worktree (go-git equivalent of `git add -A`)
 - added `WorktreeIsClean` helper to check whether a worktree has uncommitted changes (go-git equivalent of `git status --porcelain`)

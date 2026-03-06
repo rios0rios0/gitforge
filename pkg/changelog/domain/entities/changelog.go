@@ -11,8 +11,8 @@ import (
 )
 
 // InitialReleaseVersion is the version used when no version is found in the changelog.
-// When a changelog only has [Unreleased] section, we bump directly to 1.0.0.
-const InitialReleaseVersion = "1.0.0"
+// When a changelog only has [Unreleased] section, we bump directly to 0.1.0.
+const InitialReleaseVersion = "0.1.0"
 
 var (
 	ErrNoVersionFoundInChangelog  = errors.New("no version found in the changelog")

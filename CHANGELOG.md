@@ -28,6 +28,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Changed
 
 - replaced raw struct literals in tests with testkit builders for consistent test data construction
+- changed the Go version to `1.26.1` and updated all module dependencies
 
 ### Fixed
 

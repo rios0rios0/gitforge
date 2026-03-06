@@ -20,7 +20,7 @@ func DownloadFile(url string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create download request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL comes from caller, validated at boundary
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
 	}

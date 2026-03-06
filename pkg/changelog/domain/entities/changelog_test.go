@@ -287,7 +287,7 @@ func TestProcessChangelog(t *testing.T) {
 
 		// then
 		require.NoError(t, err)
-		assert.Equal(t, "1.0.0", version.String())
+		assert.Equal(t, "0.1.0", version.String())
 		assert.NotEmpty(t, content)
 	})
 
@@ -314,7 +314,7 @@ func TestProcessChangelog(t *testing.T) {
 func TestProcessNewChangelog(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should return 1.0.0 for new changelog with content", func(t *testing.T) {
+	t.Run("should return 0.1.0 for new changelog with content", func(t *testing.T) {
 		t.Parallel()
 
 		// given
@@ -330,7 +330,7 @@ func TestProcessNewChangelog(t *testing.T) {
 
 		// then
 		require.NoError(t, err)
-		assert.Equal(t, "1.0.0", version.String())
+		assert.Equal(t, "0.1.0", version.String())
 		assert.NotEmpty(t, content)
 	})
 
@@ -351,7 +351,7 @@ func TestProcessNewChangelog(t *testing.T) {
 
 		// then
 		require.NoError(t, err)
-		assert.Equal(t, "1.0.0", version.String())
+		assert.Equal(t, "0.1.0", version.String())
 		// prefix content should be preserved
 		found := false
 		for _, line := range content {
@@ -376,7 +376,7 @@ func TestProcessNewChangelog(t *testing.T) {
 
 		// then
 		require.NoError(t, err)
-		assert.Equal(t, "1.0.0", version.String())
+		assert.Equal(t, "0.1.0", version.String())
 	})
 }
 

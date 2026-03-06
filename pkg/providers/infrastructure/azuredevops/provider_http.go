@@ -43,7 +43,7 @@ func (p *Provider) doRequestWithHeaders(
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.httpClient.Do(req) //nolint:gosec // URL is constructed from trusted config, not user input
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("request failed: %w", err)
 	}

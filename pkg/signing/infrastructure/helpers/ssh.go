@@ -25,7 +25,7 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 		if cerr := tmpFile.Close(); cerr != nil {
 			log.WithError(cerr).Warn("failed to close temp file for SSH signing")
 		}
-		if rerr := os.Remove(tmpFile.Name()); rerr != nil { //nolint:gosec // tmpFile.Name() is not user-controlled
+		if rerr := os.Remove(tmpFile.Name()); rerr != nil {
 			log.WithError(rerr).Warn("failed to remove temp file for SSH signing")
 		}
 	}()
@@ -37,7 +37,7 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 	sigFile := tmpFile.Name() + ".sig"
 	defer os.Remove(sigFile)
 
-	cmd := exec.CommandContext( //nolint:gosec // signingKeyPath is validated by ReadSSHSigningKey
+	cmd := exec.CommandContext(
 		ctx, "ssh-keygen",
 		"-Y", "sign",
 		"-f", signingKeyPath,
@@ -49,7 +49,7 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 		return "", fmt.Errorf("ssh-keygen signing failed: %w (output: %s)", err, strings.TrimSpace(string(output)))
 	}
 
-	sigBytes, err := os.ReadFile(sigFile) //nolint:gosec // derived from tmpFile.Name(), not user-controlled
+	sigBytes, err := os.ReadFile(sigFile)
 	if err != nil {
 		return "", fmt.Errorf("failed to read SSH signature file: %w", err)
 	}

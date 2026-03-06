@@ -237,7 +237,7 @@ ForgeProvider (base)
 **Changelog** (`pkg/changelog/domain/entities`):
 - `NewChangelog(lines []string) *Changelog` -- constructs a changelog from lines
 - `(c *Changelog) Process() (*semver.Version, []string, error)` -- calculates next version and new content from existing changelog
-- `(c *Changelog) ProcessNew() (*semver.Version, []string, error)` -- handles changelogs with only an [Unreleased] section (releases as 1.0.0)
+- `(c *Changelog) ProcessNew() (*semver.Version, []string, error)` -- handles changelogs with no previous release version (releases as 0.1.0)
 - `(c *Changelog) FindLatestVersion() (*semver.Version, error)` -- finds the highest released version
 - `(c *Changelog) IsUnreleasedEmpty() (bool, error)` -- checks if the [Unreleased] section has any entries
 - `InsertChangelogEntry(content string, entries []string) string` -- inserts bullet entries under Unreleased/Changed

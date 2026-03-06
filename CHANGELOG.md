@@ -24,24 +24,25 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - added `WorktreeIsClean` helper to check whether a worktree has uncommitted changes (go-git equivalent of `git status --porcelain`)
 - added `StageAll` helper to stage all changes in the worktree (go-git equivalent of `git add -A`)
 - added `CloneRepo` to `GitOperations` for cloning remote repositories with multi-auth retry and adapter-based URL preparation
+- added SSH commit signing support using `ssh-keygen -Y sign` in `pkg/signing/infrastructure/ssh.go`
+- added comprehensive tests across all packages achieving 80%+ coverage using testify, BDD structure, and parallel execution
+- added GPG signing utilities and SSH signing placeholder
+- added changelog processing: version calculation, entry deduplication, section management, entry insertion
+- added composed provider interfaces: `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`
+- added local git operations: open, branch, commit, push (SSH/HTTPS), tag, remote detection
+- added provider and discoverer registries with factory pattern support
+- added shared `Controller` interface and `ControllerBind` struct for CLI controllers
+- added shared `ProviderConfig`, `ResolveToken`, `FindConfigFile`, and `ValidateProviders` for configuration handling
+- added shared `Repository`, `ServiceType`, `BranchStatus`, `LatestTag`, `PullRequest`, `PullRequestInput`, `BranchInput`, `File`, `FileChange` entities
+- added unified GitHub, GitLab, and Azure DevOps provider implementations with discovery, file access, PR creation, and local git auth
+- added utility functions: `DownloadFile`, `StripUsernameFromURL`, version sorting
+- added `CommitSigner` interface in `pkg/global/domain/entities/` for abstracting commit signing
+- added `GPGSigner` and `SSHSigner` structs in `pkg/signing/infrastructure/` implementing `CommitSigner`
+- added `CommitSignerStub` test double
 
 ### Changed
 
 - replaced raw struct literals in tests with testkit builders for consistent test data construction
-
-### Fixed
-
-- changed default initial release version from `1.0.0` to `0.1.0` for projects with no previous tags
-- fixed GitLab provider compilation errors caused by invalid `new(value)` usage; replaced with `&variable` address-of expressions
-- fixed `config_test.go` directly testing the `FindConfigFile` helper function; removed helper tests to respect the rule that helpers are tested through their callers
-- added `LoadConfig` to `pkg/config/infrastructure/` as the parent caller for the orphaned `DownloadFile`/`ReadData` infrastructure helpers
-- added `ReadUserConfig` to `pkg/git/infrastructure/` as the parent caller for the orphaned `GetGlobalGitConfig`/`GetOptionFromConfig` git config helpers
-- filled in the empty `pkg/config/domain/entities/config.go` placeholder with `Config` struct, `NewConfig()`, and `Validate()` method
-- filled in the empty `pkg/config/domain/helpers/finder.go` placeholder with `FindConfigFile()` function
-- restored `pkg/config/domain/entities/provider_config.go` with `ResolveToken()` as a method on `ProviderConfig` (replacing the old free function)
-
-### Changed
-
 - changed the Go module dependencies to their latest versions
 - changed `CommitChanges` signature to accept `CommitSigner` interface instead of `*SigningOptions`
 - reorganized project from flat `domain/` and `infrastructure/` to DDD bounded contexts under `pkg/`
@@ -73,36 +74,25 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - refactored signing from free functions to `GPGSigner` and `SSHSigner` structs implementing `CommitSigner` interface
 - split each provider (`github.go`, `gitlab.go`, `azuredevops.go`) into `provider.go`, `provider_discovery.go`, `provider_pull_request.go`, `provider_file_access.go` (plus `provider_http.go` and `provider_url.go` for Azure DevOps)
 - removed global `adapterFinder` variable in favor of constructor injection via `GitOperations` struct
-- changed the Go module dependencies to their latest versions
-
-### Added
-
-- added SSH commit signing support using `ssh-keygen -Y sign` in `pkg/signing/infrastructure/ssh.go`
-- added comprehensive tests across all packages achieving 80%+ coverage using testify, BDD structure, and parallel execution
-- added GPG signing utilities and SSH signing placeholder
-- added changelog processing: version calculation, entry deduplication, section management, entry insertion
-- added composed provider interfaces: `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`
-- added local git operations: open, branch, commit, push (SSH/HTTPS), tag, remote detection
-- added provider and discoverer registries with factory pattern support
-- added shared `Controller` interface and `ControllerBind` struct for CLI controllers
-- added shared `ProviderConfig`, `ResolveToken`, `FindConfigFile`, and `ValidateProviders` for configuration handling
-- added shared `Repository`, `ServiceType`, `BranchStatus`, `LatestTag`, `PullRequest`, `PullRequestInput`, `BranchInput`, `File`, `FileChange` entities
-- added unified GitHub, GitLab, and Azure DevOps provider implementations with discovery, file access, PR creation, and local git auth
-- added utility functions: `DownloadFile`, `StripUsernameFromURL`, version sorting
-- added `CommitSigner` interface in `pkg/global/domain/entities/` for abstracting commit signing
-- added `GPGSigner` and `SSHSigner` structs in `pkg/signing/infrastructure/` implementing `CommitSigner`
-- added `CommitSignerStub` test double
-
-### Removed
-
-- removed unused `ReadLines` and `WriteLines` utilities from `pkg/global/domain/fileutils.go`
-- removed direct utility tests (`fileutils_test.go`, `versions_test.go`) in favor of indirect testing through callers
 
 ### Fixed
 
+- changed default initial release version from `1.0.0` to `0.1.0` for projects with no previous tags
+- fixed GitLab provider compilation errors caused by invalid `new(value)` usage; replaced with `&variable` address-of expressions
+- fixed `config_test.go` directly testing the `FindConfigFile` helper function; removed helper tests to respect the rule that helpers are tested through their callers
+- added `LoadConfig` to `pkg/config/infrastructure/` as the parent caller for the orphaned `DownloadFile`/`ReadData` infrastructure helpers
+- added `ReadUserConfig` to `pkg/git/infrastructure/` as the parent caller for the orphaned `GetGlobalGitConfig`/`GetOptionFromConfig` git config helpers
+- filled in the empty `pkg/config/domain/entities/config.go` placeholder with `Config` struct, `NewConfig()`, and `Validate()` method
+- filled in the empty `pkg/config/domain/helpers/finder.go` placeholder with `FindConfigFile()` function
+- restored `pkg/config/domain/entities/provider_config.go` with `ResolveToken()` as a method on `ProviderConfig` (replacing the old free function)
 - fixed `CommitChanges` to set the `Author` field in `CommitOptions` using the already-passed `name`/`email` parameters, preventing "author field is required" errors in CI environments without global git config
 - removed broken `.gitleaks.toml` allowlist that caused gitleaks to reject the config on newer versions
 - fixed `gochecknoglobals` findings by converting global variables to functions in URL parser
 - fixed `testifylint` findings by using `require.Error` instead of `assert.Error` for fatal error checks in URL parser tests
 - fixed `tparallel` findings by adding `t.Parallel()` to all subtests in URL parser tests
+
+### Removed
+
+- removed unused `ReadLines` and `WriteLines` utilities from `pkg/global/domain/fileutils.go`
+- removed direct utility tests (`fileutils_test.go`, `versions_test.go`) in favor of indirect testing through callers
 

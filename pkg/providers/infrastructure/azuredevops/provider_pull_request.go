@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -20,7 +21,7 @@ func resolveRepoIdentifier(repo globalEntities.Repository) string {
 	}
 	log.WithField("repoName", repo.Name).
 		Warn("Repository ID is empty, falling back to repository name for API calls")
-	return repo.Name
+	return url.PathEscape(repo.Name)
 }
 
 // ensureRefsPrefix prepends "refs/heads/" to a branch name if it does not already start with "refs/".
@@ -99,7 +100,7 @@ func (p *Provider) PullRequestExists(
 		"/%s/_apis/git/repositories/%s/pullrequests?searchCriteria.sourceRefName=%s&searchCriteria.status=active&api-version=%s",
 		repo.Project,
 		repoIdentifier,
-		ensureRefsPrefix(sourceBranch),
+		url.QueryEscape(ensureRefsPrefix(sourceBranch)),
 		apiVersion,
 	)
 

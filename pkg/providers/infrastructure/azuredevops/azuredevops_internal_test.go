@@ -69,6 +69,19 @@ func TestResolveRepoIdentifier(t *testing.T) {
 		// then
 		assert.Equal(t, "my-repo", result)
 	})
+
+	t.Run("should URL-encode Name when falling back to Name with special characters", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := globalEntities.Repository{ID: "", Name: "my repo with spaces"}
+
+		// when
+		result := resolveRepoIdentifier(repo)
+
+		// then
+		assert.Equal(t, "my%20repo%20with%20spaces", result)
+	})
 }
 
 func TestEnsureRefsPrefix(t *testing.T) {

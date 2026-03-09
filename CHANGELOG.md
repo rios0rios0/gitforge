@@ -31,7 +31,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 - fixed Azure DevOps PR creation and existence check failing with 404 when `repo.ID` is empty
 - fixed Azure DevOps PR creation not prepending `refs/heads/` to branch names, causing API errors
+- fixed Azure DevOps URL construction to URL-encode repository names and query parameters with special characters
 - fixed GPG key reader providing unhelpful error messages when key file is empty or in unexpected format
+- fixed GPG key reader failing on base64-encoded keys with line wrapping (76-char wrapped output from `base64` CLI)
+- fixed GPG key error message leaking truncated private key material in logs
 
 ## [0.1.1] - 2026-03-06
 

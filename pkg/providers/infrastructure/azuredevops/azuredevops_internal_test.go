@@ -41,6 +41,92 @@ func newTestProvider(t *testing.T, server *httptest.Server) *Provider {
 	}
 }
 
+func TestResolveRepoIdentifier(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return ID when ID is set", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := globalEntities.Repository{ID: "repo-uuid-123", Name: "my-repo"}
+
+		// when
+		result := resolveRepoIdentifier(repo)
+
+		// then
+		assert.Equal(t, "repo-uuid-123", result)
+	})
+
+	t.Run("should fall back to Name when ID is empty", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := globalEntities.Repository{ID: "", Name: "my-repo"}
+
+		// when
+		result := resolveRepoIdentifier(repo)
+
+		// then
+		assert.Equal(t, "my-repo", result)
+	})
+
+	t.Run("should URL-encode Name when falling back to Name with special characters", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := globalEntities.Repository{ID: "", Name: "my repo with spaces"}
+
+		// when
+		result := resolveRepoIdentifier(repo)
+
+		// then
+		assert.Equal(t, "my%20repo%20with%20spaces", result)
+	})
+}
+
+func TestEnsureRefsPrefix(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should prepend refs/heads/ when missing", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		branch := "main"
+
+		// when
+		result := ensureRefsPrefix(branch)
+
+		// then
+		assert.Equal(t, "refs/heads/main", result)
+	})
+
+	t.Run("should keep refs/heads/ when already present", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		branch := "refs/heads/feature"
+
+		// when
+		result := ensureRefsPrefix(branch)
+
+		// then
+		assert.Equal(t, "refs/heads/feature", result)
+	})
+
+	t.Run("should keep refs/tags/ when present", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		branch := "refs/tags/v1.0.0"
+
+		// when
+		result := ensureRefsPrefix(branch)
+
+		// then
+		assert.Equal(t, "refs/tags/v1.0.0", result)
+	})
+}
+
 func TestNormalizeOrgURL(t *testing.T) {
 	t.Parallel()
 

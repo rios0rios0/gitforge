@@ -16,6 +16,26 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added base64-encoded GPG key auto-detection and decoding in `GetGpgKeyReader()`
+- added explicit `passphrase` parameter to `GetGpgKey()` for non-interactive environments (CI/CD)
+- added `resolveRepoIdentifier()` helper to fall back to `repo.Name` when `repo.ID` is empty in Azure DevOps provider
+- added `ensureRefsPrefix()` helper to normalize branch names with `refs/heads/` prefix in Azure DevOps provider
+
+### Changed
+
+- changed `GetGpgKey()` signature to accept a `passphrase` parameter (breaking change)
+
+### Fixed
+
+- fixed Azure DevOps PR creation and existence check failing with 404 when `repo.ID` is empty
+- fixed Azure DevOps PR creation not prepending `refs/heads/` to branch names, causing API errors
+- fixed Azure DevOps URL construction to URL-encode repository names and query parameters with special characters
+- fixed GPG key reader providing unhelpful error messages when key file is empty or in unexpected format
+- fixed GPG key reader failing on base64-encoded keys with line wrapping (76-char wrapped output from `base64` CLI)
+- fixed GPG key error message leaking truncated private key material in logs
+
 ## [0.1.1] - 2026-03-06
 
 ### Changed

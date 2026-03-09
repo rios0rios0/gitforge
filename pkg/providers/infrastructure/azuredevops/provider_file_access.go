@@ -22,7 +22,7 @@ func (p *Provider) GetFileContent(
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/items?path=%s&api-version=%s",
-		repo.Project, repo.ID, url.QueryEscape(path), apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), url.QueryEscape(path), apiVersion,
 	)
 
 	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
@@ -41,7 +41,7 @@ func (p *Provider) ListFiles(
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/items?recursionLevel=Full&api-version=%s",
-		repo.Project, repo.ID, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), apiVersion,
 	)
 
 	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
@@ -83,7 +83,7 @@ func (p *Provider) GetTags(
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/refs?filter=tags&api-version=%s",
-		repo.Project, repo.ID, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), apiVersion,
 	)
 
 	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
@@ -163,7 +163,7 @@ func (p *Provider) CreateBranchWithChanges(
 
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pushes?api-version=%s",
-		repo.Project, repo.ID, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), apiVersion,
 	)
 
 	_, err = p.doRequest(ctx, baseURL, http.MethodPost, endpoint, pushBody)
@@ -181,7 +181,7 @@ func (p *Provider) getCommitID(
 ) (string, error) {
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s?api-version=%s",
-		repo.Project, repo.ID, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), apiVersion,
 	)
 
 	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
@@ -199,7 +199,7 @@ func (p *Provider) getCommitID(
 	branchName := strings.TrimPrefix(repoInfo.DefaultBranch, "refs/heads/")
 	branchEndpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/refs?filter=heads/%s&api-version=%s",
-		repo.Project, repo.ID, branchName, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), branchName, apiVersion,
 	)
 
 	branchResp, branchErr := p.doRequest(

@@ -1,7 +1,9 @@
 package helpers
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +23,8 @@ var (
 		"cannot find private key matching fingerprint",
 	)
 )
+
+const armoredPGPHeader = "-----BEGIN PGP"
 
 // ExportGpgKey exports a GPG key from the keyring to a file.
 func ExportGpgKey(ctx context.Context, gpgKeyID string, gpgKeyExportPath string) error {
@@ -43,6 +47,7 @@ func ExportGpgKey(ctx context.Context, gpgKeyID string, gpgKeyExportPath string)
 
 // GetGpgKeyReader returns a reader for the GPG key.
 // The appName parameter is used for default key path generation (e.g. "autobump" -> ~/.gnupg/autobump-{keyID}.asc).
+// Supports armored (ASCII) and base64-encoded armored key formats.
 // Exported for use by autobump (github.com/rios0rios0/autobump).
 func GetGpgKeyReader(ctx context.Context, gpgKeyID string, gpgKeyPath string, appName string) (io.Reader, error) {
 	if gpgKeyPath == "" {
@@ -62,13 +67,58 @@ func GetGpgKeyReader(ctx context.Context, gpgKeyID string, gpgKeyPath string, ap
 		return nil, fmt.Errorf("failed to read private key file: %w", err)
 	}
 
-	return strings.NewReader(string(gpgKeyData)), nil
+	resolved, err := resolveGPGKeyFormat(gpgKeyData)
+	if err != nil {
+		return nil, err
+	}
+
+	return bytes.NewReader(resolved), nil
 }
 
-// GetGpgKey returns a GPG key entity from the given reader,
-// prompting for the passphrase to decrypt the key.
+// resolveGPGKeyFormat detects the format of GPG key data and normalizes it to armored PGP.
+// It supports: raw armored PGP, and base64-encoded armored PGP.
+func resolveGPGKeyFormat(data []byte) ([]byte, error) {
+	trimmed := bytes.TrimSpace(data)
+
+	if len(trimmed) == 0 {
+		return nil, errors.New(
+			"GPG key file is empty; ensure the file contains a valid armored PGP key " +
+				"(exported with: gpg --export-secret-key --armor <KEY_ID>)",
+		)
+	}
+
+	// already armored
+	if strings.HasPrefix(string(trimmed), armoredPGPHeader) {
+		return trimmed, nil
+	}
+
+	// try base64 decode
+	decoded, err := base64.StdEncoding.DecodeString(string(trimmed))
+	if err == nil && strings.HasPrefix(string(bytes.TrimSpace(decoded)), armoredPGPHeader) {
+		log.Info("GPG key was base64-encoded; decoded successfully")
+		return bytes.TrimSpace(decoded), nil
+	}
+
+	return nil, fmt.Errorf(
+		"GPG key file does not contain valid armored PGP data (file size: %d bytes, "+
+			"first bytes: %q); ensure the key is exported with: "+
+			"gpg --export-secret-key --armor <KEY_ID>",
+		len(trimmed), truncateBytes(trimmed, 40),
+	)
+}
+
+// truncateBytes returns at most n bytes from data for diagnostic output.
+func truncateBytes(data []byte, n int) []byte {
+	if len(data) <= n {
+		return data
+	}
+	return data[:n]
+}
+
+// GetGpgKey returns a GPG key entity from the given reader, decrypting it with the provided passphrase.
+// If passphrase is empty, it prompts interactively (falling back to empty passphrase in non-TTY environments).
 // Exported for use by autobump (github.com/rios0rios0/autobump).
-func GetGpgKey(gpgKeyReader io.Reader) (*openpgp.Entity, error) {
+func GetGpgKey(gpgKeyReader io.Reader, passphrase string) (*openpgp.Entity, error) {
 	entityList, err := openpgp.ReadArmoredKeyRing(gpgKeyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read private key file: %w", err)
@@ -79,27 +129,38 @@ func GetGpgKey(gpgKeyReader io.Reader) (*openpgp.Entity, error) {
 		return nil, ErrCannotFindPrivKeyMatchingFingerprint
 	}
 
-	fmt.Print("Enter the passphrase for your GPG key: ") //nolint:forbidigo // this line is not for debugging
-	var passphrase []byte
-	passphrase, err = term.ReadPassword(0)
-	if err != nil {
-		if errors.Is(err, syscall.ENOTTY) {
-			passphrase = []byte("")
-		} else {
-			return nil, fmt.Errorf("failed to read passphrase: %w", err)
+	passphraseBytes := []byte(passphrase)
+	if passphrase == "" {
+		passphraseBytes, err = promptPassphrase()
+		if err != nil {
+			return nil, err
 		}
 	}
-	fmt.Println() //nolint:forbidigo // this line is not for debugging
 
 	if entity.PrivateKey == nil {
 		return nil, ErrCannotFindPrivKey
 	}
 
-	err = entity.PrivateKey.Decrypt(passphrase)
+	err = entity.PrivateKey.Decrypt(passphraseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt GPG key: %w", err)
 	}
 
 	log.Info("Successfully decrypted GPG key")
 	return entity, nil
+}
+
+// promptPassphrase reads a passphrase from the terminal, falling back to empty passphrase
+// when no TTY is available (e.g. in CI environments).
+func promptPassphrase() ([]byte, error) {
+	fmt.Print("Enter the passphrase for your GPG key: ") //nolint:forbidigo // this line is not for debugging
+	passphrase, err := term.ReadPassword(0)
+	if err != nil {
+		if errors.Is(err, syscall.ENOTTY) {
+			return []byte(""), nil
+		}
+		return nil, fmt.Errorf("failed to read passphrase: %w", err)
+	}
+	fmt.Println() //nolint:forbidigo // this line is not for debugging
+	return passphrase, nil
 }

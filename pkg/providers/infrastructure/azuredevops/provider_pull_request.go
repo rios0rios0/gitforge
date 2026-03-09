@@ -5,9 +5,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 )
+
+// resolveRepoIdentifier returns repo.ID if non-empty, otherwise falls back to repo.Name.
+// The Azure DevOps API accepts both the repository UUID and the repository name in URL paths.
+func resolveRepoIdentifier(repo globalEntities.Repository) string {
+	if repo.ID != "" {
+		return repo.ID
+	}
+	log.WithField("repoName", repo.Name).
+		Warn("Repository ID is empty, falling back to repository name for API calls")
+	return repo.Name
+}
+
+// ensureRefsPrefix prepends "refs/heads/" to a branch name if it does not already start with "refs/".
+// The Azure DevOps API requires fully qualified ref names (e.g. "refs/heads/main").
+func ensureRefsPrefix(branch string) string {
+	if strings.HasPrefix(branch, "refs/") {
+		return branch
+	}
+	return "refs/heads/" + branch
+}
 
 func (p *Provider) CreatePullRequest(
 	ctx context.Context,
@@ -15,17 +38,18 @@ func (p *Provider) CreatePullRequest(
 	input globalEntities.PullRequestInput,
 ) (*globalEntities.PullRequest, error) {
 	baseURL := buildBaseURL(repo.Organization)
+	repoIdentifier := resolveRepoIdentifier(repo)
 
 	body := map[string]any{
-		"sourceRefName": input.SourceBranch,
-		"targetRefName": input.TargetBranch,
+		"sourceRefName": ensureRefsPrefix(input.SourceBranch),
+		"targetRefName": ensureRefsPrefix(input.TargetBranch),
 		"title":         input.Title,
 		"description":   input.Description,
 	}
 
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pullrequests?api-version=%s",
-		repo.Project, repo.ID, apiVersion,
+		repo.Project, repoIdentifier, apiVersion,
 	)
 
 	resp, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, body)
@@ -56,7 +80,7 @@ func (p *Provider) CreatePullRequest(
 		}
 		updateEndpoint := fmt.Sprintf(
 			"/%s/_apis/git/repositories/%s/pullrequests/%d?api-version=%s",
-			repo.Project, repo.ID, pr.ID, apiVersion,
+			repo.Project, repoIdentifier, pr.ID, apiVersion,
 		)
 		_, _ = p.doRequest(ctx, baseURL, http.MethodPatch, updateEndpoint, updateBody)
 	}
@@ -70,11 +94,12 @@ func (p *Provider) PullRequestExists(
 	sourceBranch string,
 ) (bool, error) {
 	baseURL := buildBaseURL(repo.Organization)
+	repoIdentifier := resolveRepoIdentifier(repo)
 	endpoint := fmt.Sprintf(
-		"/%s/_apis/git/repositories/%s/pullrequests?searchCriteria.sourceRefName=refs/heads/%s&searchCriteria.status=active&api-version=%s",
+		"/%s/_apis/git/repositories/%s/pullrequests?searchCriteria.sourceRefName=%s&searchCriteria.status=active&api-version=%s",
 		repo.Project,
-		repo.ID,
-		sourceBranch,
+		repoIdentifier,
+		ensureRefsPrefix(sourceBranch),
 		apiVersion,
 	)
 

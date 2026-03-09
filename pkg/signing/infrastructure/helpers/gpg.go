@@ -92,27 +92,24 @@ func resolveGPGKeyFormat(data []byte) ([]byte, error) {
 		return trimmed, nil
 	}
 
-	// try base64 decode
-	decoded, err := base64.StdEncoding.DecodeString(string(trimmed))
+	// try base64 decode (strip internal newlines/spaces from line-wrapped encodings)
+	cleaned := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+			return -1
+		}
+		return r
+	}, string(trimmed))
+	decoded, err := base64.StdEncoding.DecodeString(cleaned)
 	if err == nil && strings.HasPrefix(string(bytes.TrimSpace(decoded)), armoredPGPHeader) {
 		log.Info("GPG key was base64-encoded; decoded successfully")
 		return bytes.TrimSpace(decoded), nil
 	}
 
 	return nil, fmt.Errorf(
-		"GPG key file does not contain valid armored PGP data (file size: %d bytes, "+
-			"first bytes: %q); ensure the key is exported with: "+
-			"gpg --export-secret-key --armor <KEY_ID>",
-		len(trimmed), truncateBytes(trimmed, 40),
+		"GPG key file does not contain valid armored PGP data (file size: %d bytes); "+
+			"ensure the key is exported with: gpg --export-secret-key --armor <KEY_ID>",
+		len(trimmed),
 	)
-}
-
-// truncateBytes returns at most n bytes from data for diagnostic output.
-func truncateBytes(data []byte, n int) []byte {
-	if len(data) <= n {
-		return data
-	}
-	return data[:n]
 }
 
 // GetGpgKey returns a GPG key entity from the given reader, decrypting it with the provided passphrase.

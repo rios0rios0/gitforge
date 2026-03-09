@@ -19,7 +19,7 @@ func (p *Provider) ListOpenPullRequests(
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pullrequests?searchCriteria.status=active&api-version=%s",
-		repo.Project, repo.ID, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), apiVersion,
 	)
 
 	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
@@ -93,7 +93,7 @@ func (p *Provider) GetPullRequestFiles(
 	// get the latest iteration
 	iterEndpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pullrequests/%d/iterations?api-version=%s",
-		repo.Project, repo.ID, prID, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
 	)
 
 	iterResp, err := p.doRequest(ctx, baseURL, http.MethodGet, iterEndpoint, nil)
@@ -119,7 +119,7 @@ func (p *Provider) GetPullRequestFiles(
 	// get changes for the latest iteration
 	changesEndpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pullrequests/%d/iterations/%d/changes?api-version=%s",
-		repo.Project, repo.ID, prID, latestIter, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), prID, latestIter, apiVersion,
 	)
 
 	changesResp, err := p.doRequest(ctx, baseURL, http.MethodGet, changesEndpoint, nil)
@@ -162,7 +162,7 @@ func (p *Provider) PostPullRequestComment(
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pullrequests/%d/threads?api-version=%s",
-		repo.Project, repo.ID, prID, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
 	)
 
 	threadBody := map[string]any{
@@ -195,7 +195,7 @@ func (p *Provider) PostPullRequestThreadComment(
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pullrequests/%d/threads?api-version=%s",
-		repo.Project, repo.ID, prID, apiVersion,
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
 	)
 
 	threadBody := map[string]any{

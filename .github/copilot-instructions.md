@@ -256,10 +256,12 @@ ForgeProvider (base)
 **Git** (`pkg/git/infrastructure`):
 - `NewGitOperations(finder AdapterFinder) *GitOperations` -- creates a GitOperations instance
 - `OpenRepo(projectPath string) (*git.Repository, error)` -- opens a local git repository
+- `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from remote URL and pushes with auth retry
 
 **Signing** (`pkg/signing/infrastructure`):
 - `NewGPGSigner(key *openpgp.Entity) *GPGSigner` -- creates a GPG commit signer
 - `NewSSHSigner(keyPath string) *SSHSigner` -- creates an SSH commit signer
+- `ResolveSignerFromGitConfig(gpgSign, signingFormat, signingKey, gpgKeyPath, gpgPassphrase, appName) (CommitSigner, error)` -- resolves GPG/SSH signer from git config values
 
 **Version helpers** (`pkg/global/domain/helpers`):
 - `SortVersionsDescending(versions []string)` -- sorts version strings descending by semver
@@ -271,8 +273,8 @@ This library is imported by two projects:
 
 | Project        | What it uses                                                                                                                          |
 |----------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| **autobump**   | Changelog processing, git operations, GPG/SSH signing, provider adapters (via `LocalGitAuthProvider`), config loading                 |
-| **autoupdate** | Provider implementations (via `FileAccessProvider`), config loading, changelog insertion, registry, `ReviewProvider` (via autoreview) |
+| **autobump**   | Changelog processing, git operations, GPG/SSH signing, push with transport detection, provider adapters (via `LocalGitAuthProvider`), config loading |
+| **autoupdate** | Provider implementations (via `FileAccessProvider`), config loading, changelog insertion, registry, push with transport detection, signing, `ReviewProvider` (via autoreview) |
 
 ### Adding New Shared Functionality
 

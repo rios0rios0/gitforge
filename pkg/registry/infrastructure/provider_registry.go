@@ -98,6 +98,20 @@ func (r *ProviderRegistry) GetReviewProvider(
 	return reviewProvider, nil
 }
 
+// ServiceTypeToProviderName maps a ServiceType to the provider name string
+// used for registry lookups. Returns empty string for unknown service types.
+//
+// Exported for use by autobump (github.com/rios0rios0/autobump) and
+// autoupdate (github.com/rios0rios0/autoupdate).
+func ServiceTypeToProviderName(serviceType globalEntities.ServiceType) string {
+	providerNames := map[globalEntities.ServiceType]string{
+		globalEntities.GITHUB:      "github",
+		globalEntities.GITLAB:      "gitlab",
+		globalEntities.AZUREDEVOPS: "azuredevops",
+	}
+	return providerNames[serviceType]
+}
+
 // Names returns the list of registered provider factory names.
 func (r *ProviderRegistry) Names() []string {
 	names := make([]string, 0, len(r.factories))

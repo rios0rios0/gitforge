@@ -29,8 +29,8 @@ func ResolveSignerFromGitConfig(
 		return nil, nil //nolint:nilnil // signing disabled: nil signer with no error is intentional
 	}
 
-	switch {
-	case signingFormat == "ssh":
+	switch signingFormat {
+	case "ssh":
 		logger.Info("Signing commit with SSH key")
 		sshKeyPath, err := helpers.ReadSSHSigningKey(signingKey)
 		if err != nil {

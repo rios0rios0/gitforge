@@ -104,12 +104,16 @@ func (r *ProviderRegistry) GetReviewProvider(
 // Exported for use by autobump (github.com/rios0rios0/autobump) and
 // autoupdate (github.com/rios0rios0/autoupdate).
 func ServiceTypeToProviderName(serviceType globalEntities.ServiceType) string {
-	providerNames := map[globalEntities.ServiceType]string{
-		globalEntities.GITHUB:      "github",
-		globalEntities.GITLAB:      "gitlab",
-		globalEntities.AZUREDEVOPS: "azuredevops",
+	switch serviceType {
+	case globalEntities.GITHUB:
+		return "github"
+	case globalEntities.GITLAB:
+		return "gitlab"
+	case globalEntities.AZUREDEVOPS:
+		return "azuredevops"
+	default:
+		return ""
 	}
-	return providerNames[serviceType]
 }
 
 // Names returns the list of registered provider factory names.

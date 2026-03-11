@@ -2,6 +2,8 @@ package infrastructure
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	logger "github.com/sirupsen/logrus"
 
@@ -23,7 +25,7 @@ import (
 func ResolveSignerFromGitConfig(
 	gpgSign, signingFormat, signingKey, gpgKeyPath, gpgPassphrase, appName string,
 ) (globalEntities.CommitSigner, error) {
-	if gpgSign != "true" {
+	if !isGitConfigTrue(gpgSign) {
 		return nil, nil
 	}
 
@@ -37,6 +39,9 @@ func ResolveSignerFromGitConfig(
 		return NewSSHSigner(sshKeyPath), nil
 
 	default:
+		if signingKey == "" {
+			return nil, errors.New("user.signingkey is required for GPG signing")
+		}
 		logger.Info("Signing commit with GPG key")
 		gpgKeyReader, err := helpers.GetGpgKeyReader(
 			context.Background(), signingKey, gpgKeyPath, appName,
@@ -50,5 +55,16 @@ func ResolveSignerFromGitConfig(
 			return nil, err
 		}
 		return NewGPGSigner(signKey), nil
+	}
+}
+
+// isGitConfigTrue interprets a git config boolean value.
+// Git accepts "true", "yes", "on", and "1" (case-insensitive) as truthy.
+func isGitConfigTrue(value string) bool {
+	switch strings.ToLower(value) {
+	case "true", "yes", "on", "1":
+		return true
+	default:
+		return false
 	}
 }

@@ -26,7 +26,7 @@ func ResolveSignerFromGitConfig(
 	gpgSign, signingFormat, signingKey, gpgKeyPath, gpgPassphrase, appName string,
 ) (globalEntities.CommitSigner, error) {
 	if !isGitConfigTrue(gpgSign) {
-		return nil, nil
+		return nil, nil //nolint:nilnil // signing disabled: nil signer with no error is intentional
 	}
 
 	switch {

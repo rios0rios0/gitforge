@@ -16,11 +16,12 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-11
+
 ### Added
 
-- added `ResolveSignerFromGitConfig()` in `pkg/signing/infrastructure/` to centralize commit signer resolution (GPG/SSH) from git config values, eliminating duplication across autobump and autoupdate
 - added `PushWithTransportDetection()` in `pkg/git/infrastructure/` to auto-detect SSH/HTTPS transport from remote URL and push with auth method retry, eliminating duplication across autobump and autoupdate
-- added `ServiceTypeToProviderName()` in `pkg/registry/infrastructure/` to map `ServiceType` to provider name strings, eliminating duplication across autobump and autoupdate
+- added `ResolveSignerFromGitConfig()` in `pkg/signing/infrastructure/` to centralize commit signer resolution (GPG/SSH) from git config values, eliminating duplication across autobump and autoupdate
 
 ## [0.2.0] - 2026-03-09
 

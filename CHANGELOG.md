@@ -22,6 +22,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 - added `PushWithTransportDetection()` in `pkg/git/infrastructure/` to auto-detect SSH/HTTPS transport from remote URL and push with auth method retry, eliminating duplication across autobump and autoupdate
 - added `ResolveSignerFromGitConfig()` in `pkg/signing/infrastructure/` to centralize commit signer resolution (GPG/SSH) from git config values, eliminating duplication across autobump and autoupdate
+- added `ServiceTypeToProviderName()` in `pkg/registry/infrastructure/provider_registry.go` to map `ServiceType` values to registry provider names shared by consumer projects
 
 ## [0.2.0] - 2026-03-09
 

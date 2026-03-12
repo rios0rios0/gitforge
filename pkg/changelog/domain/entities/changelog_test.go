@@ -729,4 +729,158 @@ func TestDeduplicateEntriesSemanticOverlap(t *testing.T) {
 		// then
 		assert.Len(t, result, 1)
 	})
+
+	t.Run("should keep entries that differ only in backtick content", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		entries := []string{
+			"- deprecated `batch` subcommand (use `run` instead; hidden alias with warning)",
+			"- deprecated `discover` subcommand (use `run` instead; hidden alias with warning)",
+		}
+
+		// when
+		result := domain.DeduplicateEntries(entries)
+
+		// then
+		assert.Len(t, result, 2)
+	})
+
+	t.Run("should keep entries with similar structure but different subjects", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		entries := []string{
+			"- changed `serviceTypeName()` to use gitforge's shared `ServiceTypeToProviderName()`, eliminating duplicated provider name mapping",
+			"- changed commit signing resolution to use gitforge's shared `ResolveSignerFromGitConfig()`, eliminating duplicated GPG/SSH signer logic",
+		}
+
+		// when
+		result := domain.DeduplicateEntries(entries)
+
+		// then
+		assert.Len(t, result, 2)
+	})
+}
+
+func TestReclassifyEntriesByVerb(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should move entry starting with removed to Removed section", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		sections := map[string]*[]string{
+			"Added":      {},
+			"Changed":    {"- removed old feature X"},
+			"Deprecated": {},
+			"Removed":    {},
+			"Fixed":      {},
+			"Security":   {},
+		}
+
+		// when
+		domain.ReclassifyEntriesByVerb(sections)
+
+		// then
+		assert.Empty(t, *sections["Changed"])
+		assert.Len(t, *sections["Removed"], 1)
+		assert.Equal(t, "- removed old feature X", (*sections["Removed"])[0])
+	})
+
+	t.Run("should move entry starting with added to Added section", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		sections := map[string]*[]string{
+			"Added":      {},
+			"Changed":    {"- added new endpoint for users"},
+			"Deprecated": {},
+			"Removed":    {},
+			"Fixed":      {},
+			"Security":   {},
+		}
+
+		// when
+		domain.ReclassifyEntriesByVerb(sections)
+
+		// then
+		assert.Empty(t, *sections["Changed"])
+		assert.Len(t, *sections["Added"], 1)
+	})
+
+	t.Run("should not reclassify breaking change entries", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		sections := map[string]*[]string{
+			"Added":      {},
+			"Changed":    {"- **BREAKING CHANGE:** removed deprecated API"},
+			"Deprecated": {},
+			"Removed":    {},
+			"Fixed":      {},
+			"Security":   {},
+		}
+
+		// when
+		domain.ReclassifyEntriesByVerb(sections)
+
+		// then
+		assert.Len(t, *sections["Changed"], 1)
+		assert.Empty(t, *sections["Removed"])
+	})
+
+	t.Run("should keep entry in correct section when verb matches", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		sections := map[string]*[]string{
+			"Added":      {"- added new feature"},
+			"Changed":    {"- changed behavior"},
+			"Deprecated": {},
+			"Removed":    {"- removed old code"},
+			"Fixed":      {"- fixed a bug"},
+			"Security":   {},
+		}
+
+		// when
+		domain.ReclassifyEntriesByVerb(sections)
+
+		// then
+		assert.Len(t, *sections["Added"], 1)
+		assert.Len(t, *sections["Changed"], 1)
+		assert.Len(t, *sections["Removed"], 1)
+		assert.Len(t, *sections["Fixed"], 1)
+	})
+}
+
+func TestUpdateSectionPreservesOrder(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should preserve original entry order within sections", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		unreleasedSection := []string{
+			"## [Unreleased]",
+			"### Changed",
+			"- changed zebra handling logic",
+			"- changed alpha sorting behavior",
+			"- changed middle component rendering",
+		}
+		helper := domain.NewChangelog([]string{"## [1.0.0] - 2024-01-01"})
+		nextVersion, _ := helper.FindLatestVersion()
+
+		// when
+		newSection, _, err := domain.UpdateSection(unreleasedSection, *nextVersion)
+
+		// then
+		require.NoError(t, err)
+		joined := strings.Join(newSection, "\n")
+		zebraIdx := strings.Index(joined, "zebra")
+		alphaIdx := strings.Index(joined, "alpha")
+		middleIdx := strings.Index(joined, "middle")
+		assert.Less(t, zebraIdx, alphaIdx, "zebra should appear before alpha (original order preserved)")
+		assert.Less(t, alphaIdx, middleIdx, "alpha should appear before middle (original order preserved)")
+	})
 }

@@ -16,13 +16,15 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
-### Changed
-
-- changed the Go version to `1.26.1` and updated all module dependencies
+## [0.4.0] - 2026-03-12
 
 ### Added
 
 - added `ResolveTokenFromEnv` and `TokenEnvHint` helpers in `pkg/config/domain/helpers/` for provider-specific token resolution from environment variables, eliminating duplication across autobump and autoupdate
+
+### Changed
+
+- changed the Go version to `1.26.1` and updated all module dependencies
 
 ## [0.3.0] - 2026-03-11
 

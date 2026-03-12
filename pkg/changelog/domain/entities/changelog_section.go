@@ -189,7 +189,13 @@ func ReclassifyEntriesByVerb(sections map[string]*[]string) {
 				continue
 			}
 
-			firstWord := strings.ToLower(strings.SplitN(trimmed, " ", 2)[0])
+			words := strings.Fields(trimmed)
+			if len(words) == 0 {
+				kept = append(kept, entry)
+				continue
+			}
+
+			firstWord := strings.ToLower(words[0])
 			targetSection, hasMapping := verbSectionMap[firstWord]
 
 			if hasMapping && targetSection != currentKey {

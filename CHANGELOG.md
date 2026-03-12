@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-12
+
 ### Added
 
 - added `ResolveTokenFromEnv` and `TokenEnvHint` helpers in `pkg/config/domain/helpers/` for provider-specific token resolution from environment variables, eliminating duplication across autobump and autoupdate

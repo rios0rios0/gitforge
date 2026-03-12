@@ -101,6 +101,7 @@ func (c *Changelog) ProcessNew() (*semver.Version, []string, error) {
 		for _, section := range sections {
 			*section = DeduplicateEntries(*section)
 		}
+		ReclassifyEntriesByVerb(sections)
 
 		hasContent := false
 		for _, section := range sections {

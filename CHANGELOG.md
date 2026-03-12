@@ -16,6 +16,19 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added verb-based entry reclassification in changelog processing, automatically moving entries to the correct section based on their leading verb (e.g., `- removed X` under Changed moves to Removed)
+
+### Changed
+
+- changed backtick content handling in changelog deduplication to preserve text inside backticks instead of stripping it entirely, preventing false-positive duplicate detection for entries differing only in backtick content
+- changed deduplication overlap threshold from 0.6 to 0.9 to prevent aggressive false-positive merging of distinct changelog entries
+
+### Removed
+
+- removed alphabetical sorting of changelog entries within sections, preserving the original order written by users
+
 ## [0.4.0] - 2026-03-12
 
 ### Added

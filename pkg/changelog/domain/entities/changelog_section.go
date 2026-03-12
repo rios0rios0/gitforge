@@ -3,7 +3,6 @@ package entities
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -133,6 +132,10 @@ func UpdateSection(
 	for _, section := range sections {
 		*section = DeduplicateEntries(*section)
 	}
+	ReclassifyEntriesByVerb(sections)
+	for _, section := range sections {
+		*section = DeduplicateEntries(*section)
+	}
 	majorChanges, minorChanges, patchChanges = recountChanges(sections)
 
 	if majorChanges == 0 && minorChanges == 0 && patchChanges == 0 {
@@ -148,12 +151,64 @@ func UpdateSection(
 		nextVersion = nextVersion.IncPatch()
 	}
 
-	for _, section := range sections {
-		sort.Strings(*section)
-	}
-
 	newSection := MakeNewSections(sections, nextVersion)
 	return newSection, &nextVersion, nil
+}
+
+// verbSectionMap maps leading verbs in changelog entries to the correct section name.
+//
+//nolint:gochecknoglobals // constant-like lookup table
+var verbSectionMap = map[string]string{
+	"removed":    "Removed",
+	"added":      "Added",
+	"fixed":      "Fixed",
+	"deprecated": "Deprecated",
+}
+
+// sectionKeys defines the fixed iteration order for changelog sections.
+//
+//nolint:gochecknoglobals // constant-like ordered list
+var sectionKeys = []string{"Added", "Changed", "Deprecated", "Fixed", "Removed", "Security"}
+
+// ReclassifyEntriesByVerb moves entries to the correct section based on their leading verb.
+// For example, an entry "- removed old feature" under "### Changed" is moved to "### Removed".
+func ReclassifyEntriesByVerb(sections map[string]*[]string) {
+	for _, currentKey := range sectionKeys {
+		section, ok := sections[currentKey]
+		if !ok {
+			continue
+		}
+
+		var kept []string
+		for _, entry := range *section {
+			trimmed := strings.TrimSpace(entry)
+			trimmed = strings.TrimPrefix(trimmed, "- ")
+
+			if strings.HasPrefix(trimmed, "**BREAKING CHANGE:**") {
+				kept = append(kept, entry)
+				continue
+			}
+
+			words := strings.Fields(trimmed)
+			if len(words) == 0 {
+				kept = append(kept, entry)
+				continue
+			}
+
+			firstWord := strings.ToLower(words[0])
+			targetSection, hasMapping := verbSectionMap[firstWord]
+
+			if hasMapping && targetSection != currentKey {
+				if target, targetOk := sections[targetSection]; targetOk {
+					*target = append(*target, entry)
+					continue
+				}
+			}
+
+			kept = append(kept, entry)
+		}
+		*section = kept
+	}
 }
 
 // recountChanges re-counts major/minor/patch changes from deduplicated sections.

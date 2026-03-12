@@ -8,7 +8,7 @@ import (
 )
 
 // deduplicationOverlapThreshold is the minimum overlap ratio to consider two entries as duplicates.
-const deduplicationOverlapThreshold = 0.6
+const deduplicationOverlapThreshold = 0.9
 
 // stopWords are common words stripped during tokenization for similarity comparison.
 //
@@ -32,7 +32,9 @@ var changelogVersionPattern = regexp.MustCompile(`v?\d+\.\d+(?:\.\d+)?`)
 func normalizeEntry(entry string) string {
 	s := strings.TrimSpace(entry)
 	s = strings.TrimPrefix(s, "- ")
-	s = backtickPattern.ReplaceAllString(s, "")
+	s = backtickPattern.ReplaceAllStringFunc(s, func(match string) string {
+		return match[1 : len(match)-1]
+	})
 	s = changelogVersionPattern.ReplaceAllString(s, "")
 	s = strings.ToLower(s)
 	return strings.Join(strings.Fields(s), " ")

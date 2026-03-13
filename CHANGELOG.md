@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-13
+
 ### Added
 
 - added verb-based entry reclassification in changelog processing, automatically moving entries to the correct section based on their leading verb (e.g., `- removed X` under Changed moves to Removed)

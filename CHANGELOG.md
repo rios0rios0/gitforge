@@ -24,6 +24,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 - changed backtick content handling in changelog deduplication to preserve text inside backticks instead of stripping it entirely, preventing false-positive duplicate detection for entries differing only in backtick content
 - changed deduplication overlap threshold from 0.6 to 0.9 to prevent aggressive false-positive merging of distinct changelog entries
+- changed the Go module dependencies to their latest versions
 
 ### Removed
 

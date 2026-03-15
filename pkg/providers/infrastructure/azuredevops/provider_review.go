@@ -228,6 +228,96 @@ func (p *Provider) PostPullRequestThreadComment(
 	return nil
 }
 
+func (p *Provider) GetPullRequestCheckStatus(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) (bool, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/statuses?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to get pull request statuses: %w", err)
+	}
+
+	var result struct {
+		Value []struct {
+			State string `json:"state"`
+		} `json:"value"`
+	}
+	if unmarshalErr := json.Unmarshal(resp, &result); unmarshalErr != nil {
+		return false, fmt.Errorf("failed to parse statuses response: %w", unmarshalErr)
+	}
+
+	// if no statuses, consider passed (no CI configured)
+	if len(result.Value) == 0 {
+		return true, nil
+	}
+
+	for _, status := range result.Value {
+		if status.State != "succeeded" {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (p *Provider) MergePullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+	_ string,
+) error {
+	baseURL := buildBaseURL(repo.Organization)
+
+	// first get the PR to obtain the last merge source commit
+	getEndpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	prResp, err := p.doRequest(ctx, baseURL, http.MethodGet, getEndpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get pull request for merge: %w", err)
+	}
+
+	var prData struct {
+		LastMergeSourceCommit struct {
+			CommitID string `json:"commitId"`
+		} `json:"lastMergeSourceCommit"`
+	}
+	if unmarshalErr := json.Unmarshal(prResp, &prData); unmarshalErr != nil {
+		return fmt.Errorf("failed to parse pull request data: %w", unmarshalErr)
+	}
+
+	// complete the PR
+	updateEndpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	body := map[string]any{
+		"status":                "completed",
+		"lastMergeSourceCommit": prData.LastMergeSourceCommit,
+		"completionOptions": map[string]any{
+			"deleteSourceBranch": true,
+			"mergeStrategy":     1, // squash
+		},
+	}
+
+	_, err = p.doRequest(ctx, baseURL, "PATCH", updateEndpoint, body)
+	if err != nil {
+		return fmt.Errorf("failed to complete pull request: %w", err)
+	}
+
+	return nil
+}
+
 func mapADOChangeType(changeType string) string {
 	changeTypeMap := map[string]string{
 		"add":    "added",

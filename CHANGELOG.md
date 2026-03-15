@@ -16,6 +16,11 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added `GetPullRequestCheckStatus()` to `ReviewProvider` for querying CI check/status results on a PR (GitHub and Azure DevOps)
+- added `MergePullRequest()` to `ReviewProvider` for merging/completing a pull request (GitHub and Azure DevOps)
+
 ## [0.5.0] - 2026-03-13
 
 ### Added

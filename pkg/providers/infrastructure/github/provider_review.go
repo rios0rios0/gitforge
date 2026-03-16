@@ -119,6 +119,85 @@ func (p *Provider) PostPullRequestComment(
 	return nil
 }
 
+func (p *Provider) GetPullRequestCheckStatus(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) (bool, error) {
+	// get the PR to find the head SHA
+	pr, _, err := p.client.PullRequests.Get(ctx, repo.Organization, repo.Name, prID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get pull request: %w", err)
+	}
+
+	headSHA := pr.GetHead().GetSHA()
+
+	// get combined status for the head commit
+	combinedStatus, _, err := p.client.Repositories.GetCombinedStatus(
+		ctx, repo.Organization, repo.Name, headSHA, nil,
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to get combined status: %w", err)
+	}
+
+	// also check check suites (GitHub Actions uses check runs, not commit statuses)
+	checkSuites, _, err := p.client.Checks.ListCheckSuitesForRef(
+		ctx, repo.Organization, repo.Name, headSHA,
+		&gh.ListCheckSuiteOptions{},
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to list check suites: %w", err)
+	}
+
+	// if there are no statuses and no check suites, consider it as passed (no CI configured)
+	hasStatuses := combinedStatus.GetTotalCount() > 0
+	hasCheckSuites := checkSuites.GetTotal() > 0
+
+	if !hasStatuses && !hasCheckSuites {
+		return true, nil
+	}
+
+	// check combined status (legacy status API)
+	if hasStatuses && combinedStatus.GetState() != "success" {
+		return false, nil
+	}
+
+	// check all check suites (GitHub Actions)
+	for _, suite := range checkSuites.CheckSuites {
+		if suite.GetStatus() != "completed" {
+			return false, nil
+		}
+		if suite.GetConclusion() != "success" && suite.GetConclusion() != "neutral" {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (p *Provider) MergePullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+	strategy string,
+) error {
+	mergeMethod := strategy
+	if mergeMethod == "" {
+		mergeMethod = "squash"
+	}
+
+	_, _, err := p.client.PullRequests.Merge(
+		ctx, repo.Organization, repo.Name, prID,
+		"",
+		&gh.PullRequestOptions{MergeMethod: mergeMethod},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to merge pull request: %w", err)
+	}
+
+	return nil
+}
+
 func (p *Provider) PostPullRequestThreadComment(
 	ctx context.Context,
 	repo globalEntities.Repository,

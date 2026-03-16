@@ -16,6 +16,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed SSH signing failing when `user.signingkey` is an inline public key string (e.g. `ssh-ed25519 AAAAC3...`) used by ssh-agent workflows (1Password, YubiKey, WSL interop); now detects inline keys and signs via the SSH agent with `ssh-keygen -U`
+
 ## [0.6.0] - 2026-03-16
 
 ### Added

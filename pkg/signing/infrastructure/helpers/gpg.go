@@ -150,10 +150,16 @@ func GetGpgKey(gpgKeyReader io.Reader, passphrase string) (*openpgp.Entity, erro
 // promptPassphrase reads a passphrase from the terminal, falling back to empty passphrase
 // when no TTY is available (e.g. in CI environments).
 func promptPassphrase() ([]byte, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		log.Info("No TTY detected (CI environment), using empty passphrase")
+		return []byte(""), nil
+	}
+
 	fmt.Print("Enter the passphrase for your GPG key: ") //nolint:forbidigo // this line is not for debugging
-	passphrase, err := term.ReadPassword(0)
+	passphrase, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err != nil {
 		if errors.Is(err, syscall.ENOTTY) {
+			log.Info("No TTY detected, using empty passphrase")
 			return []byte(""), nil
 		}
 		return nil, fmt.Errorf("failed to read passphrase: %w", err)

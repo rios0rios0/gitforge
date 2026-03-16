@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-16
+
 ### Added
 
 - added `GetPullRequestCheckStatus()` to `ReviewProvider` for querying CI check/status results on a PR (GitHub and Azure DevOps)

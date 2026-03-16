@@ -271,7 +271,7 @@ func (p *Provider) MergePullRequest(
 	ctx context.Context,
 	repo globalEntities.Repository,
 	prID int,
-	_ string,
+	strategy string,
 ) error {
 	baseURL := buildBaseURL(repo.Organization)
 
@@ -305,17 +305,37 @@ func (p *Provider) MergePullRequest(
 		"status":                "completed",
 		"lastMergeSourceCommit": prData.LastMergeSourceCommit,
 		"completionOptions": map[string]any{
-			"deleteSourceBranch": true,
-			"mergeStrategy":     1, // squash
+			"deleteSourceBranch": false,
+			"mergeStrategy":      mapADOMergeStrategy(strategy),
 		},
 	}
 
-	_, err = p.doRequest(ctx, baseURL, "PATCH", updateEndpoint, body)
+	_, err = p.doRequest(ctx, baseURL, http.MethodPatch, updateEndpoint, body)
 	if err != nil {
 		return fmt.Errorf("failed to complete pull request: %w", err)
 	}
 
 	return nil
+}
+
+const (
+	adoMergeStrategySquash        = 1
+	adoMergeStrategyNoFastForward = 2
+	adoMergeStrategyRebase        = 3
+)
+
+func mapADOMergeStrategy(strategy string) int {
+	strategyMap := map[string]int{
+		"squash": adoMergeStrategySquash,
+		"merge":  adoMergeStrategyNoFastForward,
+		"rebase": adoMergeStrategyRebase,
+	}
+
+	if val, ok := strategyMap[strategy]; ok {
+		return val
+	}
+
+	return adoMergeStrategySquash
 }
 
 func mapADOChangeType(changeType string) string {

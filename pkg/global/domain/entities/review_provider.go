@@ -32,4 +32,14 @@ type ReviewProvider interface {
 		ctx context.Context, repo Repository, prID int,
 		filePath string, line int, body string,
 	) error
+
+	// GetPullRequestCheckStatus returns whether all CI checks/statuses have passed for a pull request.
+	GetPullRequestCheckStatus(
+		ctx context.Context, repo Repository, prID int,
+	) (bool, error)
+
+	// MergePullRequest merges a pull request using the specified strategy (e.g. "merge", "squash", "rebase").
+	MergePullRequest(
+		ctx context.Context, repo Repository, prID int, strategy string,
+	) error
 }

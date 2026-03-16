@@ -21,6 +21,11 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - added `GetPullRequestCheckStatus()` to `ReviewProvider` for querying CI check/status results on a PR (GitHub and Azure DevOps)
 - added `MergePullRequest()` to `ReviewProvider` for merging/completing a pull request (GitHub and Azure DevOps)
 
+### Fixed
+
+- fixed GPG passphrase prompt breaking CI logs by detecting non-TTY environments before printing
+- fixed branch checkout failing in CI after native `git clone` by using forced checkout for newly created branches
+
 ## [0.5.0] - 2026-03-13
 
 ### Added

@@ -868,6 +868,46 @@ func TestCloneRepo(t *testing.T) {
 		assert.Contains(t, err.Error(), "no authentication methods provided")
 	})
 
+	t.Run("should not leak credentials in error messages when URL contains userinfo", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
+		dir := t.TempDir()
+		urlWithCreds := "https://x-access-token:ghp_secretToken123@github.com/org/repo.git"
+
+		// when
+		_, err := ops.CloneRepo(urlWithCreds, dir, nil)
+
+		// then
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "ghp_secretToken123")
+		assert.NotContains(t, err.Error(), "x-access-token")
+		assert.Contains(t, err.Error(), "github.com/org/repo.git")
+	})
+
+	t.Run("should not leak credentials in error messages when all auth methods fail", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
+		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().
+			WithAdapterByURL(adapter).
+			WithAdapterByServiceType(adapter).
+			Build().(*doubles.AdapterFinderStub))
+		dir := t.TempDir()
+		urlWithCreds := "https://x-access-token:ghp_secretToken123@github.com/org/repo.git"
+		authMethods := []transport.AuthMethod{&doubles.AuthStub{}}
+
+		// when
+		_, err := ops.CloneRepo(urlWithCreds, dir, authMethods)
+
+		// then
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "ghp_secretToken123")
+		assert.NotContains(t, err.Error(), "x-access-token")
+	})
+
 	t.Run("should return error when all auth methods fail", func(t *testing.T) {
 		t.Parallel()
 

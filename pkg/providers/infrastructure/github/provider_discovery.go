@@ -2,7 +2,9 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 
 	gh "github.com/google/go-github/v66/github"
@@ -16,8 +18,12 @@ func (p *Provider) DiscoverRepositories(
 ) ([]globalEntities.Repository, error) {
 	repos, err := p.discoverOrgRepos(ctx, org)
 	if err != nil {
-		log.Debugf("Not an organization %q, falling back to user repos: %v", org, err)
-		return p.discoverUserRepos(ctx, org)
+		var ghErr *gh.ErrorResponse
+		if errors.As(err, &ghErr) && ghErr.Response.StatusCode == http.StatusNotFound {
+			log.Debugf("Not an organization %q, falling back to user repos: %v", org, err)
+			return p.discoverUserRepos(ctx, org)
+		}
+		return nil, err
 	}
 	return repos, nil
 }

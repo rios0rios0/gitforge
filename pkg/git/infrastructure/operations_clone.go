@@ -29,7 +29,7 @@ func (o *GitOperations) CloneRepo(
 	cloneOptions := &git.CloneOptions{URL: cloneURL}
 
 	if len(authMethods) == 0 {
-		return nil, fmt.Errorf("no authentication methods provided for cloning %s", sanitizeURL(url))
+		return nil, fmt.Errorf("no authentication methods provided for cloning %s", sanitizeURL(cloneURL))
 	}
 
 	var lastErr error
@@ -37,14 +37,14 @@ func (o *GitOperations) CloneRepo(
 		cloneOptions.Auth = auth
 		repo, cloneErr := git.PlainClone(dir, false, cloneOptions)
 		if cloneErr == nil {
-			log.Infof("Successfully cloned %s", sanitizeURL(url))
+			log.Infof("Successfully cloned %s", sanitizeURL(cloneURL))
 			return repo, nil
 		}
 		lastErr = cloneErr
 	}
 
 	if lastErr != nil {
-		return nil, fmt.Errorf("failed to clone %s: %w", sanitizeURL(url), lastErr)
+		return nil, fmt.Errorf("failed to clone %s: %w", sanitizeURL(cloneURL), lastErr)
 	}
 	return nil, errors.New("failed to clone: no authentication methods attempted")
 }

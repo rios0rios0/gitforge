@@ -10,4 +10,6 @@ type Repository struct {
 	RemoteURL     string
 	SSHURL        string
 	ProviderName  string
+	IsFork        bool
+	IsArchived    bool
 }

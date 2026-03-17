@@ -16,6 +16,16 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added `IsFork` and `IsArchived` fields to `Repository` entity, populated from the GitHub API response
+- added URL credential sanitization in clone log messages to prevent token leakage in CI logs
+
+### Changed
+
+- changed GitHub user repo discovery from `Type: "owner"` to `Type: "all"` to include forks in discovery results
+- changed the org-fallback log message from `Warn` to `Debug` level to reduce noise for personal GitHub accounts
+
 ## [0.6.2] - 2026-03-17
 
 ### Fixed

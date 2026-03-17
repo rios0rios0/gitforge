@@ -78,7 +78,7 @@ func TestDiscoverRepositoriesInternal(t *testing.T) {
 		assert.Equal(t, providerName, repos[0].ProviderName)
 	})
 
-	t.Run("should fall back to user repos when org listing fails", func(t *testing.T) {
+	t.Run("should fall back to user repos when org listing returns 404", func(t *testing.T) {
 		t.Parallel()
 
 		// given
@@ -112,6 +112,28 @@ func TestDiscoverRepositoriesInternal(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, repos, 1)
 		assert.Equal(t, "user-repo", repos[0].Name)
+	})
+
+	t.Run("should return error when org listing fails with non-404 status", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /orgs/my-org/repos", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message": "Internal Server Error"}`))
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		repos, err := p.DiscoverRepositories(context.Background(), "my-org")
+
+		// then
+		require.Error(t, err)
+		assert.Nil(t, repos)
 	})
 }
 

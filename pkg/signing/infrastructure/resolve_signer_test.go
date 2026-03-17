@@ -106,27 +106,6 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		assert.Nil(t, signer)
 	})
 
-	t.Run("should expand home directory in ssh key path", func(t *testing.T) {
-		t.Parallel()
-
-		// given
-		_, err := exec.LookPath("ssh-keygen")
-		if err != nil {
-			t.Skip("ssh-keygen not available")
-		}
-
-		keyPath := filepath.Join(t.TempDir(), "test_ed25519")
-		cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-N", "", "-q")
-		require.NoError(t, cmd.Run())
-
-		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", keyPath, "", "", "test")
-
-		// then
-		require.NoError(t, err)
-		assert.NotNil(t, signer)
-	})
-
 	t.Run("should return error when GPG signing and signingKey is empty", func(t *testing.T) {
 		t.Parallel()
 

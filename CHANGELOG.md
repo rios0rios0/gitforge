@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-03-17
+
 ### Fixed
 
 - fixed GitHub SSH URL parsing to support SSH config aliases (e.g. `git@github.com-mine:owner/repo.git`) by using flexible host matching instead of exact prefix

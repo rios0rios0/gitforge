@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-17
+
 ### Added
 
 - added `IsFork` and `IsArchived` fields to `Repository` entity, populated from the GitHub API response

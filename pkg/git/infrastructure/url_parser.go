@@ -116,12 +116,15 @@ func ParsePullRequestURL(rawURL string) (*PullRequestURLInfo, error) {
 // --- GitHub remote URL matchers and parsers ---
 
 func matchesGitHubSSH(cleaned string) bool {
-	return strings.HasPrefix(cleaned, "git@github.com:")
+	return strings.HasPrefix(cleaned, "git@") && strings.Contains(cleaned, "github.com")
 }
 
 func parseGitHubSSHRemote(cleaned string) (*RemoteURLInfo, bool) {
-	path := strings.TrimPrefix(cleaned, "git@github.com:")
-	parts := strings.Split(path, "/")
+	_, after, ok := strings.Cut(cleaned, ":")
+	if !ok {
+		return nil, false
+	}
+	parts := strings.Split(after, "/")
 	if len(parts) < 2 { //nolint:mnd // owner/repo
 		return nil, false
 	}

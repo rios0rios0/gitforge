@@ -30,6 +30,23 @@ func TestParseRemoteURL(t *testing.T) {
 		assert.Empty(t, result.Project)
 	})
 
+	t.Run("should parse GitHub SSH URL with SSH config alias", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		rawURL := "git@github.com-mine:rios0rios0/autobump.git"
+
+		// when
+		result, err := infrastructure.ParseRemoteURL(rawURL)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, globalEntities.GITHUB, result.ServiceType)
+		assert.Equal(t, "rios0rios0", result.Organization)
+		assert.Equal(t, "autobump", result.RepoName)
+		assert.Empty(t, result.Project)
+	})
+
 	t.Run("should parse GitHub HTTPS URL", func(t *testing.T) {
 		t.Parallel()
 

@@ -12,18 +12,25 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// IsInlineSSHKey returns true when the signing key value is an inline public key string
-// (e.g. "ssh-ed25519 AAAAC3...") rather than a file path. This is the standard format
-// for ssh-agent-based workflows such as 1Password, YubiKey, and WSL interop.
-func IsInlineSSHKey(signingKey string) bool {
-	return strings.HasPrefix(signingKey, "ssh-") ||
-		strings.HasPrefix(signingKey, "ecdsa-") ||
-		strings.HasPrefix(signingKey, "sk-")
+// isInlineSSHKey returns true when the signing key value is an inline public key string
+// (e.g. "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host") rather than a file path.
+// Detection requires at least two whitespace-separated fields (key-type + base64 data)
+// and a recognized key-type prefix, preventing misclassification of file paths like
+// "./ssh-ed25519".
+func isInlineSSHKey(signingKey string) bool {
+	fields := strings.Fields(signingKey)
+	if len(fields) < 2 { //nolint:mnd // inline SSH keys always have at least key-type + data
+		return false
+	}
+	keyType := fields[0]
+	return strings.HasPrefix(keyType, "ssh-") ||
+		strings.HasPrefix(keyType, "ecdsa-") ||
+		strings.HasPrefix(keyType, "sk-")
 }
 
 // SignSSHCommit signs commit content using ssh-keygen and returns the SSH signature.
 // It uses `ssh-keygen -Y sign` which is the same mechanism Git uses internally.
-// When signingKeyRef is an inline public key (detected via IsInlineSSHKey), it writes
+// When signingKeyRef is an inline public key (detected via isInlineSSHKey), it writes
 // the key to a temp file and passes `-U` so ssh-keygen signs via the SSH agent.
 func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyRef string) (string, error) {
 	log.Info("Signing commit with SSH key")
@@ -77,7 +84,7 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyRef stri
 func buildSSHSignArgs(signingKeyRef, contentFile string) ([]string, func(), error) {
 	noop := func() {}
 
-	if !IsInlineSSHKey(signingKeyRef) {
+	if !isInlineSSHKey(signingKeyRef) {
 		args := []string{"-Y", "sign", "-f", signingKeyRef, "-n", "git", contentFile}
 		return args, noop, nil
 	}
@@ -117,7 +124,7 @@ func ReadSSHSigningKey(signingKey string) (string, error) {
 		return "", errors.New("no SSH signing key configured (user.signingkey is empty)")
 	}
 
-	if IsInlineSSHKey(signingKey) {
+	if isInlineSSHKey(signingKey) {
 		if os.Getenv("SSH_AUTH_SOCK") == "" {
 			return "", errors.New(
 				"SSH agent not available (SSH_AUTH_SOCK not set); required for inline key signing",

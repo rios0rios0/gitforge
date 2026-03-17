@@ -874,14 +874,14 @@ func TestCloneRepo(t *testing.T) {
 		// given
 		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		dir := t.TempDir()
-		urlWithCreds := "https://x-access-token:ghp_secretToken123@github.com/org/repo.git"
+		urlWithCreds := "https://x-access-token:$test-token@github.com/org/repo.git"
 
 		// when
 		_, err := ops.CloneRepo(urlWithCreds, dir, nil)
 
 		// then
 		require.Error(t, err)
-		assert.NotContains(t, err.Error(), "ghp_secretToken123")
+		assert.NotContains(t, err.Error(), "$test-token")
 		assert.NotContains(t, err.Error(), "x-access-token")
 		assert.Contains(t, err.Error(), "github.com/org/repo.git")
 	})
@@ -896,7 +896,7 @@ func TestCloneRepo(t *testing.T) {
 			WithAdapterByServiceType(adapter).
 			Build().(*doubles.AdapterFinderStub))
 		dir := t.TempDir()
-		urlWithCreds := "https://x-access-token:ghp_secretToken123@github.com/org/repo.git"
+		urlWithCreds := "https://x-access-token:$test-token@github.com/org/repo.git"
 		authMethods := []transport.AuthMethod{&doubles.AuthStub{}}
 
 		// when
@@ -904,7 +904,7 @@ func TestCloneRepo(t *testing.T) {
 
 		// then
 		require.Error(t, err)
-		assert.NotContains(t, err.Error(), "ghp_secretToken123")
+		assert.NotContains(t, err.Error(), "$test-token")
 		assert.NotContains(t, err.Error(), "x-access-token")
 	})
 

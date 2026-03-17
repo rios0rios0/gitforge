@@ -12,9 +12,27 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// isInlineSSHKey returns true when the signing key value is an inline public key string
+// (e.g. "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host") rather than a file path.
+// Detection requires at least two whitespace-separated fields (key-type + base64 data)
+// and a recognized key-type prefix, preventing misclassification of file paths like
+// "./ssh-ed25519".
+func isInlineSSHKey(signingKey string) bool {
+	fields := strings.Fields(signingKey)
+	if len(fields) < 2 { //nolint:mnd // inline SSH keys always have at least key-type + data
+		return false
+	}
+	keyType := fields[0]
+	return strings.HasPrefix(keyType, "ssh-") ||
+		strings.HasPrefix(keyType, "ecdsa-") ||
+		strings.HasPrefix(keyType, "sk-")
+}
+
 // SignSSHCommit signs commit content using ssh-keygen and returns the SSH signature.
 // It uses `ssh-keygen -Y sign` which is the same mechanism Git uses internally.
-func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath string) (string, error) {
+// When signingKeyRef is an inline public key (detected via isInlineSSHKey), it writes
+// the key to a temp file and passes `-U` so ssh-keygen signs via the SSH agent.
+func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyRef string) (string, error) {
 	log.Info("Signing commit with SSH key")
 
 	tmpFile, err := os.CreateTemp("", "gitforge-ssh-sign-*")
@@ -37,13 +55,14 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 	sigFile := tmpFile.Name() + ".sig"
 	defer os.Remove(sigFile)
 
-	cmd := exec.CommandContext(
-		ctx, "ssh-keygen",
-		"-Y", "sign",
-		"-f", signingKeyPath,
-		"-n", "git",
-		tmpFile.Name(),
-	)
+	args, cleanup, err := buildSSHSignArgs(signingKeyRef, tmpFile.Name())
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+
+	cmd := exec.CommandContext(ctx, "ssh-keygen", args...)
+	cmd.Env = os.Environ()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("ssh-keygen signing failed: %w (output: %s)", err, strings.TrimSpace(string(output)))
@@ -58,12 +77,60 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyPath str
 	return string(sigBytes), nil
 }
 
-// ReadSSHSigningKey resolves the SSH signing key path from the git config value.
-// It expands ~ to the home directory and verifies the file exists.
+// buildSSHSignArgs constructs the ssh-keygen arguments for signing.
+// For file-based keys: -Y sign -f <path> -n git <file>
+// For inline keys:     -Y sign -f <temp-pubkey-file> -U -n git <file>
+// Returns the args slice, a cleanup function, and any error.
+func buildSSHSignArgs(signingKeyRef, contentFile string) ([]string, func(), error) {
+	noop := func() {}
+
+	if !isInlineSSHKey(signingKeyRef) {
+		args := []string{"-Y", "sign", "-f", signingKeyRef, "-n", "git", contentFile}
+		return args, noop, nil
+	}
+
+	pubKeyFile, err := os.CreateTemp("", "gitforge-ssh-pubkey-*")
+	if err != nil {
+		return nil, noop, fmt.Errorf("failed to create temp file for SSH public key: %w", err)
+	}
+
+	cleanup := func() {
+		if cerr := pubKeyFile.Close(); cerr != nil {
+			log.WithError(cerr).Warn("failed to close temp public key file")
+		}
+		if rerr := os.Remove(pubKeyFile.Name()); rerr != nil {
+			log.WithError(rerr).Warn("failed to remove temp public key file")
+		}
+	}
+
+	if _, err = pubKeyFile.WriteString(signingKeyRef); err != nil {
+		cleanup()
+		return nil, noop, fmt.Errorf("failed to write inline public key to temp file: %w", err)
+	}
+
+	args := []string{"-Y", "sign", "-f", pubKeyFile.Name(), "-U", "-n", "git", contentFile}
+	return args, cleanup, nil
+}
+
+// ReadSSHSigningKey resolves the SSH signing key reference from the git config value.
+// It handles two modes:
+//   - File path: expands ~ to the home directory and verifies the file exists (existing behavior).
+//   - Inline public key (starts with "ssh-", "ecdsa-", or "sk-"): verifies SSH_AUTH_SOCK is set
+//     and returns the key string as-is for agent-based signing.
+//
 // Exported for use by autobump (github.com/rios0rios0/autobump).
 func ReadSSHSigningKey(signingKey string) (string, error) {
 	if signingKey == "" {
 		return "", errors.New("no SSH signing key configured (user.signingkey is empty)")
+	}
+
+	if isInlineSSHKey(signingKey) {
+		if os.Getenv("SSH_AUTH_SOCK") == "" {
+			return "", errors.New(
+				"SSH agent not available (SSH_AUTH_SOCK not set); required for inline key signing",
+			)
+		}
+		return signingKey, nil
 	}
 
 	if strings.HasPrefix(signingKey, "~/") {

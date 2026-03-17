@@ -202,3 +202,60 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		assert.NotNil(t, signer)
 	})
 }
+
+// TestResolveSignerFromGitConfigInlineKeys tests inline SSH key scenarios that require
+// t.Setenv (mutating global state), so this function must NOT use t.Parallel().
+func TestResolveSignerFromGitConfigInlineKeys(t *testing.T) {
+	t.Run("should return SSHSigner when format is ssh and key is inline with agent available", func(t *testing.T) {
+		// given
+		t.Setenv("SSH_AUTH_SOCK", "/tmp/fake-agent.sock")
+		inlineKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyData user@host"
+
+		// when
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test")
+
+		// then
+		require.NoError(t, err)
+		assert.NotNil(t, signer)
+	})
+
+	t.Run("should return error when format is ssh and key is inline without agent", func(t *testing.T) {
+		// given
+		t.Setenv("SSH_AUTH_SOCK", "")
+		inlineKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyData user@host"
+
+		// when
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test")
+
+		// then
+		require.Error(t, err)
+		assert.Nil(t, signer)
+		assert.Contains(t, err.Error(), "SSH_AUTH_SOCK")
+	})
+
+	t.Run("should return SSHSigner when key starts with ecdsa- prefix and agent available", func(t *testing.T) {
+		// given
+		t.Setenv("SSH_AUTH_SOCK", "/tmp/fake-agent.sock")
+		inlineKey := "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY= user@host"
+
+		// when
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test")
+
+		// then
+		require.NoError(t, err)
+		assert.NotNil(t, signer)
+	})
+
+	t.Run("should return SSHSigner when key starts with sk- prefix and agent available", func(t *testing.T) {
+		// given
+		t.Setenv("SSH_AUTH_SOCK", "/tmp/fake-agent.sock")
+		inlineKey := "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29t user@host"
+
+		// when
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test")
+
+		// then
+		require.NoError(t, err)
+		assert.NotNil(t, signer)
+	})
+}

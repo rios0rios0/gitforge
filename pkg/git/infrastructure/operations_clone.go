@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -24,11 +25,11 @@ func (o *GitOperations) CloneRepo(
 		adapter.ConfigureTransport()
 	}
 
-	log.Infof("Cloning %s into %s", cloneURL, dir)
+	log.Infof("Cloning %s into %s", sanitizeURL(cloneURL), dir)
 	cloneOptions := &git.CloneOptions{URL: cloneURL}
 
 	if len(authMethods) == 0 {
-		return nil, fmt.Errorf("no authentication methods provided for cloning %s", url)
+		return nil, fmt.Errorf("no authentication methods provided for cloning %s", sanitizeURL(cloneURL))
 	}
 
 	var lastErr error
@@ -36,14 +37,24 @@ func (o *GitOperations) CloneRepo(
 		cloneOptions.Auth = auth
 		repo, cloneErr := git.PlainClone(dir, false, cloneOptions)
 		if cloneErr == nil {
-			log.Infof("Successfully cloned %s", url)
+			log.Infof("Successfully cloned %s", sanitizeURL(cloneURL))
 			return repo, nil
 		}
 		lastErr = cloneErr
 	}
 
 	if lastErr != nil {
-		return nil, fmt.Errorf("failed to clone %s: %w", url, lastErr)
+		return nil, fmt.Errorf("failed to clone %s: %w", sanitizeURL(cloneURL), lastErr)
 	}
 	return nil, errors.New("failed to clone: no authentication methods attempted")
+}
+
+// sanitizeURL strips embedded credentials from a URL before logging.
+func sanitizeURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	parsed.User = nil
+	return parsed.String()
 }

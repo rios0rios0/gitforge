@@ -31,7 +31,7 @@ func (c *Changelog) Process() (*semver.Version, []string, error) {
 	nextVersion := *latestVersion
 
 	for _, line := range c.lines {
-		if strings.Contains(line, "[Unreleased]") {
+		if strings.HasPrefix(strings.TrimSpace(line), "## [Unreleased]") {
 			unreleased = true
 		} else if strings.HasPrefix(line, fmt.Sprintf("## [%s]", latestVersion.String())) {
 			unreleased = false
@@ -67,7 +67,7 @@ func (c *Changelog) ProcessNew() (*semver.Version, []string, error) {
 	unreleased := false
 
 	for _, line := range c.lines {
-		if strings.Contains(line, "[Unreleased]") {
+		if strings.HasPrefix(strings.TrimSpace(line), "## [Unreleased]") {
 			unreleased = true
 		}
 

@@ -404,6 +404,33 @@ func TestProcessChangelog(t *testing.T) {
 		assert.GreaterOrEqual(t, len(content), 15, "expected all content lines to be preserved")
 	})
 
+	t.Run("should correctly end unreleased section when version heading has leading whitespace", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		cl := domain.NewChangelog([]string{
+			"# Changelog",
+			"",
+			"  ## [Unreleased]",
+			"### Added",
+			"- added new feature",
+			"",
+			"  ## [1.0.0] - 2024-01-01",
+			"### Added",
+			"- added initial release",
+		})
+
+		// when
+		version, content, err := cl.Process()
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "1.1.0", version.String())
+		joined := strings.Join(content, "\n")
+		assert.Contains(t, joined, "## [1.0.0]")
+		assert.Contains(t, joined, "initial release")
+	})
+
 	t.Run("should return error when unreleased section is empty", func(t *testing.T) {
 		t.Parallel()
 

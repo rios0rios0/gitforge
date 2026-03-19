@@ -123,9 +123,9 @@ func buildSSHSignArgs(signingKeyRef, contentFile string) ([]string, func(), erro
 // ReadSSHSigningKey resolves the SSH signing key reference from the git config value.
 // It handles two modes:
 //   - File path: expands ~ to the home directory and verifies the file exists (existing behavior).
-//   - Inline public key (starts with "ssh-", "ecdsa-", or "sk-"): when using the default
-//     ssh-keygen (sshProgram is empty), verifies SSH_AUTH_SOCK is set.  Custom signing
-//     programs (e.g. op-ssh-sign-wsl) handle agent communication internally.
+//   - Inline public key (starts with "ssh-", "ecdsa-", or "sk-"): when using ssh-keygen
+//     (either as default or explicitly configured via gpg.ssh.program), verifies SSH_AUTH_SOCK
+//     is set.  Custom signing programs (e.g. op-ssh-sign-wsl) handle agent communication internally.
 //
 // Exported for use by autobump (github.com/rios0rios0/autobump).
 func ReadSSHSigningKey(signingKey, sshProgram string) (string, error) {
@@ -136,8 +136,9 @@ func ReadSSHSigningKey(signingKey, sshProgram string) (string, error) {
 	if isInlineSSHKey(signingKey) {
 		// Custom signing programs (e.g. 1Password's op-ssh-sign-wsl) handle agent
 		// communication internally, so SSH_AUTH_SOCK is only required when using
-		// the default ssh-keygen.
-		if sshProgram == "" && os.Getenv("SSH_AUTH_SOCK") == "" {
+		// ssh-keygen (whether as default or explicitly configured via gpg.ssh.program).
+		usesSSHKeygen := sshProgram == "" || filepath.Base(sshProgram) == "ssh-keygen"
+		if usesSSHKeygen && os.Getenv("SSH_AUTH_SOCK") == "" {
 			return "", errors.New(
 				"SSH agent not available (SSH_AUTH_SOCK not set); required for inline key signing with ssh-keygen",
 			)

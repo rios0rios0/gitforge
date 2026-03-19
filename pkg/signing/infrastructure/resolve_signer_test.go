@@ -233,6 +233,22 @@ func TestResolveSignerFromGitConfigInlineKeys(t *testing.T) {
 		assert.Contains(t, err.Error(), "SSH_AUTH_SOCK")
 	})
 
+	t.Run("should return error when sshProgram is explicitly ssh-keygen and key is inline without agent", func(t *testing.T) {
+		// given
+		t.Setenv("SSH_AUTH_SOCK", "")
+		inlineKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyData user@host"
+
+		// when
+		signer, err := signingInfra.ResolveSignerFromGitConfig(
+			"true", "ssh", inlineKey, "", "", "test", "/usr/bin/ssh-keygen",
+		)
+
+		// then
+		require.Error(t, err)
+		assert.Nil(t, signer)
+		assert.Contains(t, err.Error(), "SSH_AUTH_SOCK")
+	})
+
 	t.Run("should return SSHSigner when key starts with ecdsa- prefix and agent available", func(t *testing.T) {
 		// given
 		t.Setenv("SSH_AUTH_SOCK", "/tmp/fake-agent.sock")

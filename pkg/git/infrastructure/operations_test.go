@@ -455,7 +455,7 @@ func TestCommitChanges(t *testing.T) {
 		_, err = wt.Add("file4.txt")
 		require.NoError(t, err)
 
-		signer := signingInfra.NewSSHSigner("/tmp/nonexistent-key-xyz")
+		signer := signingInfra.NewSSHSigner("/tmp/nonexistent-key-xyz", "")
 
 		// when
 		hash, err := gitops.CommitChanges(repo, wt, "test commit", signer, "Test User", "test@example.com")
@@ -498,7 +498,7 @@ func TestCommitChanges(t *testing.T) {
 		cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-N", "", "-q")
 		require.NoError(t, cmd.Run())
 
-		signer := signingInfra.NewSSHSigner(keyPath)
+		signer := signingInfra.NewSSHSigner(keyPath, "")
 
 		// when
 		hash, err := gitops.CommitChanges(repo, wt, "signed commit", signer, "Test User", "test@example.com")

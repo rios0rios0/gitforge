@@ -28,12 +28,18 @@ func isInlineSSHKey(signingKey string) bool {
 		strings.HasPrefix(keyType, "sk-")
 }
 
-// SignSSHCommit signs commit content using ssh-keygen and returns the SSH signature.
-// It uses `ssh-keygen -Y sign` which is the same mechanism Git uses internally.
+// SignSSHCommit signs commit content using an SSH signing program and returns the signature.
+// It uses the `-Y sign` interface which is the same mechanism Git uses internally.
 // When signingKeyRef is an inline public key (detected via isInlineSSHKey), it writes
-// the key to a temp file and passes `-U` so ssh-keygen signs via the SSH agent.
-func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyRef string) (string, error) {
-	log.Info("Signing commit with SSH key")
+// the key to a temp file and passes `-U` so the program signs via the SSH agent.
+// sshProgram overrides the signing binary (e.g. "op-ssh-sign-wsl"); empty defaults to "ssh-keygen".
+func SignSSHCommit(
+	ctx context.Context, commitContent []byte, signingKeyRef, sshProgram string,
+) (string, error) {
+	if sshProgram == "" {
+		sshProgram = "ssh-keygen"
+	}
+	log.Infof("Signing commit with SSH program: %s", sshProgram)
 
 	tmpFile, err := os.CreateTemp("", "gitforge-ssh-sign-*")
 	if err != nil {
@@ -61,11 +67,13 @@ func SignSSHCommit(ctx context.Context, commitContent []byte, signingKeyRef stri
 	}
 	defer cleanup()
 
-	cmd := exec.CommandContext(ctx, "ssh-keygen", args...)
+	cmd := exec.CommandContext(ctx, sshProgram, args...)
 	cmd.Env = os.Environ()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("ssh-keygen signing failed: %w (output: %s)", err, strings.TrimSpace(string(output)))
+		return "", fmt.Errorf(
+			"%s signing failed: %w (output: %s)", sshProgram, err, strings.TrimSpace(string(output)),
+		)
 	}
 
 	sigBytes, err := os.ReadFile(sigFile)
@@ -115,19 +123,23 @@ func buildSSHSignArgs(signingKeyRef, contentFile string) ([]string, func(), erro
 // ReadSSHSigningKey resolves the SSH signing key reference from the git config value.
 // It handles two modes:
 //   - File path: expands ~ to the home directory and verifies the file exists (existing behavior).
-//   - Inline public key (starts with "ssh-", "ecdsa-", or "sk-"): verifies SSH_AUTH_SOCK is set
-//     and returns the key string as-is for agent-based signing.
+//   - Inline public key (starts with "ssh-", "ecdsa-", or "sk-"): when using the default
+//     ssh-keygen (sshProgram is empty), verifies SSH_AUTH_SOCK is set.  Custom signing
+//     programs (e.g. op-ssh-sign-wsl) handle agent communication internally.
 //
 // Exported for use by autobump (github.com/rios0rios0/autobump).
-func ReadSSHSigningKey(signingKey string) (string, error) {
+func ReadSSHSigningKey(signingKey, sshProgram string) (string, error) {
 	if signingKey == "" {
 		return "", errors.New("no SSH signing key configured (user.signingkey is empty)")
 	}
 
 	if isInlineSSHKey(signingKey) {
-		if os.Getenv("SSH_AUTH_SOCK") == "" {
+		// Custom signing programs (e.g. 1Password's op-ssh-sign-wsl) handle agent
+		// communication internally, so SSH_AUTH_SOCK is only required when using
+		// the default ssh-keygen.
+		if sshProgram == "" && os.Getenv("SSH_AUTH_SOCK") == "" {
 			return "", errors.New(
-				"SSH agent not available (SSH_AUTH_SOCK not set); required for inline key signing",
+				"SSH agent not available (SSH_AUTH_SOCK not set); required for inline key signing with ssh-keygen",
 			)
 		}
 		return signingKey, nil

@@ -16,6 +16,7 @@ type UserConfig struct {
 	Email         string
 	SigningKey    string
 	SigningFormat string
+	SSHProgram    string // gpg.ssh.program — custom signing binary (e.g. op-ssh-sign-wsl)
 }
 
 // ReadUserConfig reads user name, email, signing key, and signing format
@@ -37,5 +38,6 @@ func ReadUserConfig(repo *git.Repository) (*UserConfig, error) {
 		Email:         gitHelpers.GetOptionFromConfig(localCfg, globalCfg, "user", "email"),
 		SigningKey:    gitHelpers.GetOptionFromConfig(localCfg, globalCfg, "user", "signingkey"),
 		SigningFormat: gitHelpers.GetOptionFromConfig(localCfg, globalCfg, "gpg", "format"),
+		SSHProgram:    gitHelpers.GetSubsectionOptionFromConfig(localCfg, globalCfg, "gpg", "ssh", "program"),
 	}, nil
 }

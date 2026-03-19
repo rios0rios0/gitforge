@@ -48,3 +48,16 @@ func GetOptionFromConfig(cfg, globalCfg *config.Config, section string, option s
 	}
 	return opt
 }
+
+// GetSubsectionOptionFromConfig reads a Git config value from a section with a
+// subsection (e.g., gpg.ssh.program → section "gpg", subsection "ssh", option "program").
+// Local config takes precedence over global config.
+func GetSubsectionOptionFromConfig(
+	cfg, globalCfg *config.Config, section, subsection, option string,
+) string {
+	opt := cfg.Raw.Section(section).Subsection(subsection).Option(option)
+	if opt == "" {
+		opt = globalCfg.Raw.Section(section).Subsection(subsection).Option(option)
+	}
+	return opt
+}

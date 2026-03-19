@@ -23,7 +23,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		gpgSign := "false"
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig(gpgSign, "", "", "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig(gpgSign, "", "", "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		gpgSign := ""
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig(gpgSign, "", "", "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig(gpgSign, "", "", "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		gpgSign := "no"
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig(gpgSign, "", "", "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig(gpgSign, "", "", "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		gpgSign := "0"
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig(gpgSign, "", "", "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig(gpgSign, "", "", "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		require.NoError(t, cmd.Run())
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", keyPath, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", keyPath, "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 
 		// given / when
 		signer, err := signingInfra.ResolveSignerFromGitConfig(
-			"true", "ssh", "/tmp/nonexistent-key-xyz-12345", "", "", "test",
+			"true", "ssh", "/tmp/nonexistent-key-xyz-12345", "", "", "test", "",
 		)
 
 		// then
@@ -110,7 +110,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		t.Parallel()
 
 		// given / when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "gpg", "", "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "gpg", "", "", "", "test", "")
 
 		// then
 		require.Error(t, err)
@@ -132,7 +132,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		require.NoError(t, cmd.Run())
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("yes", "ssh", keyPath, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("yes", "ssh", keyPath, "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		require.NoError(t, cmd.Run())
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("on", "ssh", keyPath, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("on", "ssh", keyPath, "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -174,7 +174,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		require.NoError(t, cmd.Run())
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("1", "ssh", keyPath, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("1", "ssh", keyPath, "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestResolveSignerFromGitConfig(t *testing.T) {
 		require.NoError(t, cmd.Run())
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("TRUE", "ssh", keyPath, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("TRUE", "ssh", keyPath, "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestResolveSignerFromGitConfigInlineKeys(t *testing.T) {
 		inlineKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyData user@host"
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -225,7 +225,23 @@ func TestResolveSignerFromGitConfigInlineKeys(t *testing.T) {
 		inlineKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyData user@host"
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test", "")
+
+		// then
+		require.Error(t, err)
+		assert.Nil(t, signer)
+		assert.Contains(t, err.Error(), "SSH_AUTH_SOCK")
+	})
+
+	t.Run("should return error when sshProgram is explicitly ssh-keygen and key is inline without agent", func(t *testing.T) {
+		// given
+		t.Setenv("SSH_AUTH_SOCK", "")
+		inlineKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyData user@host"
+
+		// when
+		signer, err := signingInfra.ResolveSignerFromGitConfig(
+			"true", "ssh", inlineKey, "", "", "test", "/usr/bin/ssh-keygen",
+		)
 
 		// then
 		require.Error(t, err)
@@ -239,7 +255,7 @@ func TestResolveSignerFromGitConfigInlineKeys(t *testing.T) {
 		inlineKey := "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY= user@host"
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test", "")
 
 		// then
 		require.NoError(t, err)
@@ -252,7 +268,7 @@ func TestResolveSignerFromGitConfigInlineKeys(t *testing.T) {
 		inlineKey := "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29t user@host"
 
 		// when
-		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test")
+		signer, err := signingInfra.ResolveSignerFromGitConfig("true", "ssh", inlineKey, "", "", "test", "")
 
 		// then
 		require.NoError(t, err)

@@ -3,6 +3,7 @@ package azuredevops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -105,38 +106,52 @@ func (p *Provider) GetPullRequestDiff(
 
 	// for each file, fetch content at both branches and compute diff
 	var fullDiff strings.Builder
+	var errs []error
 	for _, f := range files {
-		if f.Status == "deleted" {
-			oldContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, targetBranch)
-			if fetchErr != nil {
-				continue
-			}
-			fullDiff.WriteString(buildUnifiedDiff(f.Path, f.Path, oldContent, ""))
-		} else if f.Status == "added" {
-			newContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, sourceBranch)
-			if fetchErr != nil {
-				continue
-			}
-			fullDiff.WriteString(buildUnifiedDiff(f.Path, f.Path, "", newContent))
-		} else {
-			// modified or renamed
-			oldPath := f.Path
-			if f.OldPath != "" {
-				oldPath = f.OldPath
-			}
-			oldContent, fetchErr := p.getFileContentAtVersion(ctx, repo, oldPath, targetBranch)
-			if fetchErr != nil {
-				oldContent = ""
-			}
-			newContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, sourceBranch)
-			if fetchErr != nil {
-				continue
-			}
-			fullDiff.WriteString(buildUnifiedDiff(oldPath, f.Path, oldContent, newContent))
+		diff, diffErr := p.computeFileDiff(ctx, repo, f, sourceBranch, targetBranch)
+		if diffErr != nil {
+			errs = append(errs, diffErr)
 		}
+		fullDiff.WriteString(diff)
 	}
 
-	return fullDiff.String(), nil
+	return fullDiff.String(), errors.Join(errs...)
+}
+
+func (p *Provider) computeFileDiff(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	f globalEntities.PullRequestFile,
+	sourceBranch, targetBranch string,
+) (string, error) {
+	switch f.Status {
+	case "deleted":
+		oldContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, targetBranch)
+		if fetchErr != nil {
+			return "", fmt.Errorf("failed to fetch deleted file %s: %w", f.Path, fetchErr)
+		}
+		return buildUnifiedDiff(f.Path, "/dev/null", oldContent, ""), nil
+	case "added":
+		newContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, sourceBranch)
+		if fetchErr != nil {
+			return "", fmt.Errorf("failed to fetch added file %s: %w", f.Path, fetchErr)
+		}
+		return buildUnifiedDiff("/dev/null", f.Path, "", newContent), nil
+	default:
+		oldPath := f.Path
+		if f.OldPath != "" {
+			oldPath = f.OldPath
+		}
+		oldContent, fetchErr := p.getFileContentAtVersion(ctx, repo, oldPath, targetBranch)
+		if fetchErr != nil {
+			return "", fmt.Errorf("failed to fetch old version of %s: %w", oldPath, fetchErr)
+		}
+		newContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, sourceBranch)
+		if fetchErr != nil {
+			return "", fmt.Errorf("failed to fetch new version of %s: %w", f.Path, fetchErr)
+		}
+		return buildUnifiedDiff(oldPath, f.Path, oldContent, newContent), nil
+	}
 }
 
 func (p *Provider) getFileContentAtVersion(
@@ -163,40 +178,121 @@ func (p *Provider) getFileContentAtVersion(
 	return string(resp), nil
 }
 
+type diffLineOp struct {
+	op   diffmatchpatch.Operation
+	text string
+}
+
+type hunkRange struct{ start, end int }
+
 func buildUnifiedDiff(oldPath, newPath, oldContent, newContent string) string {
 	if oldContent == newContent {
 		return ""
 	}
 
-	oldLines := splitLines(oldContent)
-	newLines := splitLines(newContent)
+	const contextSize = 3
 
 	dmp := diffmatchpatch.New()
 	a, b, lineArray := dmp.DiffLinesToChars(oldContent, newContent)
 	diffs := dmp.DiffMain(a, b, false)
 	diffs = dmp.DiffCharsToLines(diffs, lineArray)
 
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", oldPath, newPath))
-	result.WriteString(fmt.Sprintf("--- a/%s\n", oldPath))
-	result.WriteString(fmt.Sprintf("+++ b/%s\n", newPath))
-	result.WriteString(fmt.Sprintf("@@ -%d +%d @@\n", len(oldLines), len(newLines)))
-
+	var ops []diffLineOp
 	for _, d := range diffs {
-		lines := splitLines(d.Text)
-		for _, line := range lines {
-			switch d.Type {
-			case diffmatchpatch.DiffEqual:
-				result.WriteString(" " + line + "\n")
-			case diffmatchpatch.DiffDelete:
-				result.WriteString("-" + line + "\n")
-			case diffmatchpatch.DiffInsert:
-				result.WriteString("+" + line + "\n")
-			}
+		for _, line := range splitLines(d.Text) {
+			ops = append(ops, diffLineOp{op: d.Type, text: line})
 		}
 	}
 
+	changes := groupHunkRanges(ops, contextSize)
+	if len(changes) == 0 {
+		return ""
+	}
+
+	normOld := strings.TrimPrefix(oldPath, "/")
+	normNew := strings.TrimPrefix(newPath, "/")
+
+	var result strings.Builder
+	writeDiffHeader(&result, oldPath, newPath, normOld, normNew)
+	for _, ch := range changes {
+		writeHunk(&result, ops, max(ch.start-contextSize, 0), min(ch.end+contextSize, len(ops)))
+	}
+
 	return result.String()
+}
+
+func groupHunkRanges(ops []diffLineOp, contextSize int) []hunkRange {
+	var changes []hunkRange
+	for i, op := range ops {
+		if op.op != diffmatchpatch.DiffEqual {
+			if len(changes) > 0 && i-changes[len(changes)-1].end <= 2*contextSize {
+				changes[len(changes)-1].end = i + 1
+			} else {
+				changes = append(changes, hunkRange{start: i, end: i + 1})
+			}
+		}
+	}
+	return changes
+}
+
+func writeDiffHeader(result *strings.Builder, oldPath, newPath, normOld, normNew string) {
+	switch {
+	case oldPath == "/dev/null":
+		fmt.Fprintf(result, "diff --git a/%s b/%s\n", normNew, normNew)
+		result.WriteString("--- /dev/null\n")
+		fmt.Fprintf(result, "+++ b/%s\n", normNew)
+	case newPath == "/dev/null":
+		fmt.Fprintf(result, "diff --git a/%s b/%s\n", normOld, normOld)
+		fmt.Fprintf(result, "--- a/%s\n", normOld)
+		result.WriteString("+++ /dev/null\n")
+	default:
+		fmt.Fprintf(result, "diff --git a/%s b/%s\n", normOld, normNew)
+		fmt.Fprintf(result, "--- a/%s\n", normOld)
+		fmt.Fprintf(result, "+++ b/%s\n", normNew)
+	}
+}
+
+func writeHunk(result *strings.Builder, ops []diffLineOp, hunkStart, hunkEnd int) {
+	oldLine, newLine := 1, 1
+	for i := range hunkStart {
+		switch ops[i].op {
+		case diffmatchpatch.DiffEqual:
+			oldLine++
+			newLine++
+		case diffmatchpatch.DiffDelete:
+			oldLine++
+		case diffmatchpatch.DiffInsert:
+			newLine++
+		}
+	}
+
+	oldStart, newStart := oldLine, newLine
+	oldCount, newCount := 0, 0
+	var hunkBody strings.Builder
+	for i := hunkStart; i < hunkEnd; i++ {
+		switch ops[i].op {
+		case diffmatchpatch.DiffEqual:
+			hunkBody.WriteString(" " + ops[i].text + "\n")
+			oldCount++
+			newCount++
+		case diffmatchpatch.DiffDelete:
+			hunkBody.WriteString("-" + ops[i].text + "\n")
+			oldCount++
+		case diffmatchpatch.DiffInsert:
+			hunkBody.WriteString("+" + ops[i].text + "\n")
+			newCount++
+		}
+	}
+
+	if oldCount == 0 {
+		oldStart = 0
+	}
+	if newCount == 0 {
+		newStart = 0
+	}
+
+	fmt.Fprintf(result, "@@ -%d,%d +%d,%d @@\n", oldStart, oldCount, newStart, newCount)
+	result.WriteString(hunkBody.String())
 }
 
 func splitLines(text string) []string {

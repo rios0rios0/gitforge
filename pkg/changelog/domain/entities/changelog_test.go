@@ -90,6 +90,32 @@ func TestIsChangelogUnreleasedEmpty(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, empty)
 	})
+
+	t.Run("should return true when unreleased is empty even if older entries mention [Unreleased]", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		cl := domain.NewChangelog([]string{
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"## [1.2.0] - 2025-01-15",
+			"### Changed",
+			"- added changelog validation verifying entries are under the `[Unreleased]` section",
+			"",
+			"## [1.1.0] - 2025-01-01",
+			"### Added",
+			"- added initial changelog support",
+		})
+
+		// when
+		empty, err := cl.IsUnreleasedEmpty()
+
+		// then
+		require.NoError(t, err)
+		assert.True(t, empty)
+	})
 }
 
 func TestDeduplicateEntries(t *testing.T) {
@@ -289,6 +315,120 @@ func TestProcessChangelog(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "0.1.0", version.String())
 		assert.NotEmpty(t, content)
+	})
+
+	t.Run("should preserve all older versions when a changelog entry mentions [Unreleased]", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		cl := domain.NewChangelog([]string{
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"### Added",
+			"- added new dashboard widget",
+			"",
+			"## [2.3.0] - 2025-06-01",
+			"### Changed",
+			"- added changelog validation verifying entries are under the `[Unreleased]` section",
+			"",
+			"## [2.2.0] - 2025-05-01",
+			"### Fixed",
+			"- fixed date formatting in reports",
+			"",
+			"## [2.1.0] - 2025-04-01",
+			"### Added",
+			"- added user preference settings",
+			"",
+			"## [2.0.0] - 2025-03-01",
+			"### Changed",
+			"- **BREAKING CHANGE:** removed legacy API endpoints",
+			"",
+			"## [1.0.0] - 2025-02-01",
+			"### Added",
+			"- added initial release",
+		})
+
+		// when
+		version, content, err := cl.Process()
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "2.4.0", version.String())
+		joined := strings.Join(content, "\n")
+		assert.Contains(t, joined, "## [2.3.0]")
+		assert.Contains(t, joined, "## [2.2.0]")
+		assert.Contains(t, joined, "## [2.1.0]")
+		assert.Contains(t, joined, "## [2.0.0]")
+		assert.Contains(t, joined, "## [1.0.0]")
+		assert.Contains(t, joined, "verifying entries are under the `[Unreleased]` section")
+	})
+
+	t.Run("should preserve comparison links containing [Unreleased] at end of file", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		cl := domain.NewChangelog([]string{
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"### Fixed",
+			"- fixed a typo in the README",
+			"",
+			"## [1.2.0] - 2025-01-15",
+			"### Added",
+			"- added export functionality",
+			"",
+			"## [1.1.0] - 2025-01-01",
+			"### Added",
+			"- added import functionality",
+			"",
+			"[Unreleased]: https://github.com/user/repo/compare/v1.2.0...HEAD",
+			"[1.2.0]: https://github.com/user/repo/compare/v1.1.0...v1.2.0",
+			"[1.1.0]: https://github.com/user/repo/releases/tag/v1.1.0",
+		})
+
+		// when
+		version, content, err := cl.Process()
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "1.2.1", version.String())
+		joined := strings.Join(content, "\n")
+		assert.Contains(t, joined, "## [1.2.0]")
+		assert.Contains(t, joined, "## [1.1.0]")
+		assert.Contains(t, joined, "[Unreleased]: https://github.com/user/repo/compare/v1.2.0...HEAD")
+		assert.Contains(t, joined, "[1.2.0]: https://github.com/user/repo/compare/v1.1.0...v1.2.0")
+		assert.Contains(t, joined, "[1.1.0]: https://github.com/user/repo/releases/tag/v1.1.0")
+		// Verify the total number of lines: header(2) + versioned unreleased(~5) + v1.2.0 section(4) + v1.1.0 section(4) + links(3) = ~18
+		assert.GreaterOrEqual(t, len(content), 15, "expected all content lines to be preserved")
+	})
+
+	t.Run("should correctly end unreleased section when version heading has leading whitespace", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		cl := domain.NewChangelog([]string{
+			"# Changelog",
+			"",
+			"  ## [Unreleased]",
+			"### Added",
+			"- added new feature",
+			"",
+			"  ## [1.0.0] - 2024-01-01",
+			"### Added",
+			"- added initial release",
+		})
+
+		// when
+		version, content, err := cl.Process()
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "1.1.0", version.String())
+		joined := strings.Join(content, "\n")
+		assert.Contains(t, joined, "## [1.0.0]")
+		assert.Contains(t, joined, "initial release")
 	})
 
 	t.Run("should return error when unreleased section is empty", func(t *testing.T) {

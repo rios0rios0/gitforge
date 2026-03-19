@@ -43,10 +43,10 @@ func (c *Changelog) IsUnreleasedEmpty() (bool, error) {
 
 	unreleased := false
 	for _, line := range c.lines {
-		if strings.Contains(line, "[Unreleased]") {
+		if strings.HasPrefix(strings.TrimSpace(line), "## [Unreleased]") {
 			unreleased = true
 		} else if !noVersionFound &&
-			strings.HasPrefix(line, fmt.Sprintf("## [%s]", latestVersion.String())) {
+			strings.HasPrefix(strings.TrimSpace(line), fmt.Sprintf("## [%s]", latestVersion.String())) {
 			unreleased = false
 		}
 

@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
+
+	"github.com/sergi/go-diff/diffmatchpatch"
 
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 )
@@ -32,6 +35,7 @@ func (p *Provider) ListOpenPullRequests(
 			PullRequestID int    `json:"pullRequestId"`
 			Title         string `json:"title"`
 			Status        string `json:"status"`
+			IsDraft       bool   `json:"isDraft"`
 			SourceRefName string `json:"sourceRefName"`
 			TargetRefName string `json:"targetRefName"`
 			URL           string `json:"url"`
@@ -46,6 +50,9 @@ func (p *Provider) ListOpenPullRequests(
 
 	var prs []globalEntities.PullRequestDetail
 	for _, pr := range result.Value {
+		if pr.IsDraft {
+			continue
+		}
 		prs = append(prs, globalEntities.PullRequestDetail{
 			PullRequest: globalEntities.PullRequest{
 				ID:     pr.PullRequestID,
@@ -67,20 +74,140 @@ func (p *Provider) GetPullRequestDiff(
 	repo globalEntities.Repository,
 	prID int,
 ) (string, error) {
+	// get the PR details for source/target branches
+	baseURL := buildBaseURL(repo.Organization)
+	prEndpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	prResp, err := p.doRequest(ctx, baseURL, http.MethodGet, prEndpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pull request details: %w", err)
+	}
+
+	var prData struct {
+		SourceRefName string `json:"sourceRefName"`
+		TargetRefName string `json:"targetRefName"`
+	}
+	if unmarshalErr := json.Unmarshal(prResp, &prData); unmarshalErr != nil {
+		return "", fmt.Errorf("failed to parse pull request details: %w", unmarshalErr)
+	}
+
+	sourceBranch := strings.TrimPrefix(prData.SourceRefName, "refs/heads/")
+	targetBranch := strings.TrimPrefix(prData.TargetRefName, "refs/heads/")
+
+	// get changed files
 	files, err := p.GetPullRequestFiles(ctx, repo, prID)
 	if err != nil {
 		return "", err
 	}
 
-	var diff strings.Builder
+	// for each file, fetch content at both branches and compute diff
+	var fullDiff strings.Builder
 	for _, f := range files {
-		if f.Patch != "" {
-			diff.WriteString(f.Patch)
-			diff.WriteString("\n")
+		if f.Status == "deleted" {
+			oldContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, targetBranch)
+			if fetchErr != nil {
+				continue
+			}
+			fullDiff.WriteString(buildUnifiedDiff(f.Path, f.Path, oldContent, ""))
+		} else if f.Status == "added" {
+			newContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, sourceBranch)
+			if fetchErr != nil {
+				continue
+			}
+			fullDiff.WriteString(buildUnifiedDiff(f.Path, f.Path, "", newContent))
+		} else {
+			// modified or renamed
+			oldPath := f.Path
+			if f.OldPath != "" {
+				oldPath = f.OldPath
+			}
+			oldContent, fetchErr := p.getFileContentAtVersion(ctx, repo, oldPath, targetBranch)
+			if fetchErr != nil {
+				oldContent = ""
+			}
+			newContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, sourceBranch)
+			if fetchErr != nil {
+				continue
+			}
+			fullDiff.WriteString(buildUnifiedDiff(oldPath, f.Path, oldContent, newContent))
 		}
 	}
 
-	return diff.String(), nil
+	return fullDiff.String(), nil
+}
+
+func (p *Provider) getFileContentAtVersion(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	path string,
+	version string,
+) (string, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/items?path=%s&versionDescriptor.version=%s&versionDescriptor.versionType=branch&api-version=%s",
+		repo.Project,
+		resolveRepoIdentifier(repo),
+		url.QueryEscape(path),
+		url.QueryEscape(version),
+		apiVersion,
+	)
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(resp), nil
+}
+
+func buildUnifiedDiff(oldPath, newPath, oldContent, newContent string) string {
+	if oldContent == newContent {
+		return ""
+	}
+
+	oldLines := splitLines(oldContent)
+	newLines := splitLines(newContent)
+
+	dmp := diffmatchpatch.New()
+	a, b, lineArray := dmp.DiffLinesToChars(oldContent, newContent)
+	diffs := dmp.DiffMain(a, b, false)
+	diffs = dmp.DiffCharsToLines(diffs, lineArray)
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", oldPath, newPath))
+	result.WriteString(fmt.Sprintf("--- a/%s\n", oldPath))
+	result.WriteString(fmt.Sprintf("+++ b/%s\n", newPath))
+	result.WriteString(fmt.Sprintf("@@ -%d +%d @@\n", len(oldLines), len(newLines)))
+
+	for _, d := range diffs {
+		lines := splitLines(d.Text)
+		for _, line := range lines {
+			switch d.Type {
+			case diffmatchpatch.DiffEqual:
+				result.WriteString(" " + line + "\n")
+			case diffmatchpatch.DiffDelete:
+				result.WriteString("-" + line + "\n")
+			case diffmatchpatch.DiffInsert:
+				result.WriteString("+" + line + "\n")
+			}
+		}
+	}
+
+	return result.String()
+}
+
+func splitLines(text string) []string {
+	if text == "" {
+		return nil
+	}
+	lines := strings.Split(text, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }
 
 func (p *Provider) GetPullRequestFiles(

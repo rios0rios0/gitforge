@@ -22,8 +22,9 @@ import (
 //   - gpgKeyPath: optional file path to exported GPG key (empty = auto-detect from keyring)
 //   - gpgPassphrase: GPG key passphrase (empty = prompt interactively)
 //   - appName: application name used for GPG key path generation (e.g., "autobump")
+//   - sshProgram: gpg.ssh.program — custom signing binary (empty = "ssh-keygen")
 func ResolveSignerFromGitConfig(
-	gpgSign, signingFormat, signingKey, gpgKeyPath, gpgPassphrase, appName string,
+	gpgSign, signingFormat, signingKey, gpgKeyPath, gpgPassphrase, appName, sshProgram string,
 ) (globalEntities.CommitSigner, error) {
 	if !isGitConfigTrue(gpgSign) {
 		return nil, nil //nolint:nilnil // signing disabled: nil signer with no error is intentional
@@ -32,11 +33,11 @@ func ResolveSignerFromGitConfig(
 	switch signingFormat {
 	case "ssh":
 		logger.Info("Signing commit with SSH key")
-		sshKeyPath, err := helpers.ReadSSHSigningKey(signingKey)
+		sshKeyPath, err := helpers.ReadSSHSigningKey(signingKey, sshProgram)
 		if err != nil {
 			return nil, err
 		}
-		return NewSSHSigner(sshKeyPath), nil
+		return NewSSHSigner(sshKeyPath, sshProgram), nil
 
 	default:
 		if signingKey == "" {

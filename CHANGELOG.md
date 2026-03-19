@@ -16,6 +16,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed version heading detection in `Process()` and `IsUnreleasedEmpty()` to apply `TrimSpace` consistently with `FindLatestVersion()`, preventing the unreleased section from swallowing the rest of the file when headings have leading whitespace
+
 ## [0.7.0] - 2026-03-17
 
 ### Added

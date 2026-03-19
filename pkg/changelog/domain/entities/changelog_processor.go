@@ -33,7 +33,7 @@ func (c *Changelog) Process() (*semver.Version, []string, error) {
 	for _, line := range c.lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "## [Unreleased]") {
 			unreleased = true
-		} else if strings.HasPrefix(line, fmt.Sprintf("## [%s]", latestVersion.String())) {
+		} else if strings.HasPrefix(strings.TrimSpace(line), fmt.Sprintf("## [%s]", latestVersion.String())) {
 			unreleased = false
 			if len(unreleasedSection) > 0 {
 				var updatedSection []string

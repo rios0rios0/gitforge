@@ -23,6 +23,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Fixed
 
 - fixed version heading detection in `Process()` and `IsUnreleasedEmpty()` to apply `TrimSpace` consistently with `FindLatestVersion()`, preventing the unreleased section from swallowing the rest of the file when headings have leading whitespace
+- fixed SSH signing ignoring `gpg.ssh.program` git config, causing failures on WSL2 with 1Password (`op-ssh-sign-wsl`); now reads the config and delegates to the configured signing binary instead of hardcoding `ssh-keygen`
+- fixed `SSH_AUTH_SOCK` check being incorrectly skipped when `gpg.ssh.program` is explicitly set to `ssh-keygen` (or an absolute path to it)
 
 ## [0.7.0] - 2026-03-17
 

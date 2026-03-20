@@ -3,9 +3,13 @@ package azuredevops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
+
+	"github.com/sergi/go-diff/diffmatchpatch"
 
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 )
@@ -32,6 +36,7 @@ func (p *Provider) ListOpenPullRequests(
 			PullRequestID int    `json:"pullRequestId"`
 			Title         string `json:"title"`
 			Status        string `json:"status"`
+			IsDraft       bool   `json:"isDraft"`
 			SourceRefName string `json:"sourceRefName"`
 			TargetRefName string `json:"targetRefName"`
 			URL           string `json:"url"`
@@ -46,6 +51,9 @@ func (p *Provider) ListOpenPullRequests(
 
 	var prs []globalEntities.PullRequestDetail
 	for _, pr := range result.Value {
+		if pr.IsDraft {
+			continue
+		}
 		prs = append(prs, globalEntities.PullRequestDetail{
 			PullRequest: globalEntities.PullRequest{
 				ID:     pr.PullRequestID,
@@ -67,20 +75,235 @@ func (p *Provider) GetPullRequestDiff(
 	repo globalEntities.Repository,
 	prID int,
 ) (string, error) {
+	// get the PR details for source/target branches
+	baseURL := buildBaseURL(repo.Organization)
+	prEndpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	prResp, err := p.doRequest(ctx, baseURL, http.MethodGet, prEndpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pull request details: %w", err)
+	}
+
+	var prData struct {
+		SourceRefName string `json:"sourceRefName"`
+		TargetRefName string `json:"targetRefName"`
+	}
+	if unmarshalErr := json.Unmarshal(prResp, &prData); unmarshalErr != nil {
+		return "", fmt.Errorf("failed to parse pull request details: %w", unmarshalErr)
+	}
+
+	sourceBranch := strings.TrimPrefix(prData.SourceRefName, "refs/heads/")
+	targetBranch := strings.TrimPrefix(prData.TargetRefName, "refs/heads/")
+
+	// get changed files
 	files, err := p.GetPullRequestFiles(ctx, repo, prID)
 	if err != nil {
 		return "", err
 	}
 
-	var diff strings.Builder
+	// for each file, fetch content at both branches and compute diff
+	var fullDiff strings.Builder
+	var errs []error
 	for _, f := range files {
-		if f.Patch != "" {
-			diff.WriteString(f.Patch)
-			diff.WriteString("\n")
+		diff, diffErr := p.computeFileDiff(ctx, repo, f, sourceBranch, targetBranch)
+		if diffErr != nil {
+			errs = append(errs, diffErr)
+		}
+		fullDiff.WriteString(diff)
+	}
+
+	return fullDiff.String(), errors.Join(errs...)
+}
+
+func (p *Provider) computeFileDiff(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	f globalEntities.PullRequestFile,
+	sourceBranch, targetBranch string,
+) (string, error) {
+	switch f.Status {
+	case "deleted":
+		oldContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, targetBranch)
+		if fetchErr != nil {
+			return "", fmt.Errorf("failed to fetch deleted file %s: %w", f.Path, fetchErr)
+		}
+		return buildUnifiedDiff(f.Path, "/dev/null", oldContent, ""), nil
+	case "added":
+		newContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, sourceBranch)
+		if fetchErr != nil {
+			return "", fmt.Errorf("failed to fetch added file %s: %w", f.Path, fetchErr)
+		}
+		return buildUnifiedDiff("/dev/null", f.Path, "", newContent), nil
+	default:
+		oldPath := f.Path
+		if f.OldPath != "" {
+			oldPath = f.OldPath
+		}
+		oldContent, fetchErr := p.getFileContentAtVersion(ctx, repo, oldPath, targetBranch)
+		if fetchErr != nil {
+			return "", fmt.Errorf("failed to fetch old version of %s: %w", oldPath, fetchErr)
+		}
+		newContent, fetchErr := p.getFileContentAtVersion(ctx, repo, f.Path, sourceBranch)
+		if fetchErr != nil {
+			return "", fmt.Errorf("failed to fetch new version of %s: %w", f.Path, fetchErr)
+		}
+		return buildUnifiedDiff(oldPath, f.Path, oldContent, newContent), nil
+	}
+}
+
+func (p *Provider) getFileContentAtVersion(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	path string,
+	version string,
+) (string, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/items?path=%s&versionDescriptor.version=%s&versionDescriptor.versionType=branch&api-version=%s",
+		repo.Project,
+		resolveRepoIdentifier(repo),
+		url.QueryEscape(path),
+		url.QueryEscape(version),
+		apiVersion,
+	)
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(resp), nil
+}
+
+type diffLineOp struct {
+	op   diffmatchpatch.Operation
+	text string
+}
+
+type hunkRange struct{ start, end int }
+
+func buildUnifiedDiff(oldPath, newPath, oldContent, newContent string) string {
+	if oldContent == newContent {
+		return ""
+	}
+
+	const contextSize = 3
+
+	dmp := diffmatchpatch.New()
+	a, b, lineArray := dmp.DiffLinesToChars(oldContent, newContent)
+	diffs := dmp.DiffMain(a, b, false)
+	diffs = dmp.DiffCharsToLines(diffs, lineArray)
+
+	var ops []diffLineOp
+	for _, d := range diffs {
+		for _, line := range splitLines(d.Text) {
+			ops = append(ops, diffLineOp{op: d.Type, text: line})
 		}
 	}
 
-	return diff.String(), nil
+	changes := groupHunkRanges(ops, contextSize)
+	if len(changes) == 0 {
+		return ""
+	}
+
+	normOld := strings.TrimPrefix(oldPath, "/")
+	normNew := strings.TrimPrefix(newPath, "/")
+
+	var result strings.Builder
+	writeDiffHeader(&result, oldPath, newPath, normOld, normNew)
+	for _, ch := range changes {
+		writeHunk(&result, ops, max(ch.start-contextSize, 0), min(ch.end+contextSize, len(ops)))
+	}
+
+	return result.String()
+}
+
+func groupHunkRanges(ops []diffLineOp, contextSize int) []hunkRange {
+	var changes []hunkRange
+	for i, op := range ops {
+		if op.op != diffmatchpatch.DiffEqual {
+			if len(changes) > 0 && i-changes[len(changes)-1].end <= 2*contextSize {
+				changes[len(changes)-1].end = i + 1
+			} else {
+				changes = append(changes, hunkRange{start: i, end: i + 1})
+			}
+		}
+	}
+	return changes
+}
+
+func writeDiffHeader(result *strings.Builder, oldPath, newPath, normOld, normNew string) {
+	switch {
+	case oldPath == "/dev/null":
+		fmt.Fprintf(result, "diff --git a/%s b/%s\n", normNew, normNew)
+		result.WriteString("--- /dev/null\n")
+		fmt.Fprintf(result, "+++ b/%s\n", normNew)
+	case newPath == "/dev/null":
+		fmt.Fprintf(result, "diff --git a/%s b/%s\n", normOld, normOld)
+		fmt.Fprintf(result, "--- a/%s\n", normOld)
+		result.WriteString("+++ /dev/null\n")
+	default:
+		fmt.Fprintf(result, "diff --git a/%s b/%s\n", normOld, normNew)
+		fmt.Fprintf(result, "--- a/%s\n", normOld)
+		fmt.Fprintf(result, "+++ b/%s\n", normNew)
+	}
+}
+
+func writeHunk(result *strings.Builder, ops []diffLineOp, hunkStart, hunkEnd int) {
+	oldLine, newLine := 1, 1
+	for i := range hunkStart {
+		switch ops[i].op {
+		case diffmatchpatch.DiffEqual:
+			oldLine++
+			newLine++
+		case diffmatchpatch.DiffDelete:
+			oldLine++
+		case diffmatchpatch.DiffInsert:
+			newLine++
+		}
+	}
+
+	oldStart, newStart := oldLine, newLine
+	oldCount, newCount := 0, 0
+	var hunkBody strings.Builder
+	for i := hunkStart; i < hunkEnd; i++ {
+		switch ops[i].op {
+		case diffmatchpatch.DiffEqual:
+			hunkBody.WriteString(" " + ops[i].text + "\n")
+			oldCount++
+			newCount++
+		case diffmatchpatch.DiffDelete:
+			hunkBody.WriteString("-" + ops[i].text + "\n")
+			oldCount++
+		case diffmatchpatch.DiffInsert:
+			hunkBody.WriteString("+" + ops[i].text + "\n")
+			newCount++
+		}
+	}
+
+	if oldCount == 0 {
+		oldStart = 0
+	}
+	if newCount == 0 {
+		newStart = 0
+	}
+
+	fmt.Fprintf(result, "@@ -%d,%d +%d,%d @@\n", oldStart, oldCount, newStart, newCount)
+	result.WriteString(hunkBody.String())
+}
+
+func splitLines(text string) []string {
+	if text == "" {
+		return nil
+	}
+	lines := strings.Split(text, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }
 
 func (p *Provider) GetPullRequestFiles(

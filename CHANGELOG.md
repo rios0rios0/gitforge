@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-03-20
+
 ### Fixed
 
 - fixed Azure DevOps `GetPullRequestDiff` returning empty diffs by fetching file content at both source and target branches via the items API and computing unified diffs locally with `sergi/go-diff`

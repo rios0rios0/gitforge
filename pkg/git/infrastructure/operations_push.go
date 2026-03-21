@@ -12,8 +12,27 @@ import (
 )
 
 // PushChangesSSH pushes the changes to the remote repository over SSH.
-func PushChangesSSH(repo *git.Repository, refSpec config.RefSpec) error {
+// If authMethods is non-empty, each method is tried in order until one succeeds.
+// If all explicit methods fail or authMethods is empty, it falls back to
+// go-git's default SSH agent behaviour (SSH_AUTH_SOCK).
+func PushChangesSSH(repo *git.Repository, refSpec config.RefSpec, authMethods []transport.AuthMethod) error {
 	log.Info("Pushing local changes to remote repository through SSH")
+
+	if len(authMethods) > 0 {
+		var lastErr error
+		for _, method := range authMethods {
+			lastErr = repo.Push(&git.PushOptions{
+				RefSpecs: []config.RefSpec{refSpec},
+				Auth:     method,
+			})
+			if lastErr == nil {
+				return nil
+			}
+			log.Debugf("SSH push attempt failed with auth method %T: %v", method, lastErr)
+		}
+		log.Debug("All explicit SSH auth methods failed, falling back to default SSH agent")
+	}
+
 	err := repo.Push(&git.PushOptions{
 		RefSpecs: []config.RefSpec{refSpec},
 	})
@@ -63,8 +82,8 @@ func (o *GitOperations) PushChangesHTTPS(
 // PushWithTransportDetection pushes the given refSpec to the origin remote,
 // auto-detecting the transport (SSH or HTTPS) from the remote URL.
 //
-// For SSH remotes (git@ or ssh://), the push uses system SSH keys and the
-// authMethods parameter is ignored.
+// For SSH remotes (git@ or ssh://), authMethods are tried in order; if all
+// fail or none are provided, it falls back to go-git's default SSH agent.
 //
 // For HTTPS/HTTP remotes, authMethods are tried in order until one succeeds.
 // An empty authMethods slice returns an error for HTTPS remotes.
@@ -90,7 +109,7 @@ func PushWithTransportDetection(
 	switch {
 	case strings.HasPrefix(remoteURL, "git@") || strings.HasPrefix(remoteURL, "ssh://"):
 		log.Info("Pushing to remote via SSH")
-		return PushChangesSSH(repo, refSpec)
+		return PushChangesSSH(repo, refSpec, authMethods)
 
 	case strings.HasPrefix(remoteURL, "https://"):
 		log.Info("Pushing to remote via HTTPS")

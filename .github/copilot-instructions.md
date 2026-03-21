@@ -256,7 +256,8 @@ ForgeProvider (base)
 **Git** (`pkg/git/infrastructure`):
 - `NewGitOperations(finder AdapterFinder) *GitOperations` -- creates a GitOperations instance
 - `OpenRepo(projectPath string) (*git.Repository, error)` -- opens a local git repository
-- `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from remote URL and pushes with auth retry
+- `PushChangesSSH(repo, refSpec, authMethods) error` -- pushes over SSH; tries explicit auth methods first, falls back to default SSH agent
+- `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from remote URL and forwards auth methods to both transports
 
 **Signing** (`pkg/signing/infrastructure`):
 - `NewGPGSigner(key *openpgp.Entity) *GPGSigner` -- creates a GPG commit signer

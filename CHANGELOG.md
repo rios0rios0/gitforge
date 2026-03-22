@@ -16,6 +16,11 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Changed
+
+- changed `PushChangesSSH` to accept optional SSH auth methods, enabling explicit SSH key and custom agent socket authentication
+- changed `PushWithTransportDetection` to forward auth methods to SSH push instead of discarding them
+
 ## [0.7.2] - 2026-03-20
 
 ### Fixed

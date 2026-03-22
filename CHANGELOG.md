@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-03-22
+
 ### Changed
 
 - changed `PushChangesSSH` to accept optional SSH auth methods, enabling explicit SSH key and custom agent socket authentication

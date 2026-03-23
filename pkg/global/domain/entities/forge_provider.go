@@ -18,6 +18,10 @@ type ForgeProvider interface {
 	// embedded credentials for authenticated access.
 	CloneURL(repo Repository) string
 
+	// SSHCloneURL returns an SSH clone URL using the given SSH config alias.
+	// The alias maps to an entry in ~/.ssh/config (e.g. "github.com-mine").
+	SSHCloneURL(repo Repository, sshAlias string) string
+
 	// DiscoverRepositories lists all repositories in an organization or group.
 	DiscoverRepositories(ctx context.Context, org string) ([]Repository, error)
 

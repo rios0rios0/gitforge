@@ -126,6 +126,27 @@ func TestProviderCloneURL(t *testing.T) {
 	})
 }
 
+func TestProviderSSHCloneURL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return SSH URL with alias", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		provider := gitlab.NewProvider("token")
+		repo := builders.NewRepositoryBuilder().
+			WithOrganization("my-org").
+			WithName("my-repo").
+			Build().(globalEntities.Repository)
+
+		// when
+		result := provider.SSHCloneURL(repo, "work")
+
+		// then
+		assert.Equal(t, "git@gitlab.com-work:my-org/my-repo.git", result)
+	})
+}
+
 func TestProviderGetServiceType(t *testing.T) {
 	t.Parallel()
 

@@ -22,7 +22,8 @@ func (s *ForgeProviderStub) AuthToken() string { return s.TokenValue }
 func (s *ForgeProviderStub) MatchesURL(rawURL string) bool {
 	return len(s.MatchURLValue) > 0 && rawURL == s.MatchURLValue
 }
-func (s *ForgeProviderStub) CloneURL(_ globalEntities.Repository) string { return "" }
+func (s *ForgeProviderStub) CloneURL(_ globalEntities.Repository) string    { return "" }
+func (s *ForgeProviderStub) SSHCloneURL(_ globalEntities.Repository, _ string) string { return "" }
 func (s *ForgeProviderStub) DiscoverRepositories(
 	_ context.Context, _ string,
 ) ([]globalEntities.Repository, error) {

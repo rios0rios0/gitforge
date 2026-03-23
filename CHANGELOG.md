@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-23
+
 ### Added
 
 - added `SSHCloneURL(repo, sshAlias)` to `ForgeProvider` interface for SSH alias-based clone URLs

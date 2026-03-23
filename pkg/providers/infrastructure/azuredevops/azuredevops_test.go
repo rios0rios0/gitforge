@@ -136,7 +136,7 @@ func TestProviderSSHCloneURL(t *testing.T) {
 		result := provider.SSHCloneURL(repo, "acme")
 
 		// then
-		assert.Equal(t, "git@dev.azure.com-acme:v3/my-org/my-project/my-repo", result)
+		assert.Equal(t, "git@ssh.dev.azure.com-acme:v3/my-org/my-project/my-repo", result)
 	})
 }
 

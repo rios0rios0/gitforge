@@ -118,6 +118,28 @@ func TestProviderCloneURL(t *testing.T) {
 	})
 }
 
+func TestProviderSSHCloneURL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return SSH URL with alias including project path", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		provider := azuredevops.NewProvider("token")
+		repo := builders.NewRepositoryBuilder().
+			WithOrganization("my-org").
+			WithProject("my-project").
+			WithName("my-repo").
+			Build().(globalEntities.Repository)
+
+		// when
+		result := provider.SSHCloneURL(repo, "arancia")
+
+		// then
+		assert.Equal(t, "git@ssh.dev.azure.com-arancia:v3/my-org/my-project/my-repo", result)
+	})
+}
+
 func TestProviderGetServiceType(t *testing.T) {
 	t.Parallel()
 

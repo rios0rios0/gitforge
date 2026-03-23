@@ -60,6 +60,51 @@ func (p *Provider) discoverUserRepos(
 	ctx context.Context,
 	user string,
 ) ([]globalEntities.Repository, error) {
+	// check if the authenticated user matches the requested user;
+	// /users/{user}/repos only returns public repos, while
+	// /user/repos returns all repos including private ones
+	authenticatedUser, _, err := p.client.Users.Get(ctx, "")
+	if err == nil && authenticatedUser.GetLogin() == user {
+		log.Debugf("Authenticated user matches %q, using authenticated endpoint for private repos", user)
+		return p.discoverAuthenticatedUserRepos(ctx, user)
+	}
+
+	return p.discoverPublicUserRepos(ctx, user)
+}
+
+func (p *Provider) discoverAuthenticatedUserRepos(
+	ctx context.Context,
+	user string,
+) ([]globalEntities.Repository, error) {
+	var allRepos []globalEntities.Repository
+	opts := &gh.RepositoryListByAuthenticatedUserOptions{
+		ListOptions: gh.ListOptions{PerPage: perPage},
+		Affiliation: "owner",
+	}
+
+	for {
+		repos, resp, err := p.client.Repositories.ListByAuthenticatedUser(ctx, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list authenticated user repos: %w", err)
+		}
+
+		for _, r := range repos {
+			allRepos = append(allRepos, githubRepoToDomain(r, user))
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allRepos, nil
+}
+
+func (p *Provider) discoverPublicUserRepos(
+	ctx context.Context,
+	user string,
+) ([]globalEntities.Repository, error) {
 	var allRepos []globalEntities.Repository
 	opts := &gh.RepositoryListByUserOptions{
 		ListOptions: gh.ListOptions{PerPage: perPage},

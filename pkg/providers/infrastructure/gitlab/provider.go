@@ -94,3 +94,7 @@ func (p *Provider) CloneURL(repo globalEntities.Repository) string {
 
 	return parsed.String()
 }
+
+func (p *Provider) SSHCloneURL(repo globalEntities.Repository, sshAlias string) string {
+	return fmt.Sprintf("git@gitlab.com-%s:%s/%s.git", sshAlias, repo.Organization, repo.Name)
+}

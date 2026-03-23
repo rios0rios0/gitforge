@@ -97,5 +97,5 @@ func (p *Provider) CloneURL(repo globalEntities.Repository) string {
 }
 
 func (p *Provider) SSHCloneURL(repo globalEntities.Repository, sshAlias string) string {
-	return fmt.Sprintf("git@dev.azure.com-%s:v3/%s/%s/%s", sshAlias, repo.Organization, repo.Project, repo.Name)
+	return fmt.Sprintf("git@ssh.dev.azure.com-%s:v3/%s/%s/%s", sshAlias, repo.Organization, repo.Project, repo.Name)
 }

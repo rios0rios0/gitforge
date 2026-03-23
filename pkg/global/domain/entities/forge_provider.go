@@ -18,6 +18,19 @@ type ForgeProvider interface {
 	// embedded credentials for authenticated access.
 	CloneURL(repo Repository) string
 
+	// SSHCloneURL returns an SSH clone URL for the repository.
+	//
+	// sshAlias is the suffix that will be appended to the provider's default SSH
+	// hostname to form an ssh_config Host entry. For example, passing "mine"
+	// allows providers to construct a host like "github.com-mine", which can
+	// then map to an entry in ~/.ssh/config.
+	//
+	// Implementations SHOULD treat an empty sshAlias as "no alias": in that
+	// case they MUST generate a URL that uses the default SSH hostname
+	// (for example, "git@github.com:org/repo.git") without appending any
+	// suffix (and without a trailing dash).
+	SSHCloneURL(repo Repository, sshAlias string) string
+
 	// DiscoverRepositories lists all repositories in an organization or group.
 	DiscoverRepositories(ctx context.Context, org string) ([]Repository, error)
 

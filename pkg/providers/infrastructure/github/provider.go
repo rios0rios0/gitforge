@@ -90,5 +90,9 @@ func (p *Provider) CloneURL(repo globalEntities.Repository) string {
 }
 
 func (p *Provider) SSHCloneURL(repo globalEntities.Repository, sshAlias string) string {
-	return fmt.Sprintf("git@github.com-%s:%s/%s.git", sshAlias, repo.Organization, repo.Name)
+	host := "github.com"
+	if sshAlias != "" {
+		host = fmt.Sprintf("github.com-%s", sshAlias)
+	}
+	return fmt.Sprintf("git@%s:%s/%s.git", host, repo.Organization, repo.Name)
 }

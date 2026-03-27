@@ -16,10 +16,20 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added Codeberg (Forgejo) provider with mirror support, repository discovery, pull requests, file access, and local git auth
+- added `NewProviderWithClient` constructor to Codeberg provider for test-friendly HTTP client injection
+- added `CODEBERG` service type with token resolution via `CODEBERG_TOKEN` environment variable
+
 ### Fixed
 
 - fixed `SSHCloneURL` across all providers to use the default SSH hostname when `sshAlias` is empty, and the alias convention (`{host}-{alias}`) when provided
 - fixed Azure DevOps `SSHCloneURL` to use `dev.azure.com` alias convention instead of `ssh.dev.azure.com`, matching the standard SSH config `Host` entry pattern
+- fixed `MirrorProviderStub` to use pointer embedding so `ForgeProviderStub` methods are properly promoted
+- fixed `DiscoverRepositories` in Codeberg provider to only fall back to user repos on HTTP 404 instead of any error
+- fixed `PullRequestExists` in Codeberg provider to paginate through all open PRs instead of checking only the first page
+- fixed `CreateBranchWithChanges` in Codeberg provider to handle `delete` change type and reject unsupported change types
 
 ## [0.8.0] - 2026-03-23
 

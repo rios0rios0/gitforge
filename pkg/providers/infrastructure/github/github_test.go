@@ -135,6 +135,23 @@ func TestProviderSSHCloneURL(t *testing.T) {
 		// then
 		assert.Equal(t, "git@github.com-mine:my-org/my-repo.git", result)
 	})
+
+	t.Run("should return SSH URL with default host when alias is empty", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		provider := github.NewProvider("token")
+		repo := builders.NewRepositoryBuilder().
+			WithOrganization("my-org").
+			WithName("my-repo").
+			Build().(globalEntities.Repository)
+
+		// when
+		result := provider.SSHCloneURL(repo, "")
+
+		// then
+		assert.Equal(t, "git@github.com:my-org/my-repo.git", result)
+	})
 }
 
 func TestProviderGetServiceType(t *testing.T) {

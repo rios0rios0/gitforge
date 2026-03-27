@@ -16,6 +16,11 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed `SSHCloneURL` across all providers to use the default SSH hostname when `sshAlias` is empty, and the alias convention (`{host}-{alias}`) when provided
+- fixed Azure DevOps `SSHCloneURL` to use `dev.azure.com` alias convention instead of `ssh.dev.azure.com`, matching the standard SSH config `Host` entry pattern
+
 ## [0.8.0] - 2026-03-23
 
 ### Added

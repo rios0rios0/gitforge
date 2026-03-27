@@ -31,12 +31,23 @@ type Provider struct {
 
 // NewProvider creates a new Codeberg provider with the given API token.
 func NewProvider(token string) globalEntities.ForgeProvider {
-	return &Provider{
-		token:   token,
-		baseURL: defaultBaseURL,
-		httpClient: &http.Client{
+	return NewProviderWithClient(token, nil)
+}
+
+// NewProviderWithClient creates a new Codeberg provider with the given API token
+// and an explicit HTTP client. If client is nil, a default client with the
+// standard timeout is used. This is primarily intended for testing.
+func NewProviderWithClient(token string, client *http.Client) globalEntities.ForgeProvider {
+	if client == nil {
+		client = &http.Client{
 			Timeout: httpTimeout,
-		},
+		}
+	}
+
+	return &Provider{
+		token:      token,
+		baseURL:    defaultBaseURL,
+		httpClient: client,
 	}
 }
 

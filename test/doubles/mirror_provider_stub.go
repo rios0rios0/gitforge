@@ -8,7 +8,8 @@ import (
 
 // MirrorProviderStub implements MirrorProvider for testing.
 type MirrorProviderStub struct {
-	ForgeProviderStub
+	*ForgeProviderStub
+
 	MigrateErr error
 	Migrated   []globalEntities.MirrorInput
 }

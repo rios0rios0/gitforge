@@ -164,8 +164,8 @@ func (p *Provider) CreateBranchWithChanges(
 		repo.Organization, repo.Name,
 	)
 	branchBody := map[string]string{
-		"new_branch_name":  input.BranchName,
-		"old_branch_name":  baseBranch,
+		"new_branch_name": input.BranchName,
+		"old_branch_name": baseBranch,
 	}
 	if _, err := p.doRequest(ctx, http.MethodPost, createBranchEndpoint, branchBody); err != nil {
 		return fmt.Errorf("failed to create branch: %w", err)
@@ -179,11 +179,34 @@ func (p *Provider) CreateBranchWithChanges(
 			repo.Organization, repo.Name, filePath,
 		)
 
+		changeType := strings.ToLower(strings.TrimSpace(change.ChangeType))
+
+		// handle delete operations explicitly
+		if changeType == "delete" {
+			fileBody := map[string]string{
+				"message": input.CommitMessage,
+				"branch":  input.BranchName,
+			}
+
+			if _, err := p.doRequest(ctx, http.MethodDelete, fileEndpoint, fileBody); err != nil {
+				return fmt.Errorf("failed to delete file %q: %w", filePath, err)
+			}
+
+			continue
+		}
+
+		// treat unknown, non-empty change types as an error
+		if changeType != "" && changeType != "add" && changeType != "edit" && changeType != "create" &&
+			changeType != "update" {
+			return fmt.Errorf("unsupported change type %q for file %q", change.ChangeType, filePath)
+		}
+
+		// default behavior: create or update file content
 		encoded := base64.StdEncoding.EncodeToString([]byte(change.Content))
 		fileBody := map[string]string{
-			"content":  encoded,
-			"message":  input.CommitMessage,
-			"branch":   input.BranchName,
+			"content": encoded,
+			"message": input.CommitMessage,
+			"branch":  input.BranchName,
 		}
 
 		if _, err := p.doRequest(ctx, http.MethodPost, fileEndpoint, fileBody); err != nil {

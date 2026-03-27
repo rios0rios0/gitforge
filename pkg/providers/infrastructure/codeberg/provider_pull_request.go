@@ -64,27 +64,41 @@ func (p *Provider) PullRequestExists(
 	repo globalEntities.Repository,
 	sourceBranch string,
 ) (bool, error) {
-	endpoint := fmt.Sprintf(
-		"/api/v1/repos/%s/%s/pulls?state=open",
-		repo.Organization, repo.Name,
-	)
-
-	resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return false, fmt.Errorf("failed to list pull requests: %w", err)
-	}
-
-	var prs []forgejoPR
-	if unmarshalErr := json.Unmarshal(resp, &prs); unmarshalErr != nil {
-		return false, fmt.Errorf("failed to parse pull requests response: %w", unmarshalErr)
-	}
-
 	branch := strings.TrimPrefix(sourceBranch, "refs/heads/")
-	for _, pr := range prs {
-		if pr.Head.Ref == branch {
-			return true, nil
-		}
-	}
 
-	return false, nil
+	page := 1
+	const limit = 50
+
+	for {
+		endpoint := fmt.Sprintf(
+			"/api/v1/repos/%s/%s/pulls?state=open&page=%d&limit=%d",
+			repo.Organization, repo.Name, page, limit,
+		)
+
+		resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return false, fmt.Errorf("failed to list pull requests: %w", err)
+		}
+
+		var prs []forgejoPR
+		if unmarshalErr := json.Unmarshal(resp, &prs); unmarshalErr != nil {
+			return false, fmt.Errorf("failed to parse pull requests response: %w", unmarshalErr)
+		}
+
+		if len(prs) == 0 {
+			return false, nil
+		}
+
+		for _, pr := range prs {
+			if pr.Head.Ref == branch {
+				return true, nil
+			}
+		}
+
+		if len(prs) < limit {
+			return false, nil
+		}
+
+		page++
+	}
 }

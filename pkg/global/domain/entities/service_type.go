@@ -10,5 +10,7 @@ const (
 	AZUREDEVOPS
 	BITBUCKET
 	CODECOMMIT
+	// CODEBERG is intentionally excluded from ParseRemoteURL URL parsing.
+	// Providers that support Codeberg must select this ServiceType via other means.
 	CODEBERG
 )

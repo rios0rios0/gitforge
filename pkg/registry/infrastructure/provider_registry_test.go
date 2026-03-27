@@ -53,6 +53,19 @@ func TestServiceTypeToProviderName(t *testing.T) {
 		assert.Equal(t, "azuredevops", name)
 	})
 
+	t.Run("should return codeberg for CODEBERG service type", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		serviceType := globalEntities.CODEBERG
+
+		// when
+		name := registryInfra.ServiceTypeToProviderName(serviceType)
+
+		// then
+		assert.Equal(t, "codeberg", name)
+	})
+
 	t.Run("should return empty string for UNKNOWN service type", func(t *testing.T) {
 		t.Parallel()
 

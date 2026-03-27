@@ -9,6 +9,21 @@ import (
 	"net/http"
 )
 
+// apiError represents an HTTP API error with the status code preserved.
+type apiError struct {
+	statusCode int
+	body       string
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("API error (status %d): %s", e.statusCode, e.body)
+}
+
+// StatusCode returns the HTTP status code of the failed request.
+func (e *apiError) StatusCode() int {
+	return e.statusCode
+}
+
 func (p *Provider) doRequest(
 	ctx context.Context,
 	method, endpoint string,
@@ -45,10 +60,10 @@ func (p *Provider) doRequest(
 	}
 
 	if resp.StatusCode < httpStatusOKMin || resp.StatusCode >= httpStatusOKMax {
-		return nil, fmt.Errorf(
-			"API error (status %d): %s",
-			resp.StatusCode, string(respBody),
-		)
+		return nil, &apiError{
+			statusCode: resp.StatusCode,
+			body:       string(respBody),
+		}
 	}
 
 	return respBody, nil

@@ -15,6 +15,7 @@ var tokenEnvVars = map[entities.ServiceType][]string{ //nolint:gochecknoglobals 
 	entities.AZUREDEVOPS: {"AZURE_DEVOPS_EXT_PAT", "SYSTEM_ACCESSTOKEN"},
 	entities.BITBUCKET:   {},
 	entities.CODECOMMIT:  {},
+	entities.CODEBERG:    {"CODEBERG_TOKEN"},
 }
 
 // tokenEnvHints maps each ServiceType to a human-readable string listing
@@ -26,6 +27,7 @@ var tokenEnvHints = map[entities.ServiceType]string{ //nolint:gochecknoglobals /
 	entities.AZUREDEVOPS: "AZURE_DEVOPS_EXT_PAT or SYSTEM_ACCESSTOKEN",
 	entities.BITBUCKET:   "",
 	entities.CODECOMMIT:  "",
+	entities.CODEBERG:    "CODEBERG_TOKEN",
 }
 
 // ResolveTokenFromEnv returns the first non-empty token found in

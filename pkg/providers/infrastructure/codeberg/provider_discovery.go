@@ -3,6 +3,7 @@ package codeberg
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -31,7 +32,13 @@ func (p *Provider) DiscoverRepositories(
 ) ([]globalEntities.Repository, error) {
 	repos, err := p.discoverOrgRepos(ctx, org)
 	if err != nil {
-		return p.discoverUserRepos(ctx, org)
+		// Only fall back to user repositories when the organization is definitively not found (HTTP 404).
+		var ae *apiError
+		if errors.As(err, &ae) && ae.StatusCode() == http.StatusNotFound {
+			return p.discoverUserRepos(ctx, org)
+		}
+
+		return nil, fmt.Errorf("failed to discover org repos for %q: %w", org, err)
 	}
 	return repos, nil
 }

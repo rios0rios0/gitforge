@@ -111,6 +111,8 @@ func ServiceTypeToProviderName(serviceType globalEntities.ServiceType) string {
 		return "gitlab"
 	case globalEntities.AZUREDEVOPS:
 		return "azuredevops"
+	case globalEntities.CODEBERG:
+		return "codeberg"
 	case globalEntities.UNKNOWN, globalEntities.BITBUCKET, globalEntities.CODECOMMIT:
 		return ""
 	default:

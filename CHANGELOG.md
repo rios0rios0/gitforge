@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-03-27
+
 ### Fixed
 
 - fixed `SSHCloneURL` across all providers to use the default SSH hostname when `sshAlias` is empty, and the alias convention (`{host}-{alias}`) when provided
@@ -49,16 +51,16 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Fixed
 
-- fixed version heading detection in `Process()` and `IsUnreleasedEmpty()` to apply `TrimSpace` consistently with `FindLatestVersion()`, preventing the unreleased section from swallowing the rest of the file when headings have leading whitespace
-- fixed SSH signing ignoring `gpg.ssh.program` git config, causing failures on WSL2 with 1Password (`op-ssh-sign-wsl`); now reads the config and delegates to the configured signing binary instead of hardcoding `ssh-keygen`
 - fixed `SSH_AUTH_SOCK` check being incorrectly skipped when `gpg.ssh.program` is explicitly set to `ssh-keygen` (or an absolute path to it)
+- fixed SSH signing ignoring `gpg.ssh.program` git config, causing failures on WSL2 with 1Password (`op-ssh-sign-wsl`); now reads the config and delegates to the configured signing binary instead of hardcoding `ssh-keygen`
+- fixed version heading detection in `Process()` and `IsUnreleasedEmpty()` to apply `TrimSpace` consistently with `FindLatestVersion()`, preventing the unreleased section from swallowing the rest of the file when headings have leading whitespace
 
 ## [0.7.0] - 2026-03-17
 
 ### Added
 
-- added URL credential sanitization in clone log messages to prevent token leakage in CI logs
 - added `IsFork` and `IsArchived` fields to `Repository` entity, populated from the GitHub API response
+- added URL credential sanitization in clone log messages to prevent token leakage in CI logs
 
 ### Changed
 
@@ -80,8 +82,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Fixed
 
-- fixed SSH signing failing when `user.signingkey` is an inline public key string (e.g. `ssh-ed25519 AAAAC3...`) used by ssh-agent workflows (1Password, YubiKey, WSL interop); now detects inline keys and signs via the SSH agent with `ssh-keygen -U`
 - fixed cross-compilation failure on Windows in GPG passphrase prompt where `syscall.Stdin` type mismatch prevented building
+- fixed SSH signing failing when `user.signingkey` is an inline public key string (e.g. `ssh-ed25519 AAAAC3...`) used by ssh-agent workflows (1Password, YubiKey, WSL interop); now detects inline keys and signs via the SSH agent with `ssh-keygen -U`
 
 ## [0.6.0] - 2026-03-16
 
@@ -92,8 +94,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Fixed
 
-- fixed GPG passphrase prompt breaking CI logs by detecting non-TTY environments before printing
 - fixed branch checkout failing in CI after native `git clone` by using forced checkout for newly created branches
+- fixed GPG passphrase prompt breaking CI logs by detecting non-TTY environments before printing
 
 ## [0.5.0] - 2026-03-13
 
@@ -162,11 +164,9 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Added
 
 - added "Exported for use by `autobump`/`autoupdate`" clarifying comments to all exported functions that have no callers within `gitforge` itself
-- added GPG signing utilities and SSH signing placeholder
-- added SSH commit signing support using `ssh-keygen -Y sign` in `pkg/signing/infrastructure/ssh.go`
 - added `CloneRepo` to `GitOperations` for cloning remote repositories with multi-auth retry and adapter-based URL preparation
-- added `CommitSignerStub` test double
 - added `CommitSigner` interface in `pkg/global/domain/entities/` for abstracting commit signing
+- added `CommitSignerStub` test double
 - added `GPGSigner` and `SSHSigner` structs in `pkg/signing/infrastructure/` implementing `CommitSigner`
 - added `LoadConfig` to `pkg/config/infrastructure/` as the parent caller for the orphaned `DownloadFile`/`ReadData` infrastructure helpers
 - added `ParseRemoteURL` and `ParsePullRequestURL` in `pkg/git/infrastructure/` to provide unified Git remote and PR URL parsing for all consumers (`autobump`, `autoupdate`, `code-guru`)
@@ -176,11 +176,13 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - added changelog processing: version calculation, entry deduplication, section management, entry insertion
 - added composed provider interfaces: `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`
 - added comprehensive tests across all packages achieving 80%+ coverage using testify, BDD structure, and parallel execution
+- added GPG signing utilities and SSH signing placeholder
 - added local git operations: open, branch, commit, push (SSH/HTTPS), tag, remote detection
 - added provider and discoverer registries with factory pattern support
 - added shared `Controller` interface and `ControllerBind` struct for CLI controllers
 - added shared `ProviderConfig`, `ResolveToken`, `FindConfigFile`, and `ValidateProviders` for configuration handling
 - added shared `Repository`, `ServiceType`, `BranchStatus`, `LatestTag`, `PullRequest`, `PullRequestInput`, `BranchInput`, `File`, `FileChange` entities
+- added SSH commit signing support using `ssh-keygen -Y sign` in `pkg/signing/infrastructure/ssh.go`
 - added standalone `ResolveToken` package-level function in `pkg/config/domain/entities/` to allow consumers to resolve tokens without requiring a `ProviderConfig` instance
 - added unified GitHub, GitLab, and Azure DevOps provider implementations with discovery, file access, PR creation, and local git auth
 - added utility functions: `DownloadFile`, `StripUsernameFromURL`, version sorting
@@ -226,12 +228,12 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - changed default initial release version from `1.0.0` to `0.1.0` when the changelog contains no released versions
 - filled in the empty `pkg/config/domain/entities/config.go` placeholder with `Config` struct, `NewConfig()`, and `Validate()` method
 - filled in the empty `pkg/config/domain/helpers/finder.go` placeholder with `FindConfigFile()` function
-- fixed GitLab provider compilation errors caused by invalid `new(value)` usage; replaced with `&variable` address-of expressions
 - fixed `CommitChanges` to set the `Author` field in `CommitOptions` using the already-passed `name`/`email` parameters, preventing "author field is required" errors in CI environments without global git config
 - fixed `config_test.go` directly testing the `FindConfigFile` helper function; removed helper tests to respect the rule that helpers are tested through their callers
 - fixed `gochecknoglobals` findings by converting global variables to functions in URL parser
 - fixed `testifylint` findings by using `require.Error` instead of `assert.Error` for fatal error checks in URL parser tests
 - fixed `tparallel` findings by adding `t.Parallel()` to all subtests in URL parser tests
+- fixed GitLab provider compilation errors caused by invalid `new(value)` usage; replaced with `&variable` address-of expressions
 
 ### Removed
 

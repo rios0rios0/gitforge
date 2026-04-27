@@ -30,13 +30,13 @@ Clean Architecture with DDD bounded contexts under `pkg/`. Each context owns `do
 | `pkg/config/` | YAML config loading, token resolution, validation |
 | `pkg/git/` | Local git operations (go-git wrapper), URL parsing, SSH/HTTPS push with auth retry |
 | `pkg/global/` | Shared interfaces and value objects (the core contracts) |
-| `pkg/providers/` | GitHub, GitLab, Azure DevOps implementations |
+| `pkg/providers/` | GitHub, GitLab, Azure DevOps, Codeberg (Forgejo) implementations |
 | `pkg/registry/` | Provider factory, adapter lookup, service discovery |
 | `pkg/signing/` | GPG and SSH commit signing |
 
 ### Provider Interface Hierarchy
 
-`ForgeProvider` (base) is extended by `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`. Each concrete provider (GitHub, GitLab, ADO) implements all four interfaces. Consumers type-assert to the level they need.
+`ForgeProvider` (base) is extended by `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. GitHub, GitLab, and ADO implement `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`. Codeberg implements `ForgeProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. Consumers type-assert to the interface level they need.
 
 ### Key Patterns
 

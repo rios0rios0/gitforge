@@ -16,6 +16,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Changed
+
+- refreshed `CLAUDE.md` and `.github/copilot-instructions.md` to document the Codeberg provider, `MirrorProvider` interface, and `ReviewProvider` additions (`GetPullRequestCheckStatus`, `MergePullRequest`)
+
 ## [0.9.4] - 2026-04-17
 
 ### Changed

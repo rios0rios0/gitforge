@@ -1,6 +1,6 @@
 # gitforge
 
-gitforge is a shared Go library providing common abstractions for Git hosting platforms (GitHub, GitLab, Azure DevOps). It is consumed by [autobump](https://github.com/rios0rios0/autobump) and [autoupdate](https://github.com/rios0rios0/autoupdate) via Go module imports. This is a **library**, not a standalone binary — there is no `main.go` or CLI.
+gitforge is a shared Go library providing common abstractions for Git hosting platforms (GitHub, GitLab, Azure DevOps, and Codeberg/Forgejo). It is consumed by [autobump](https://github.com/rios0rios0/autobump) and [autoupdate](https://github.com/rios0rios0/autoupdate) via Go module imports. This is a **library**, not a standalone binary — there is no `main.go` or CLI.
 
 Always reference these instructions first and fall back to search or bash commands only when you encounter unexpected information that does not match the info here.
 
@@ -94,6 +94,7 @@ gitforge/
 │   │       │   ├── forge_provider.go        # ForgeProvider interface (base)
 │   │       │   ├── latest_tag.go            # LatestTag struct: Tag (*semver.Version), Date
 │   │       │   ├── local_git_auth_provider.go # LocalGitAuthProvider interface (extends ForgeProvider)
+│   │       │   ├── mirror_provider.go       # MirrorProvider interface (extends ForgeProvider) + MirrorInput struct
 │   │       │   ├── pull_request.go          # PullRequest struct: ID, Title, URL, Status
 │   │       │   ├── pull_request_detail.go   # PullRequestDetail struct (embeds PullRequest + SourceBranch, TargetBranch, Author)
 │   │       │   ├── pull_request_file.go     # PullRequestFile struct: Path, OldPath, Status, Additions, Deletions, Patch
@@ -121,16 +122,23 @@ gitforge/
 │   │       │   ├── provider_pull_request.go # MR creation / existence check
 │   │       │   ├── gitlab_internal_test.go  # Internal BDD tests (httptest server)
 │   │       │   └── gitlab_test.go           # External BDD tests
-│   │       └── azuredevops/
-│   │           ├── provider.go              # Provider struct for Azure DevOps
+│   │       ├── azuredevops/
+│   │       │   ├── provider.go              # Provider struct for Azure DevOps
+│   │       │   ├── provider_discovery.go    # DiscoverRepositories
+│   │       │   ├── provider_file_access.go  # File access operations
+│   │       │   ├── provider_http.go         # HTTP transport helpers
+│   │       │   ├── provider_pull_request.go # PR creation / existence check
+│   │       │   ├── provider_review.go       # PR review operations
+│   │       │   ├── provider_url.go          # URL construction helpers
+│   │       │   ├── azuredevops_internal_test.go # Internal BDD tests (redirectTransport)
+│   │       │   └── azuredevops_test.go      # External BDD tests
+│   │       └── codeberg/
+│   │           ├── provider.go              # Provider struct for Codeberg (Forgejo)
 │   │           ├── provider_discovery.go    # DiscoverRepositories
 │   │           ├── provider_file_access.go  # File access operations
-│   │           ├── provider_http.go         # HTTP transport helpers
-│   │           ├── provider_pull_request.go # PR creation / existence check
-│   │           ├── provider_review.go       # PR review operations
-│   │           ├── provider_url.go          # URL construction helpers
-│   │           ├── azuredevops_internal_test.go # Internal BDD tests (redirectTransport)
-│   │           └── azuredevops_test.go      # External BDD tests
+│   │           ├── provider_http.go         # HTTP helpers
+│   │           ├── provider_mirror.go       # MigrateRepository (mirror support)
+│   │           └── provider_pull_request.go # PR creation / existence check
 │   ├── registry/
 │   │   └── infrastructure/
 │   │       ├── discoverer_factory.go  # DiscovererFactory type (func(token) RepositoryDiscoverer)
@@ -150,13 +158,16 @@ gitforge/
 │   │   ├── auth_stub.go                    # Authentication mock
 │   │   ├── commit_signer_stub.go           # CommitSignerStub (mock CommitSigner)
 │   │   ├── forge_provider_stub.go          # ForgeProviderStub (mock ForgeProvider + LocalGitAuthProvider)
+│   │   ├── mirror_provider_stub.go         # MirrorProviderStub (mock MirrorProvider)
 │   │   └── repository_discoverer_stub.go   # RepositoryDiscovererStub (mock RepositoryDiscoverer)
 │   └── builders/
 │       ├── adapter_finder_stub_builder.go          # Builder for AdapterFinderStub
 │       ├── forge_provider_stub_builder.go          # Builder for ForgeProviderStub
+│       ├── provider_config_builder.go              # Builder for ProviderConfig
+│       ├── repository_builder.go                   # Builder for Repository
 │       └── repository_discoverer_stub_builder.go   # Builder for RepositoryDiscovererStub
 ├── Makefile                      # Imports pipeline scripts (lint, test, sast)
-├── go.mod                        # Module: github.com/rios0rios0/gitforge (Go 1.26)
+├── go.mod                        # Module: github.com/rios0rios0/gitforge (Go 1.26.2)
 └── .github/
     └── workflows/default.yaml    # CI/CD pipeline (delegates to rios0rios0/pipelines go-library workflow)
 ```
@@ -172,7 +183,7 @@ gitforge/
 | **Git / Infrastructure**           | `pkg/git/infrastructure/`                    | `GitOperations` struct (go-git): branch, commit, push, tag, remote detection, URL parsing. Injected with `AdapterFinder`.             |
 | **Global / Domain**                | `pkg/global/domain/entities/`                | All shared interfaces (`ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, `CommitSigner`, etc.) and value objects. |
 | **Global / Helpers**               | `pkg/global/domain/helpers/`                 | `SortVersionsDescending`, `NormalizeVersion`.                                                                                         |
-| **Providers / Infrastructure**     | `pkg/providers/infrastructure/{github,gitlab,azuredevops}/` | Concrete provider implementations satisfying `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`.  |
+| **Providers / Infrastructure**     | `pkg/providers/infrastructure/{github,gitlab,azuredevops,codeberg}/` | Concrete provider implementations. GitHub/GitLab/ADO satisfy `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`. Codeberg satisfies `ForgeProvider`, `LocalGitAuthProvider`, `MirrorProvider`. |
 | **Registry / Infrastructure**      | `pkg/registry/infrastructure/`               | `ProviderRegistry`: factory + adapter patterns, `DiscovererFactory` support, `GetReviewProvider`.                                     |
 | **Signing / Infrastructure**       | `pkg/signing/infrastructure/`                | `GPGSigner` and `SSHSigner` — both implement `CommitSigner`.                                                                          |
 | **Test Doubles**                   | `test/doubles/` and `test/builders/`         | Stubs and builder helpers for isolated unit testing without real Git hosting connections.                                             |
@@ -180,8 +191,8 @@ gitforge/
 ### Key Design Patterns
 
 - **DDD bounded contexts**: Each sub-domain (`changelog`, `config`, `git`, `global`, `providers`, `registry`, `signing`) owns its own `domain/` and `infrastructure/` sub-packages under `pkg/`.
-- **Interface composition**: `ForgeProvider` (base) -> `FileAccessProvider` (adds API file ops) / `ReviewProvider` (adds PR review ops) / `LocalGitAuthProvider` (adds go-git auth). Each concrete provider implements all four.
-- **Adapter pattern**: Consumers type-assert to the interface level they need (`ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, or `LocalGitAuthProvider`).
+- **Interface composition**: `ForgeProvider` (base) -> `FileAccessProvider` (adds API file ops) / `ReviewProvider` (adds PR review ops) / `LocalGitAuthProvider` (adds go-git auth) / `MirrorProvider` (adds repo migration/mirror). GitHub, GitLab, and ADO implement `ForgeProvider` + `FileAccessProvider` + `ReviewProvider` + `LocalGitAuthProvider`. Codeberg implements `ForgeProvider` + `LocalGitAuthProvider` + `MirrorProvider`.
+- **Adapter pattern**: Consumers type-assert to the interface level they need (`ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, or `MirrorProvider`).
 - **Factory pattern**: `ProviderRegistry` creates providers by name + token via registered factory functions.
 - **Registry pattern**: `ProviderRegistry` supports factory-based creation, direct adapter lookup by URL or service type, and `GetReviewProvider`.
 - **Dependency injection**: `GitOperations` receives an `AdapterFinder` (implemented by `ProviderRegistry`) to resolve auth methods without circular imports.
@@ -191,7 +202,7 @@ gitforge/
 
 ```
 ForgeProvider (base)
-├── Name(), MatchesURL(), AuthToken(), CloneURL()
+├── Name(), MatchesURL(), AuthToken(), CloneURL(), SSHCloneURL()
 ├── DiscoverRepositories(), CreatePullRequest(), PullRequestExists()
 │
 ├── FileAccessProvider (extends ForgeProvider)
@@ -200,11 +211,16 @@ ForgeProvider (base)
 │
 ├── ReviewProvider (extends ForgeProvider)
 │   ├── ListOpenPullRequests(), GetPullRequestDiff(), GetPullRequestFiles()
-│   └── PostPullRequestComment(), PostPullRequestThreadComment()
+│   ├── PostPullRequestComment(), PostPullRequestThreadComment()
+│   ├── GetPullRequestCheckStatus()
+│   └── MergePullRequest()
 │
-└── LocalGitAuthProvider (extends ForgeProvider)
-    ├── GetServiceType(), PrepareCloneURL(), ConfigureTransport()
-    └── GetAuthMethods()
+├── LocalGitAuthProvider (extends ForgeProvider)
+│   ├── GetServiceType(), PrepareCloneURL(), ConfigureTransport()
+│   └── GetAuthMethods()
+│
+└── MirrorProvider (extends ForgeProvider)
+    └── MigrateRepository()
 ```
 
 ### Key Domain Types
@@ -212,7 +228,7 @@ ForgeProvider (base)
 | Type                    | Package path                              | Purpose                                                                                                          |
 |-------------------------|-------------------------------------------|------------------------------------------------------------------------------------------------------------------|
 | `Repository`            | `pkg/global/domain/entities`              | Git repository: ID, Name, Organization, Project, DefaultBranch, RemoteURL, SSHURL, ProviderName                 |
-| `ServiceType`           | `pkg/global/domain/entities`              | Enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT                                               |
+| `ServiceType`           | `pkg/global/domain/entities`              | Enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT, CODEBERG                                     |
 | `PullRequest`           | `pkg/global/domain/entities`              | PR entity: ID, Title, URL, Status                                                                                |
 | `PullRequestDetail`     | `pkg/global/domain/entities`              | Extends `PullRequest` with SourceBranch, TargetBranch, Author (used by `ReviewProvider`)                        |
 | `PullRequestFile`       | `pkg/global/domain/entities`              | Changed file in a PR: Path, OldPath, Status, Additions, Deletions, Patch                                        |
@@ -222,6 +238,8 @@ ForgeProvider (base)
 | `LatestTag`             | `pkg/global/domain/entities`              | Latest git tag: Tag (*semver.Version), Date                                                                      |
 | `BranchStatus`          | `pkg/global/domain/entities`              | Enum: BranchCreated, BranchExistsWithPR, BranchExistsNoPR                                                       |
 | `Controller`            | `pkg/global/domain/entities`              | CLI controller interface (Cobra bridge): GetBind(), Execute() error                                              |
+| `MirrorProvider`        | `pkg/global/domain/entities`              | Interface: MigrateRepository(ctx, MirrorInput) error — implemented by Codeberg provider                         |
+| `MirrorInput`           | `pkg/global/domain/entities`              | Migration input: CloneAddr, RepoName, RepoOwner, Private, Description, Mirror, Service                          |
 | `CommitSigner`          | `pkg/global/domain/entities`              | Interface: Sign(ctx, commitContent) (string, error) — implemented by GPGSigner and SSHSigner                    |
 | `AdapterFinder`         | `pkg/git/domain/entities`                 | Interface: GetAdapterByServiceType(), GetAdapterByURL() — implemented by ProviderRegistry                        |
 | `Config`                | `pkg/config/domain/entities`              | Full app config: Providers []ProviderConfig; methods: NewConfig(), Validate()                                    |
@@ -305,6 +323,7 @@ When adding features to gitforge:
 | Stub                        | Implements                              |
 |-----------------------------|-----------------------------------------|
 | `ForgeProviderStub`         | `ForgeProvider`, `LocalGitAuthProvider` |
+| `MirrorProviderStub`        | `MirrorProvider`                        |
 | `RepositoryDiscovererStub`  | `RepositoryDiscoverer`                  |
 | `AdapterFinderStub`         | `AdapterFinder`                         |
 | `CommitSignerStub`          | `CommitSigner`                          |
@@ -332,6 +351,7 @@ When adding features to gitforge:
 
 - **GitHub / GitLab**: Override the SDK `BaseURL` to point to an `httptest.Server`.
 - **Azure DevOps**: Use a `redirectTransport` that rewrites hardcoded `dev.azure.com` URLs to an `httptest.Server`.
+- **Codeberg**: No tests yet — uses `NewProviderWithClient` for HTTP client injection.
 - All provider tests use the **internal** package (`package github`, not `github_test`) so they can access unexported fields.
 
 ### Running Tests

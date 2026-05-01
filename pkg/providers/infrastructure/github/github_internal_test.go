@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -796,4 +797,177 @@ func TestThreadStatusOptionIgnoredByGitHub(t *testing.T) {
 			assert.Equal(t, 1, requestCount)
 		})
 	}
+}
+
+// captureSubmitReviewEvent stands up a test server that records the `event`
+// field sent on POST /pulls/:n/reviews and returns it for assertion. Shared by
+// the verdict-mapping table tests so each row only owns its inputs/expectations.
+func captureSubmitReviewEvent(
+	t *testing.T,
+	verdict globalEntities.ReviewVerdict,
+	body string,
+) (string, string, error) {
+	t.Helper()
+
+	var capturedEvent, capturedBody string
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var payload struct {
+			Event string `json:"event"`
+			Body  string `json:"body"`
+		}
+		_ = json.Unmarshal(raw, &payload)
+		capturedEvent = payload.Event
+		capturedBody = payload.Body
+
+		resp := map[string]any{"id": 1, "state": payload.Event}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	p := newTestProvider(t, server)
+	repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+	err := p.SubmitPullRequestReview(
+		context.Background(), repo, 7,
+		globalEntities.ReviewSubmission{Verdict: verdict, Body: body},
+	)
+	return capturedEvent, capturedBody, err
+}
+
+func TestSubmitPullRequestReview(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		verdict       globalEntities.ReviewVerdict
+		body          string
+		expectedEvent string
+	}{
+		{
+			name:          "should send APPROVE event for ReviewVerdictApprove",
+			verdict:       globalEntities.ReviewVerdictApprove,
+			body:          "looks good",
+			expectedEvent: "APPROVE",
+		},
+		{
+			name:          "should send REQUEST_CHANGES event for ReviewVerdictRequestChanges",
+			verdict:       globalEntities.ReviewVerdictRequestChanges,
+			body:          "needs work",
+			expectedEvent: "REQUEST_CHANGES",
+		},
+		{
+			name:          "should collapse ReviewVerdictWaitingForAuthor to REQUEST_CHANGES on GitHub",
+			verdict:       globalEntities.ReviewVerdictWaitingForAuthor,
+			body:          "ping",
+			expectedEvent: "REQUEST_CHANGES",
+		},
+		{
+			name:          "should send COMMENT event for ReviewVerdictComment with non-empty body",
+			verdict:       globalEntities.ReviewVerdictComment,
+			body:          "FYI",
+			expectedEvent: "COMMENT",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given / when
+			event, body, err := captureSubmitReviewEvent(t, tt.verdict, tt.body)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedEvent, event)
+			assert.Equal(t, tt.body, body)
+		})
+	}
+}
+
+func TestSubmitPullRequestReviewSkipsEmptyComment(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should not call GitHub when verdict is comment and body is empty", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var requestCount int
+		mux := http.NewServeMux()
+		mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, _ *http.Request) {
+			requestCount++
+			w.WriteHeader(http.StatusInternalServerError)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		err := p.SubmitPullRequestReview(
+			context.Background(), repo, 7,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictComment},
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 0, requestCount)
+	})
+}
+
+func TestSubmitPullRequestReviewSwallowsSelfReview(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should treat HTTP 422 as a soft failure", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"message":"Can not approve your own pull request"}`))
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		err := p.SubmitPullRequestReview(
+			context.Background(), repo, 7,
+			globalEntities.ReviewSubmission{
+				Verdict: globalEntities.ReviewVerdictApprove,
+				Body:    "lgtm",
+			},
+		)
+
+		// then
+		require.NoError(t, err)
+	})
+}
+
+func TestSubmitPullRequestReviewRejectsUnknownVerdict(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return error for unrecognised verdict", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		p := &Provider{token: "test"}
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		err := p.SubmitPullRequestReview(
+			context.Background(), repo, 7,
+			globalEntities.ReviewSubmission{Verdict: "made-up"},
+		)
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported review verdict")
+	})
 }

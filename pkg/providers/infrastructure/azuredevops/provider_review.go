@@ -397,7 +397,14 @@ func (p *Provider) PostPullRequestComment(
 				"commentType":     1,
 			},
 		},
-		"status": 1,
+		// String form (`"active"` / `"fixed"` / `"closed"`) matches
+		// the shape sent by `UpdatePullRequestThreadStatus` and the
+		// ADO REST docs default. Both numeric and string are
+		// accepted by the server, but mixing the two within the
+		// same provider would obscure that the update path is
+		// patching a status the create path produced — pinned per
+		// Copilot review on PR #86 thread `PRRT_kwDORQWb3M5-6QAf`.
+		"status": "active",
 	}
 
 	_, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, threadBody)
@@ -441,7 +448,10 @@ func (p *Provider) PostPullRequestThreadComment(
 				"offset": 1,
 			},
 		},
-		"status": 1,
+		// See the `status` note on the sibling create path above
+		// — string form aligns with `UpdatePullRequestThreadStatus`
+		// and the ADO REST docs default.
+		"status": "active",
 	}
 
 	// look up the latest iteration so ADO can anchor the comment to the correct diff;

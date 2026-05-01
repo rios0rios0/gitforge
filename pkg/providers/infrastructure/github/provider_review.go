@@ -255,6 +255,16 @@ func (p *Provider) UpdatePullRequestThreadStatus(
 // GetPullRequestStatus returns the GitHub pull request state. GitHub uses
 // "open" or "closed" for `state`; closed PRs that were merged are reported as
 // "merged" so callers can distinguish abandoned PRs from merged ones.
+//
+// The merged signal is read off `merged_at` (`MergedAt`) rather than the
+// `merged` boolean. The boolean is reliably set on the single-PR `GET
+// /repos/.../pulls/{N}` response this method uses, but `merged_at` is
+// the canonical timestamp populated whenever the PR was merged at any
+// point — using the timestamp avoids a class of false negatives on
+// fixture / replay payloads where `merged` is omitted (the Go client's
+// `GetMerged()` returns the zero value for a missing field, which would
+// silently report a merged PR as `closed`). Pinned per Copilot review on
+// PR #86 thread `PRRT_kwDORQWb3M5-6QA0`.
 func (p *Provider) GetPullRequestStatus(
 	ctx context.Context,
 	repo globalEntities.Repository,
@@ -265,7 +275,7 @@ func (p *Provider) GetPullRequestStatus(
 		return "", fmt.Errorf("failed to get pull request: %w", err)
 	}
 
-	if pr.GetState() == "closed" && pr.GetMerged() {
+	if pr.GetState() == "closed" && !pr.GetMergedAt().IsZero() {
 		return "merged", nil
 	}
 

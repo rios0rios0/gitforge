@@ -28,8 +28,14 @@ type ReviewProvider interface {
 	) error
 
 	// PostPullRequestThreadComment posts an inline/thread comment on a specific file and line.
-	// Returns the newly created thread ID, which can be used later with
-	// UpdatePullRequestThreadStatus to mark the thread as fixed/closed.
+	// Returns a provider-specific identifier for the newly created comment / thread / review.
+	// On Azure DevOps the value is the thread ID returned by the threads API and is suitable
+	// for passing to UpdatePullRequestThreadStatus. On GitHub the value is the pull-request
+	// review ID returned by the reviews API; GitHub does not expose REST thread-status
+	// updates so the ID is informational and UpdatePullRequestThreadStatus on GitHub returns
+	// an unsupported error regardless. Callers that need the marker-thread auto-close
+	// pattern should check the provider before relying on the ID — pinned per Copilot
+	// review on PR #86 thread `PRRT_kwDORQWb3M5-6QBC`.
 	PostPullRequestThreadComment(
 		ctx context.Context, repo Repository, prID int,
 		filePath string, line int, body string,

@@ -911,10 +911,10 @@ func TestSubmitPullRequestReview(t *testing.T) {
 			expectedEvent: "REQUEST_CHANGES",
 		},
 		{
-			name:          "should collapse ReviewVerdictWaitingForAuthor to REQUEST_CHANGES on GitHub",
+			name:          "should collapse ReviewVerdictWaitingForAuthor to COMMENT on GitHub (no native waiting state, soft signal mirrors ADO vote=-5)",
 			verdict:       globalEntities.ReviewVerdictWaitingForAuthor,
 			body:          "ping",
-			expectedEvent: "REQUEST_CHANGES",
+			expectedEvent: "COMMENT",
 		},
 		{
 			name:          "should send COMMENT event for ReviewVerdictComment with non-empty body",
@@ -942,32 +942,51 @@ func TestSubmitPullRequestReview(t *testing.T) {
 func TestSubmitPullRequestReviewSkipsEmptyComment(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should not call GitHub when verdict is comment and body is empty", func(t *testing.T) {
-		t.Parallel()
+	// Both verdicts collapse to GitHub event=COMMENT, so an empty body
+	// must short-circuit before the API call (GitHub rejects empty COMMENT
+	// reviews with 422 "Body is too short").
+	tests := []struct {
+		name    string
+		verdict globalEntities.ReviewVerdict
+	}{
+		{
+			name:    "should not call GitHub when verdict is comment and body is empty",
+			verdict: globalEntities.ReviewVerdictComment,
+		},
+		{
+			name:    "should not call GitHub when verdict is waiting_for_author and body is empty (collapses to COMMENT on GitHub)",
+			verdict: globalEntities.ReviewVerdictWaitingForAuthor,
+		},
+	}
 
-		// given
-		var requestCount int
-		mux := http.NewServeMux()
-		mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, _ *http.Request) {
-			requestCount++
-			w.WriteHeader(http.StatusInternalServerError)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var requestCount int
+			mux := http.NewServeMux()
+			mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, _ *http.Request) {
+				requestCount++
+				w.WriteHeader(http.StatusInternalServerError)
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+			repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+			// when
+			err := p.SubmitPullRequestReview(
+				context.Background(), repo, 7,
+				globalEntities.ReviewSubmission{Verdict: tt.verdict},
+			)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, 0, requestCount)
 		})
-		server := httptest.NewServer(mux)
-		defer server.Close()
-
-		p := newTestProvider(t, server)
-		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
-
-		// when
-		err := p.SubmitPullRequestReview(
-			context.Background(), repo, 7,
-			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictComment},
-		)
-
-		// then
-		require.NoError(t, err)
-		assert.Equal(t, 0, requestCount)
-	})
+	}
 }
 
 func TestSubmitPullRequestReviewRejectsEmptyBodyForRequestChanges(t *testing.T) {
@@ -980,10 +999,6 @@ func TestSubmitPullRequestReviewRejectsEmptyBodyForRequestChanges(t *testing.T) 
 		{
 			name:    "should reject ReviewVerdictRequestChanges with empty body before the API call",
 			verdict: globalEntities.ReviewVerdictRequestChanges,
-		},
-		{
-			name:    "should reject ReviewVerdictWaitingForAuthor with empty body before the API call",
-			verdict: globalEntities.ReviewVerdictWaitingForAuthor,
 		},
 	}
 

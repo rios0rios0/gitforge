@@ -892,7 +892,15 @@ func (p *Provider) getReviewerID(ctx context.Context, organization string) (stri
 	once := p.reviewerIDOnceFor(organization)
 	once.Do(func() {
 		baseURL := buildBaseURL(organization)
-		endpoint := fmt.Sprintf("/_apis/connectionData?api-version=%s", apiVersion)
+		// Azure DevOps marks `/_apis/connectionData` as preview-only — calling it
+		// with `api-version=7.0` (the package-wide constant used everywhere else)
+		// returns HTTP 400 with `VssInvalidPreviewVersionException` and the literal
+		// hint "the -preview flag must be supplied". Captured live in dev pod logs
+		// at 2026-05-01 20:52 UTC where every native review submission failed with
+		// `failed to resolve reviewer ID`. The preview suffix is endpoint-specific,
+		// not organisation-specific, so it lives inline rather than as a new
+		// package constant.
+		endpoint := fmt.Sprintf("/_apis/connectionData?api-version=%s-preview.1", apiVersion)
 
 		resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
 		if err != nil {

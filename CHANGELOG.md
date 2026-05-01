@@ -16,6 +16,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed Azure DevOps inline review threads being rendered with the warning "This file no longer exists in the latest pull request changes" by adding the `pullRequestThreadContext.iterationContext` and `pullRequestThreadContext.changeTrackingId` fields to the `POST .../threads` payload in `PostPullRequestThreadComment` (looked up via the `iterations` and `iterations/{id}/changes` ADO endpoints, with defensive fall-back that still posts the thread when either lookup fails); covered by new `httptest`-based test rows for the happy path, iteration-lookup failure, no-matching-change-entry, and leading-slash path normalisation
+
 ## [0.9.6] - 2026-04-29
 
 ### Changed

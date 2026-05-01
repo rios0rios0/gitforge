@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
+	log "github.com/sirupsen/logrus"
 
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 )
@@ -443,12 +444,144 @@ func (p *Provider) PostPullRequestThreadComment(
 		"status": 1,
 	}
 
+	// look up the latest iteration so ADO can anchor the comment to the correct diff;
+	// without this the UI shows "This file no longer exists in the latest pull request changes".
+	iterationID, iterErr := p.getLatestPullRequestIterationID(ctx, repo, prID)
+	if iterErr != nil {
+		log.WithError(iterErr).
+			WithField("prID", prID).
+			Warn("failed to look up latest PR iteration; posting thread without iterationContext")
+	} else {
+		prThreadContext := map[string]any{
+			"iterationContext": map[string]int{
+				"firstComparingIteration":  iterationID,
+				"secondComparingIteration": iterationID,
+			},
+		}
+
+		// look up the changeTrackingId for the target file so ADO can follow the line
+		// across iterations.
+		changeTrackingID, found, changeErr := p.getChangeTrackingID(
+			ctx, repo, prID, iterationID, filePath,
+		)
+		switch {
+		case changeErr != nil:
+			log.WithError(changeErr).
+				WithFields(log.Fields{"prID": prID, "filePath": filePath}).
+				Warn("failed to look up changeTrackingId; posting thread without it")
+		case !found:
+			log.WithFields(log.Fields{"prID": prID, "filePath": filePath}).
+				Warn("no matching change entry found; posting thread without changeTrackingId")
+		default:
+			prThreadContext["changeTrackingId"] = changeTrackingID
+		}
+
+		threadBody["pullRequestThreadContext"] = prThreadContext
+	}
+
 	_, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, threadBody)
 	if err != nil {
 		return fmt.Errorf("failed to post pull request thread comment: %w", err)
 	}
 
 	return nil
+}
+
+// getLatestPullRequestIterationID returns the largest iteration ID for the given PR.
+// Iterations are append-only, so the largest ID corresponds to the latest push.
+func (p *Provider) getLatestPullRequestIterationID(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) (int, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/iterations?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get pull request iterations: %w", err)
+	}
+
+	var result struct {
+		Value []struct {
+			ID int `json:"id"`
+		} `json:"value"`
+	}
+	if unmarshalErr := json.Unmarshal(resp, &result); unmarshalErr != nil {
+		return 0, fmt.Errorf("failed to parse iterations response: %w", unmarshalErr)
+	}
+
+	if len(result.Value) == 0 {
+		return 0, errors.New("no iterations found for pull request")
+	}
+
+	latest := 0
+	for _, iter := range result.Value {
+		if iter.ID > latest {
+			latest = iter.ID
+		}
+	}
+
+	return latest, nil
+}
+
+// getChangeTrackingID returns the changeTrackingId for the change entry whose item.path
+// matches the requested filePath in the given PR iteration. The boolean is true when a
+// matching entry was found. ADO's API returns paths with a leading slash (e.g. "/README.md")
+// while callers may pass paths without one - both forms are normalised before comparison.
+// The raw value is returned as `any` so the JSON type (int or string) is preserved when the
+// payload is sent back to ADO.
+func (p *Provider) getChangeTrackingID(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+	iterationID int,
+	filePath string,
+) (any, bool, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/iterations/%d/changes?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, iterationID, apiVersion,
+	)
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get pull request iteration changes: %w", err)
+	}
+
+	var result struct {
+		ChangeEntries []struct {
+			ChangeTrackingID json.RawMessage `json:"changeTrackingId"`
+			Item             struct {
+				Path string `json:"path"`
+			} `json:"item"`
+		} `json:"changeEntries"`
+	}
+	if unmarshalErr := json.Unmarshal(resp, &result); unmarshalErr != nil {
+		return nil, false, fmt.Errorf("failed to parse iteration changes response: %w", unmarshalErr)
+	}
+
+	target := strings.TrimPrefix(filePath, "/")
+	for _, entry := range result.ChangeEntries {
+		if strings.TrimPrefix(entry.Item.Path, "/") != target {
+			continue
+		}
+		if len(entry.ChangeTrackingID) == 0 {
+			return nil, false, nil
+		}
+		var raw any
+		if unmarshalErr := json.Unmarshal(entry.ChangeTrackingID, &raw); unmarshalErr != nil {
+			return nil, false, fmt.Errorf(
+				"failed to parse changeTrackingId: %w", unmarshalErr,
+			)
+		}
+		return raw, true, nil
+	}
+
+	return nil, false, nil
 }
 
 func (p *Provider) GetPullRequestCheckStatus(

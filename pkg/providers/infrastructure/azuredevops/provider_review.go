@@ -397,7 +397,14 @@ func (p *Provider) PostPullRequestComment(
 				"commentType":     1,
 			},
 		},
-		"status": 1,
+		// String form (`"active"` / `"fixed"` / `"closed"`) matches
+		// the shape sent by `UpdatePullRequestThreadStatus` and the
+		// ADO REST docs default. Both numeric and string are
+		// accepted by the server, but mixing the two within the
+		// same provider would obscure that the update path is
+		// patching a status the create path produced — pinned per
+		// Copilot review on PR #86 thread `PRRT_kwDORQWb3M5-6QAf`.
+		"status": "active",
 	}
 
 	_, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, threadBody)
@@ -415,7 +422,7 @@ func (p *Provider) PostPullRequestThreadComment(
 	filePath string,
 	line int,
 	body string,
-) error {
+) (int, error) {
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pullrequests/%d/threads?api-version=%s",
@@ -441,7 +448,10 @@ func (p *Provider) PostPullRequestThreadComment(
 				"offset": 1,
 			},
 		},
-		"status": 1,
+		// See the `status` note on the sibling create path above
+		// — string form aligns with `UpdatePullRequestThreadStatus`
+		// and the ADO REST docs default.
+		"status": "active",
 	}
 
 	// look up the latest iteration so ADO can anchor the comment to the correct diff;
@@ -489,12 +499,75 @@ func (p *Provider) PostPullRequestThreadComment(
 		threadBody["pullRequestThreadContext"] = prThreadContext
 	}
 
-	_, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, threadBody)
+	resp, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, threadBody)
 	if err != nil {
-		return fmt.Errorf("failed to post pull request thread comment: %w", err)
+		return 0, fmt.Errorf("failed to post pull request thread comment: %w", err)
+	}
+
+	var created struct {
+		ID int `json:"id"`
+	}
+	if unmarshalErr := json.Unmarshal(resp, &created); unmarshalErr != nil {
+		return 0, fmt.Errorf("failed to parse thread response: %w", unmarshalErr)
+	}
+
+	return created.ID, nil
+}
+
+// UpdatePullRequestThreadStatus updates an existing pull request thread's status.
+// Accepted ADO status strings include: "active", "fixed", "wontFix", "closed",
+// "byDesign", "pending". The string is sent as-is in the PATCH body so callers
+// can use any value supported by the ADO Threads REST API.
+func (p *Provider) UpdatePullRequestThreadStatus(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID, threadID int,
+	status string,
+) error {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/threads/%d?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, threadID, apiVersion,
+	)
+
+	body := map[string]any{
+		"status": status,
+	}
+
+	_, err := p.doRequest(ctx, baseURL, http.MethodPatch, endpoint, body)
+	if err != nil {
+		return fmt.Errorf("failed to update pull request thread status: %w", err)
 	}
 
 	return nil
+}
+
+// GetPullRequestStatus returns the raw ADO pull request status string
+// (e.g. "active", "completed", "abandoned").
+func (p *Provider) GetPullRequestStatus(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) (string, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pull request status: %w", err)
+	}
+
+	var prData struct {
+		Status string `json:"status"`
+	}
+	if unmarshalErr := json.Unmarshal(resp, &prData); unmarshalErr != nil {
+		return "", fmt.Errorf("failed to parse pull request status: %w", unmarshalErr)
+	}
+
+	return prData.Status, nil
 }
 
 // getLatestPullRequestIterationID returns the largest iteration ID for the given PR.

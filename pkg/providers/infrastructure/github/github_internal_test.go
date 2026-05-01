@@ -529,3 +529,195 @@ func TestCreateBranchWithChangesInternal(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestPostPullRequestThreadCommentReturnsID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return the new review ID as the thread ID", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{"id": 9876, "state": "COMMENTED"}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		threadID, err := p.PostPullRequestThreadComment(
+			context.Background(), repo, 7, "README.md", 3, "nit",
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 9876, threadID)
+	})
+}
+
+func TestUpdatePullRequestThreadStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return ErrThreadStatusUpdateUnsupported", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		p := &Provider{token: "test"}
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		err := p.UpdatePullRequestThreadStatus(context.Background(), repo, 7, 9, "fixed")
+
+		// then
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrThreadStatusUpdateUnsupported)
+	})
+}
+
+func TestGetPullRequestStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return open when PR is open", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{"number": 7, "state": "open", "merged": false}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 7)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "open", status)
+	})
+
+	t.Run("should return merged when PR is closed and has a merged_at timestamp", func(t *testing.T) {
+		t.Parallel()
+
+		// given: real merged PRs always populate `merged_at` —
+		// `GetPullRequestStatus` reads off that timestamp rather
+		// than the `merged` boolean per Copilot review on PR #86
+		// thread `PRRT_kwDORQWb3M5-6QA0` (the boolean is omitted
+		// from some fixture/replay payloads, leading to false
+		// negatives where a merged PR reports as `closed`).
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{
+				"number":    7,
+				"state":     "closed",
+				"merged":    true,
+				"merged_at": "2026-05-01T00:00:00Z",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 7)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "merged", status)
+	})
+
+	t.Run("should treat a merged_at-only payload (no `merged` boolean) as merged", func(t *testing.T) {
+		// given: defensive — exactly the failure mode the Copilot
+		// review flagged. A REST fixture / replay payload that
+		// omits the `merged` boolean must still report `merged`
+		// when `merged_at` is set, otherwise legitimately-merged
+		// PRs would silently report as `closed`. Pin the contract
+		// per PR #86 thread `PRRT_kwDORQWb3M5-6QA0`.
+		t.Parallel()
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/9", func(w http.ResponseWriter, _ *http.Request) {
+			// note: no `merged` field in the response
+			resp := map[string]any{
+				"number":    9,
+				"state":     "closed",
+				"merged_at": "2026-05-01T01:23:45Z",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 9)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "merged", status)
+	})
+
+	t.Run("should return closed when PR is closed without merge", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{"number": 7, "state": "closed", "merged": false}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 7)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "closed", status)
+	})
+
+	t.Run("should return error when API call fails", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 7)
+
+		// then
+		require.Error(t, err)
+		assert.Empty(t, status)
+	})
+}

@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	gh "github.com/google/go-github/v66/github"
+	log "github.com/sirupsen/logrus"
+
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 )
 
@@ -15,6 +18,15 @@ import (
 // only via the GraphQL resolveReviewThread mutation, which is not yet wired up.
 var ErrThreadStatusUpdateUnsupported = errors.New(
 	"updating pull request thread status is not supported on GitHub",
+)
+
+// GitHub PR review event strings accepted by PullRequests.CreateReview.
+// Defined as constants so the verdict-mapping switch and the inline-comment
+// path share a single source of truth.
+const (
+	reviewEventApprove        = "APPROVE"
+	reviewEventRequestChanges = "REQUEST_CHANGES"
+	reviewEventComment        = "COMMENT"
 )
 
 // --- ReviewProvider ---
@@ -229,7 +241,7 @@ func (p *Provider) PostPullRequestThreadComment(
 	body string,
 	_ ...globalEntities.CommentOption,
 ) (int, error) {
-	event := "COMMENT"
+	event := reviewEventComment
 	review, _, err := p.client.PullRequests.CreateReview(
 		ctx, repo.Organization, repo.Name, prID,
 		&gh.PullRequestReviewRequest{
@@ -264,6 +276,83 @@ func (p *Provider) UpdatePullRequestThreadStatus(
 	_ string,
 ) error {
 	return ErrThreadStatusUpdateUnsupported
+}
+
+// SubmitPullRequestReview records a native PR review on GitHub via the
+// PullRequests.CreateReview endpoint so the verdict shows up in the platform's
+// reviewer panel. The verdict is mapped to the GitHub `event` field per the
+// table on the ReviewProvider interface; ReviewVerdictWaitingForAuthor has no
+// native equivalent on GitHub and is collapsed to REQUEST_CHANGES.
+//
+// A self-review attempt (the authenticated identity is the PR author) returns
+// HTTP 422 from GitHub. The error is logged at warn level and swallowed so the
+// caller's fallback comment path still has a chance to surface the verdict —
+// failing the whole review here would cause silent regressions on bot-authored
+// PRs (e.g. autobump runs).
+//
+// A ReviewVerdictComment with an empty body is skipped without an API call:
+// GitHub rejects empty COMMENT reviews with 422 ("Body is too short") and
+// nothing meaningful would surface anyway.
+func (p *Provider) SubmitPullRequestReview(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+	sub globalEntities.ReviewSubmission,
+) error {
+	event, ok := mapVerdictToReviewEvent(sub.Verdict)
+	if !ok {
+		return fmt.Errorf("unsupported review verdict %q", sub.Verdict)
+	}
+
+	if event == reviewEventComment && sub.Body == "" {
+		return nil
+	}
+
+	body := sub.Body
+	req := &gh.PullRequestReviewRequest{Event: &event}
+	if body != "" {
+		req.Body = &body
+	}
+
+	_, _, err := p.client.PullRequests.CreateReview(
+		ctx, repo.Organization, repo.Name, prID, req,
+	)
+	if err != nil {
+		var ghErr *gh.ErrorResponse
+		if errors.As(err, &ghErr) &&
+			ghErr.Response != nil &&
+			ghErr.Response.StatusCode == http.StatusUnprocessableEntity {
+			log.WithFields(log.Fields{
+				"repo":    repo.Organization + "/" + repo.Name,
+				"prID":    prID,
+				"verdict": sub.Verdict,
+			}).Warnf(
+				"GitHub rejected native review submission (likely self-review): %v",
+				err,
+			)
+			return nil
+		}
+		return fmt.Errorf("failed to submit pull request review: %w", err)
+	}
+
+	return nil
+}
+
+// mapVerdictToReviewEvent translates a gitforge ReviewVerdict to the GitHub
+// `event` string accepted by CreateReview. WaitingForAuthor collapses to
+// REQUEST_CHANGES because GitHub does not have a separate "waiting on author"
+// state; surfacing it as REQUEST_CHANGES at least keeps the verdict visible.
+func mapVerdictToReviewEvent(v globalEntities.ReviewVerdict) (string, bool) {
+	switch v {
+	case globalEntities.ReviewVerdictApprove:
+		return reviewEventApprove, true
+	case globalEntities.ReviewVerdictRequestChanges,
+		globalEntities.ReviewVerdictWaitingForAuthor:
+		return reviewEventRequestChanges, true
+	case globalEntities.ReviewVerdictComment:
+		return reviewEventComment, true
+	}
+	return "", false
 }
 
 // GetPullRequestStatus returns the GitHub pull request state. GitHub uses

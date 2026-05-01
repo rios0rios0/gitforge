@@ -802,3 +802,134 @@ func mapADOChangeType(changeType string) string {
 
 	return "modified"
 }
+
+// Azure DevOps reviewer-vote constants. The integers are part of the public
+// REST contract — see
+// https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-reviewers/create-pull-request-reviewer.
+const (
+	adoVoteApproved           = 10
+	adoVoteApprovedSuggestion = 5
+	adoVoteNoVote             = 0
+	adoVoteWaitingForAuthor   = -5
+	adoVoteRejected           = -10
+)
+
+// SubmitPullRequestReview records a native PR review on Azure DevOps. The flow
+// is two requests:
+//
+//  1. Look up the bot's reviewer ID via /_apis/connectionData (cached for the
+//     lifetime of the provider so subsequent calls only pay the vote PUT).
+//  2. PUT /pullrequests/{id}/reviewers/{reviewerId} with {"vote": <int>,
+//     "id": "<reviewerId>"}. ADO's PUT idempotently adds the bot as a reviewer
+//     and sets the vote in one call so we don't need a separate "ensure
+//     reviewer" step.
+//
+// Azure DevOps does not bind a comment to a vote, so when sub.Body is set we
+// post it as a regular PR comment first to keep the timeline ordering intuitive
+// (comment, then state change). Failure to post the comment is logged at warn
+// level but does not block the vote — the vote is the load-bearing surface.
+//
+// Verdict mapping:
+//
+//	ReviewVerdictApprove          -> vote 10
+//	ReviewVerdictRequestChanges   -> vote -10
+//	ReviewVerdictWaitingForAuthor -> vote -5
+//	ReviewVerdictComment          -> vote 0; skipped entirely when body is empty
+func (p *Provider) SubmitPullRequestReview(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+	sub globalEntities.ReviewSubmission,
+) error {
+	vote, ok := mapVerdictToADOVote(sub.Verdict)
+	if !ok {
+		return fmt.Errorf("unsupported review verdict %q", sub.Verdict)
+	}
+
+	if vote == adoVoteNoVote && sub.Body == "" {
+		return nil
+	}
+
+	reviewerID, err := p.getReviewerID(ctx, repo.Organization)
+	if err != nil {
+		return fmt.Errorf("failed to resolve reviewer ID: %w", err)
+	}
+
+	if sub.Body != "" {
+		if commentErr := p.PostPullRequestComment(ctx, repo, prID, sub.Body); commentErr != nil {
+			log.WithError(commentErr).
+				WithFields(log.Fields{"prID": prID, "verdict": sub.Verdict}).
+				Warn("failed to post review summary comment; submitting vote without it")
+		}
+	}
+
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/reviewers/%s?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, reviewerID, apiVersion,
+	)
+
+	body := map[string]any{
+		"vote": vote,
+		"id":   reviewerID,
+	}
+
+	if _, putErr := p.doRequest(ctx, baseURL, http.MethodPut, endpoint, body); putErr != nil {
+		return fmt.Errorf("failed to submit pull request review: %w", putErr)
+	}
+
+	return nil
+}
+
+// getReviewerID returns the authenticated identity's UUID — the value Azure
+// DevOps expects in the path of the reviewer-vote endpoint. The lookup hits
+// /_apis/connectionData, which always uses the org-level base URL (no
+// project segment), and is cached via [sync.Once] so the second call onwards
+// is free.
+func (p *Provider) getReviewerID(ctx context.Context, organization string) (string, error) {
+	p.reviewerIDOnce.Do(func() {
+		baseURL := buildBaseURL(organization)
+		endpoint := fmt.Sprintf("/_apis/connectionData?api-version=%s", apiVersion)
+
+		resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+		if err != nil {
+			p.reviewerIDErr = fmt.Errorf("failed to fetch connection data: %w", err)
+			return
+		}
+
+		var data struct {
+			AuthenticatedUser struct {
+				ID string `json:"id"`
+			} `json:"authenticatedUser"`
+		}
+		if unmarshalErr := json.Unmarshal(resp, &data); unmarshalErr != nil {
+			p.reviewerIDErr = fmt.Errorf("failed to parse connection data: %w", unmarshalErr)
+			return
+		}
+
+		if data.AuthenticatedUser.ID == "" {
+			p.reviewerIDErr = errors.New("connection data response missing authenticatedUser.id")
+			return
+		}
+
+		p.reviewerID = data.AuthenticatedUser.ID
+	})
+	return p.reviewerID, p.reviewerIDErr
+}
+
+// mapVerdictToADOVote translates a gitforge ReviewVerdict to the integer vote
+// expected by Azure DevOps' reviewer endpoint. The verdict-to-vote mapping is
+// part of the documented contract on SubmitPullRequestReview.
+func mapVerdictToADOVote(v globalEntities.ReviewVerdict) (int, bool) {
+	switch v {
+	case globalEntities.ReviewVerdictApprove:
+		return adoVoteApproved, true
+	case globalEntities.ReviewVerdictRequestChanges:
+		return adoVoteRejected, true
+	case globalEntities.ReviewVerdictWaitingForAuthor:
+		return adoVoteWaitingForAuthor, true
+	case globalEntities.ReviewVerdictComment:
+		return adoVoteNoVote, true
+	}
+	return 0, false
+}

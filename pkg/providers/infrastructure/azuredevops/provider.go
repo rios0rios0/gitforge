@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
@@ -28,6 +29,16 @@ const (
 type Provider struct {
 	token      string
 	httpClient *http.Client
+
+	// reviewerIDOnce guards lazy lookup of the bot's reviewer ID via the
+	// connectionData endpoint; the result is cached on reviewerID for the
+	// lifetime of the provider so SubmitPullRequestReview only pays the
+	// extra round-trip on the first call. reviewerIDErr captures any
+	// failure so callers see a deterministic error on every subsequent
+	// invocation rather than racing the lookup.
+	reviewerIDOnce sync.Once
+	reviewerID     string
+	reviewerIDErr  error
 }
 
 // NewProvider creates a new Azure DevOps provider with the given PAT.

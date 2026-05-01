@@ -48,6 +48,47 @@ func ResolveCommentOptions(opts ...CommentOption) string {
 	return resolved.status
 }
 
+// ReviewVerdict identifies which native PR review state SubmitPullRequestReview
+// should set on the underlying provider. Each value maps to the closest
+// equivalent surface on GitHub (review event) and Azure DevOps (reviewer vote).
+// See SubmitPullRequestReview for the exact mapping.
+type ReviewVerdict string
+
+const (
+	// ReviewVerdictApprove asks the provider to record an approval.
+	// GitHub maps to event=APPROVE; Azure DevOps maps to vote=10.
+	ReviewVerdictApprove ReviewVerdict = "approve"
+
+	// ReviewVerdictRequestChanges asks the provider to record a "changes
+	// requested" review. GitHub maps to event=REQUEST_CHANGES; Azure DevOps
+	// maps to vote=-10 (rejected).
+	ReviewVerdictRequestChanges ReviewVerdict = "request_changes"
+
+	// ReviewVerdictWaitingForAuthor asks the provider to record a soft
+	// "waiting on the author" signal. Azure DevOps maps to vote=-5; GitHub
+	// has no native equivalent and falls back to event=REQUEST_CHANGES so
+	// the verdict still surfaces in the platform UI.
+	ReviewVerdictWaitingForAuthor ReviewVerdict = "waiting_for_author"
+
+	// ReviewVerdictComment asks the provider to record a comment-only
+	// review. GitHub maps to event=COMMENT; Azure DevOps maps to vote=0
+	// (no formal vote). When the body is empty providers may skip the
+	// API call entirely since there is nothing to surface.
+	ReviewVerdictComment ReviewVerdict = "comment"
+)
+
+// ReviewSubmission carries the verdict and optional summary body submitted to
+// the provider's native PR review endpoint. The body is rendered by the
+// platform alongside the vote / event so reviewers can see the bot's reasoning
+// without opening a separate comment thread.
+type ReviewSubmission struct {
+	// Verdict selects which native review state to set. Required.
+	Verdict ReviewVerdict
+	// Body is the optional summary shown alongside the vote / review event.
+	// May be empty; providers handle the empty-body case per their docs.
+	Body string
+}
+
 // ReviewProvider extends ForgeProvider with pull request review operations.
 // This is used by tools that review pull requests (e.g. code-guru).
 type ReviewProvider interface {
@@ -120,5 +161,23 @@ type ReviewProvider interface {
 	// MergePullRequest merges a pull request using the specified strategy (e.g. "merge", "squash", "rebase").
 	MergePullRequest(
 		ctx context.Context, repo Repository, prID int, strategy string,
+	) error
+
+	// SubmitPullRequestReview records a native pull request review on the
+	// underlying provider so the verdict surfaces in the platform's reviewer
+	// panel rather than only in a free-form comment. The mapping is:
+	//
+	//   ReviewVerdictApprove          -> GitHub event "APPROVE"          / ADO vote 10
+	//   ReviewVerdictRequestChanges   -> GitHub event "REQUEST_CHANGES"  / ADO vote -10
+	//   ReviewVerdictWaitingForAuthor -> GitHub event "REQUEST_CHANGES"  / ADO vote -5
+	//   ReviewVerdictComment          -> GitHub event "COMMENT"          / ADO vote 0 (skipped when body is empty)
+	//
+	// On Azure DevOps the bot is added as a reviewer (idempotent PUT) before
+	// the vote is recorded; the bot's reviewer ID is auto-discovered via the
+	// connectionData endpoint. On GitHub the authenticated user becomes the
+	// reviewer implicitly and self-review (HTTP 422) is treated as a soft
+	// failure that returns nil so callers can keep their fallback comment.
+	SubmitPullRequestReview(
+		ctx context.Context, repo Repository, prID int, sub ReviewSubmission,
 	) error
 }

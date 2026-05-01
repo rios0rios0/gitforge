@@ -24,6 +24,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Changed
 
 - **BREAKING CHANGE:** `ReviewProvider.PostPullRequestThreadComment` now returns `(int, error)` instead of `error`; the new integer is the thread ID (Azure DevOps) or review ID (GitHub) and can be passed to `UpdatePullRequestThreadStatus` to update the thread later. All callers must be updated to capture the thread ID from the return tuple.
+- changed the Go module dependencies to their latest versions
 
 ### Fixed
 

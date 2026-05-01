@@ -529,3 +529,151 @@ func TestCreateBranchWithChangesInternal(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestPostPullRequestThreadCommentReturnsID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return the new review ID as the thread ID", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{"id": 9876, "state": "COMMENTED"}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		threadID, err := p.PostPullRequestThreadComment(
+			context.Background(), repo, 7, "README.md", 3, "nit",
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 9876, threadID)
+	})
+}
+
+func TestUpdatePullRequestThreadStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return ErrThreadStatusUpdateUnsupported", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		p := &Provider{token: "test"}
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		err := p.UpdatePullRequestThreadStatus(context.Background(), repo, 7, 9, "fixed")
+
+		// then
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrThreadStatusUpdateUnsupported)
+	})
+}
+
+func TestGetPullRequestStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return open when PR is open", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{"number": 7, "state": "open", "merged": false}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 7)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "open", status)
+	})
+
+	t.Run("should return merged when PR is closed and merged", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{"number": 7, "state": "closed", "merged": true}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 7)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "merged", status)
+	})
+
+	t.Run("should return closed when PR is closed without merge", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{"number": 7, "state": "closed", "merged": false}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 7)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "closed", status)
+	})
+
+	t.Run("should return error when API call fails", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 7)
+
+		// then
+		require.Error(t, err)
+		assert.Empty(t, status)
+	})
+}

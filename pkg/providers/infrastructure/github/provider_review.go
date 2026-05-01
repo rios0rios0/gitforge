@@ -2,10 +2,19 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	gh "github.com/google/go-github/v66/github"
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+)
+
+// ErrThreadStatusUpdateUnsupported is returned by the GitHub provider when callers
+// attempt to update the status of a review thread. GitHub has no direct REST
+// equivalent of Azure DevOps' thread status field; thread resolution is exposed
+// only via the GraphQL resolveReviewThread mutation, which is not yet wired up.
+var ErrThreadStatusUpdateUnsupported = errors.New(
+	"updating pull request thread status is not supported on GitHub",
 )
 
 // --- ReviewProvider ---
@@ -205,9 +214,9 @@ func (p *Provider) PostPullRequestThreadComment(
 	filePath string,
 	line int,
 	body string,
-) error {
+) (int, error) {
 	event := "COMMENT"
-	_, _, err := p.client.PullRequests.CreateReview(
+	review, _, err := p.client.PullRequests.CreateReview(
 		ctx, repo.Organization, repo.Name, prID,
 		&gh.PullRequestReviewRequest{
 			Event: &event,
@@ -221,8 +230,44 @@ func (p *Provider) PostPullRequestThreadComment(
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to post pull request thread comment: %w", err)
+		return 0, fmt.Errorf("failed to post pull request thread comment: %w", err)
 	}
 
-	return nil
+	// GitHub returns a review ID rather than a thread ID; expose it under the
+	// same "thread ID" abstraction so callers have a stable handle to reference
+	// the inline review later.
+	return int(review.GetID()), nil
+}
+
+// UpdatePullRequestThreadStatus is not supported on GitHub via the REST API.
+// GitHub exposes thread resolution only through the GraphQL resolveReviewThread
+// mutation; until that is wired up, this method always returns
+// ErrThreadStatusUpdateUnsupported.
+func (p *Provider) UpdatePullRequestThreadStatus(
+	_ context.Context,
+	_ globalEntities.Repository,
+	_, _ int,
+	_ string,
+) error {
+	return ErrThreadStatusUpdateUnsupported
+}
+
+// GetPullRequestStatus returns the GitHub pull request state. GitHub uses
+// "open" or "closed" for `state`; closed PRs that were merged are reported as
+// "merged" so callers can distinguish abandoned PRs from merged ones.
+func (p *Provider) GetPullRequestStatus(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) (string, error) {
+	pr, _, err := p.client.PullRequests.Get(ctx, repo.Organization, repo.Name, prID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pull request: %w", err)
+	}
+
+	if pr.GetState() == "closed" && pr.GetMerged() {
+		return "merged", nil
+	}
+
+	return pr.GetState(), nil
 }

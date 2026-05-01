@@ -721,3 +721,79 @@ func TestGetPullRequestStatus(t *testing.T) {
 		assert.Empty(t, status)
 	})
 }
+
+// TestThreadStatusOptionIgnoredByGitHub pins the contract that
+// WithThreadStatus is silently ignored across every GitHub-backed
+// post-comment surface — neither the Issues comment endpoint nor the
+// Pull Request review endpoint exposes a per-thread status field, so
+// the option must be accepted (callers can write provider-agnostic
+// code) without breaking the underlying request. One table-driven
+// test covers both methods to keep the option-no-op contract pinned in
+// a single place.
+func TestThreadStatusOptionIgnoredByGitHub(t *testing.T) {
+	t.Parallel()
+
+	repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+	tests := []struct {
+		name        string
+		endpoint    string
+		response    string
+		responseObj map[string]any
+		invoke      func(ctx context.Context, p *Provider) error
+	}{
+		{
+			name:     "should accept WithThreadStatus on PostPullRequestComment and post normally",
+			endpoint: "POST /repos/my-org/my-repo/issues/7/comments",
+			response: `{"id":1,"body":"informational marker"}`,
+			invoke: func(ctx context.Context, p *Provider) error {
+				return p.PostPullRequestComment(
+					ctx, repo, 7, "informational marker",
+					globalEntities.WithThreadStatus("closed"),
+				)
+			},
+		},
+		{
+			name:        "should accept WithThreadStatus on PostPullRequestThreadComment and create the review normally",
+			endpoint:    "POST /repos/my-org/my-repo/pulls/7/reviews",
+			responseObj: map[string]any{"id": 4242, "state": "COMMENTED"},
+			invoke: func(ctx context.Context, p *Provider) error {
+				_, err := p.PostPullRequestThreadComment(
+					ctx, repo, 7, "README.md", 3, "nit",
+					globalEntities.WithThreadStatus("closed"),
+				)
+				return err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var requestCount int
+			mux := http.NewServeMux()
+			mux.HandleFunc(tt.endpoint, func(w http.ResponseWriter, _ *http.Request) {
+				requestCount++
+				w.Header().Set("Content-Type", "application/json")
+				if tt.responseObj != nil {
+					_ = json.NewEncoder(w).Encode(tt.responseObj)
+					return
+				}
+				_, _ = w.Write([]byte(tt.response))
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			err := tt.invoke(context.Background(), p)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, 1, requestCount)
+		})
+	}
+}

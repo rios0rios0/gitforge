@@ -1110,3 +1110,159 @@ func TestGetPullRequestStatus(t *testing.T) {
 		assert.Empty(t, status)
 	})
 }
+
+// commentStatusOptionCase describes one row of the WithThreadStatus
+// option table reused by the two PostPullRequest* status tests below.
+// Defined as a package-level type (not inline in each test func) so the
+// shared `commentStatusOptionCases` helper can return it without
+// duplicating the struct in two places — exactly the kind of
+// "structurally identical table per test" that the SonarCloud quality
+// gate flagged on the original PR.
+type commentStatusOptionCase struct {
+	name           string
+	opts           []globalEntities.CommentOption
+	expectedStatus string
+}
+
+// commentStatusOptionCases returns the canonical option-rows the two
+// status tests below drive into PostPullRequestComment and
+// PostPullRequestThreadComment respectively. Both methods take the
+// same `...CommentOption` shape and route it through the same
+// `ResolveCommentOptions` helper, so the option / expected-status
+// mapping is identical — keeping it in one place means a future "add
+// `byDesign` to the accepted set" or "rename WithThreadStatus" change
+// only edits this one slice.
+func commentStatusOptionCases() []commentStatusOptionCase {
+	return []commentStatusOptionCase{
+		{
+			name:           "should default to active status when no options are provided",
+			opts:           nil,
+			expectedStatus: "active",
+		},
+		{
+			name:           "should send closed status when WithThreadStatus closed is provided",
+			opts:           []globalEntities.CommentOption{globalEntities.WithThreadStatus("closed")},
+			expectedStatus: "closed",
+		},
+		{
+			name:           "should send fixed status when WithThreadStatus fixed is provided",
+			opts:           []globalEntities.CommentOption{globalEntities.WithThreadStatus("fixed")},
+			expectedStatus: "fixed",
+		},
+	}
+}
+
+// captureThreadStatusFromPOST registers a single POST handler on `mux`
+// that records the resulting JSON body's `status` value into
+// `*captured`. Pulled out so both status tests share the same capture
+// shape rather than each inlining the same `mux.HandleFunc(...)`
+// boilerplate.
+func captureThreadStatusFromPOST(t *testing.T, mux *http.ServeMux, endpoint string, capturedBody *map[string]any) {
+	t.Helper()
+	mux.HandleFunc("POST "+endpoint, func(w http.ResponseWriter, r *http.Request) {
+		*capturedBody = captureThreadBody(t, r)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":1}`))
+	})
+}
+
+func TestPostPullRequestCommentStatus(t *testing.T) {
+	t.Parallel()
+
+	const baseEndpoint = "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12"
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	for _, tt := range commentStatusOptionCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var capturedBody map[string]any
+			mux := http.NewServeMux()
+			captureThreadStatusFromPOST(t, mux, baseEndpoint+"/threads", &capturedBody)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			err := p.PostPullRequestComment(
+				context.Background(), repo, 12, "informational marker", tt.opts...,
+			)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, capturedBody)
+			assert.Equal(t, tt.expectedStatus, capturedBody["status"])
+		})
+	}
+}
+
+func TestPostPullRequestThreadCommentStatus(t *testing.T) {
+	t.Parallel()
+
+	const (
+		prID         = 12105
+		iterationID  = 7
+		baseEndpoint = "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12105"
+	)
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	for _, tt := range commentStatusOptionCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var capturedBody map[string]any
+			mux := http.NewServeMux()
+			mux.HandleFunc(
+				"GET "+baseEndpoint+"/iterations",
+				func(w http.ResponseWriter, _ *http.Request) {
+					resp := map[string]any{
+						"value": []map[string]any{{"id": iterationID}},
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(resp)
+				},
+			)
+			mux.HandleFunc(
+				"GET "+baseEndpoint+"/iterations/7/changes",
+				func(w http.ResponseWriter, _ *http.Request) {
+					resp := map[string]any{
+						"changeEntries": []map[string]any{
+							{
+								"changeTrackingId": 7,
+								"item":             map[string]string{"path": "/README.md"},
+							},
+						},
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(resp)
+				},
+			)
+			captureThreadStatusFromPOST(t, mux, baseEndpoint+"/threads", &capturedBody)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			_, err := p.PostPullRequestThreadComment(
+				context.Background(), repo, prID, "/README.md", 10, "comment body", tt.opts...,
+			)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, capturedBody)
+			assert.Equal(t, tt.expectedStatus, capturedBody["status"])
+		})
+	}
+}

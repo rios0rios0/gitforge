@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 
 	gh "github.com/google/go-github/v66/github"
+	log "github.com/sirupsen/logrus"
+
 	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
 )
 
@@ -15,6 +19,21 @@ import (
 // only via the GraphQL resolveReviewThread mutation, which is not yet wired up.
 var ErrThreadStatusUpdateUnsupported = errors.New(
 	"updating pull request thread status is not supported on GitHub",
+)
+
+// ErrReviewBodyRequired signals that SubmitPullRequestReview was called with a
+// verdict GitHub mandates a body for (REQUEST_CHANGES, COMMENT) but the caller
+// did not provide one. Returned up-front so callers see a deterministic error
+// instead of an opaque HTTP 422 from GitHub.
+var ErrReviewBodyRequired = errors.New("review body is required for this verdict")
+
+// GitHub PR review event strings accepted by PullRequests.CreateReview.
+// Defined as constants so the verdict-mapping switch and the inline-comment
+// path share a single source of truth.
+const (
+	reviewEventApprove        = "APPROVE"
+	reviewEventRequestChanges = "REQUEST_CHANGES"
+	reviewEventComment        = "COMMENT"
 )
 
 // --- ReviewProvider ---
@@ -48,6 +67,7 @@ func (p *Provider) ListOpenPullRequests(
 				SourceBranch: pr.GetHead().GetRef(),
 				TargetBranch: pr.GetBase().GetRef(),
 				Author:       pr.GetUser().GetLogin(),
+				IsDraft:      pr.GetDraft(),
 			})
 		}
 
@@ -229,7 +249,7 @@ func (p *Provider) PostPullRequestThreadComment(
 	body string,
 	_ ...globalEntities.CommentOption,
 ) (int, error) {
-	event := "COMMENT"
+	event := reviewEventComment
 	review, _, err := p.client.PullRequests.CreateReview(
 		ctx, repo.Organization, repo.Name, prID,
 		&gh.PullRequestReviewRequest{
@@ -264,6 +284,112 @@ func (p *Provider) UpdatePullRequestThreadStatus(
 	_ string,
 ) error {
 	return ErrThreadStatusUpdateUnsupported
+}
+
+// SubmitPullRequestReview records a native PR review on GitHub via the
+// PullRequests.CreateReview endpoint so the verdict shows up in the platform's
+// reviewer panel. The verdict is mapped to the GitHub `event` field per the
+// table on the ReviewProvider interface; ReviewVerdictWaitingForAuthor has no
+// native equivalent on GitHub and is collapsed to REQUEST_CHANGES.
+//
+// A self-review attempt (the authenticated identity is the PR author) returns
+// HTTP 422 from GitHub with a body whose `message` matches selfReviewErrFragment.
+// That specific case is logged at warn level and swallowed so the caller's
+// fallback comment path still has a chance to surface the verdict — failing the
+// whole review here would cause silent regressions on bot-authored PRs (e.g.
+// autobump runs). Any other 422 (missing fields, invalid PR state, etc.) is
+// returned as a wrapped error so genuine validation failures stay visible.
+//
+// A ReviewVerdictComment with an empty body is skipped without an API call:
+// GitHub rejects empty COMMENT reviews with 422 ("Body is too short") and
+// nothing meaningful would surface anyway. ReviewVerdictRequestChanges (and
+// ReviewVerdictWaitingForAuthor, which collapses to REQUEST_CHANGES) likewise
+// requires a body — GitHub rejects an empty REQUEST_CHANGES with 422, so the
+// caller is told up-front via ErrReviewBodyRequired instead of triggering a
+// failed round-trip.
+func (p *Provider) SubmitPullRequestReview(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+	sub globalEntities.ReviewSubmission,
+) error {
+	event, ok := mapVerdictToReviewEvent(sub.Verdict)
+	if !ok {
+		return fmt.Errorf("unsupported review verdict %q", sub.Verdict)
+	}
+
+	if event == reviewEventComment && sub.Body == "" {
+		return nil
+	}
+
+	if event == reviewEventRequestChanges && sub.Body == "" {
+		return fmt.Errorf("%w: verdict %q requires a non-empty body on GitHub",
+			ErrReviewBodyRequired, sub.Verdict)
+	}
+
+	body := sub.Body
+	req := &gh.PullRequestReviewRequest{Event: &event}
+	if body != "" {
+		req.Body = &body
+	}
+
+	_, _, err := p.client.PullRequests.CreateReview(
+		ctx, repo.Organization, repo.Name, prID, req,
+	)
+	if err != nil {
+		if isSelfReviewError(err) {
+			log.WithFields(log.Fields{
+				"repo":    repo.Organization + "/" + repo.Name,
+				"prID":    prID,
+				"verdict": sub.Verdict,
+			}).Warnf(
+				"GitHub rejected native review submission (self-review): %v",
+				err,
+			)
+			return nil
+		}
+		return fmt.Errorf("failed to submit pull request review: %w", err)
+	}
+
+	return nil
+}
+
+// selfReviewErrFragment is the substring GitHub puts in the 422 response body
+// when the authenticated user tries to review their own pull request. Matching
+// the string keeps the swallow narrow so unrelated 422 validation failures
+// (missing fields, invalid PR state, etc.) still surface as errors.
+const selfReviewErrFragment = "Can not approve your own pull request"
+
+// isSelfReviewError reports whether err is a GitHub 422 caused by a self-review
+// attempt. It checks both the typed ErrorResponse message and the raw body so
+// fixture / replay payloads where only one is populated still match.
+func isSelfReviewError(err error) bool {
+	var ghErr *gh.ErrorResponse
+	if !errors.As(err, &ghErr) || ghErr.Response == nil {
+		return false
+	}
+	if ghErr.Response.StatusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	return strings.Contains(ghErr.Message, selfReviewErrFragment) ||
+		strings.Contains(err.Error(), selfReviewErrFragment)
+}
+
+// mapVerdictToReviewEvent translates a gitforge ReviewVerdict to the GitHub
+// `event` string accepted by CreateReview. WaitingForAuthor collapses to
+// REQUEST_CHANGES because GitHub does not have a separate "waiting on author"
+// state; surfacing it as REQUEST_CHANGES at least keeps the verdict visible.
+func mapVerdictToReviewEvent(v globalEntities.ReviewVerdict) (string, bool) {
+	switch v {
+	case globalEntities.ReviewVerdictApprove:
+		return reviewEventApprove, true
+	case globalEntities.ReviewVerdictRequestChanges,
+		globalEntities.ReviewVerdictWaitingForAuthor:
+		return reviewEventRequestChanges, true
+	case globalEntities.ReviewVerdictComment:
+		return reviewEventComment, true
+	}
+	return "", false
 }
 
 // GetPullRequestStatus returns the GitHub pull request state. GitHub uses

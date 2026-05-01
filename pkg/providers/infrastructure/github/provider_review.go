@@ -290,7 +290,9 @@ func (p *Provider) UpdatePullRequestThreadStatus(
 // PullRequests.CreateReview endpoint so the verdict shows up in the platform's
 // reviewer panel. The verdict is mapped to the GitHub `event` field per the
 // table on the ReviewProvider interface; ReviewVerdictWaitingForAuthor has no
-// native equivalent on GitHub and is collapsed to REQUEST_CHANGES.
+// native equivalent on GitHub and collapses to COMMENT (a soft signal that
+// does not block the PR), mirroring the Azure DevOps mapping where the same
+// verdict resolves to vote=-5 (reviewer signal, not a hard block).
 //
 // A self-review attempt (the authenticated identity is the PR author) returns
 // HTTP 422 from GitHub with a body whose `message` matches selfReviewErrFragment.
@@ -300,13 +302,12 @@ func (p *Provider) UpdatePullRequestThreadStatus(
 // autobump runs). Any other 422 (missing fields, invalid PR state, etc.) is
 // returned as a wrapped error so genuine validation failures stay visible.
 //
-// A ReviewVerdictComment with an empty body is skipped without an API call:
-// GitHub rejects empty COMMENT reviews with 422 ("Body is too short") and
-// nothing meaningful would surface anyway. ReviewVerdictRequestChanges (and
-// ReviewVerdictWaitingForAuthor, which collapses to REQUEST_CHANGES) likewise
-// requires a body — GitHub rejects an empty REQUEST_CHANGES with 422, so the
-// caller is told up-front via ErrReviewBodyRequired instead of triggering a
-// failed round-trip.
+// A ReviewVerdictComment or ReviewVerdictWaitingForAuthor with an empty body
+// is skipped without an API call: GitHub rejects empty COMMENT reviews with
+// 422 ("Body is too short") and nothing meaningful would surface anyway.
+// ReviewVerdictRequestChanges likewise requires a body — GitHub rejects an
+// empty REQUEST_CHANGES with 422, so the caller is told up-front via
+// ErrReviewBodyRequired instead of triggering a failed round-trip.
 func (p *Provider) SubmitPullRequestReview(
 	ctx context.Context,
 	repo globalEntities.Repository,
@@ -376,17 +377,19 @@ func isSelfReviewError(err error) bool {
 }
 
 // mapVerdictToReviewEvent translates a gitforge ReviewVerdict to the GitHub
-// `event` string accepted by CreateReview. WaitingForAuthor collapses to
-// REQUEST_CHANGES because GitHub does not have a separate "waiting on author"
-// state; surfacing it as REQUEST_CHANGES at least keeps the verdict visible.
+// `event` string accepted by CreateReview. GitHub has no "waiting on author"
+// state, so ReviewVerdictWaitingForAuthor collapses to COMMENT — a soft
+// "I have something to say but no formal vote" signal that does not block the
+// PR. REQUEST_CHANGES would block, which is too strong for a verdict that on
+// Azure DevOps maps to vote=-5 (a reviewer signal, not a hard block).
 func mapVerdictToReviewEvent(v globalEntities.ReviewVerdict) (string, bool) {
 	switch v {
 	case globalEntities.ReviewVerdictApprove:
 		return reviewEventApprove, true
-	case globalEntities.ReviewVerdictRequestChanges,
-		globalEntities.ReviewVerdictWaitingForAuthor:
+	case globalEntities.ReviewVerdictRequestChanges:
 		return reviewEventRequestChanges, true
-	case globalEntities.ReviewVerdictComment:
+	case globalEntities.ReviewVerdictWaitingForAuthor,
+		globalEntities.ReviewVerdictComment:
 		return reviewEventComment, true
 	}
 	return "", false

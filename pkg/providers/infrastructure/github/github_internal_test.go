@@ -799,6 +799,57 @@ func TestThreadStatusOptionIgnoredByGitHub(t *testing.T) {
 	}
 }
 
+func TestListOpenPullRequestsPropagatesIsDraft(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should preserve draft on the resulting PullRequestDetail entries", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls", func(w http.ResponseWriter, _ *http.Request) {
+			resp := []map[string]any{
+				{
+					"number":   1,
+					"title":    "draft pr",
+					"state":    "open",
+					"draft":    true,
+					"head":     map[string]any{"ref": "feat"},
+					"base":     map[string]any{"ref": "main"},
+					"user":     map[string]any{"login": "alice"},
+					"html_url": "https://github.com/my-org/my-repo/pull/1",
+				},
+				{
+					"number":   2,
+					"title":    "ready pr",
+					"state":    "open",
+					"draft":    false,
+					"head":     map[string]any{"ref": "feat-2"},
+					"base":     map[string]any{"ref": "main"},
+					"user":     map[string]any{"login": "bob"},
+					"html_url": "https://github.com/my-org/my-repo/pull/2",
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		prs, err := p.ListOpenPullRequests(context.Background(), repo)
+
+		// then
+		require.NoError(t, err)
+		require.Len(t, prs, 2)
+		assert.True(t, prs[0].IsDraft)
+		assert.False(t, prs[1].IsDraft)
+	})
+}
+
 // captureSubmitReviewEvent stands up a test server that records the `event`
 // field sent on POST /pulls/:n/reviews and returns it for assertion. Shared by
 // the verdict-mapping table tests so each row only owns its inputs/expectations.

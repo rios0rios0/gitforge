@@ -51,11 +51,8 @@ func (p *Provider) ListOpenPullRequests(
 		return nil, fmt.Errorf("failed to parse pull requests response: %w", unmarshalErr)
 	}
 
-	var prs []globalEntities.PullRequestDetail
+	prs := make([]globalEntities.PullRequestDetail, 0, len(result.Value))
 	for _, pr := range result.Value {
-		if pr.IsDraft {
-			continue
-		}
 		prs = append(prs, globalEntities.PullRequestDetail{
 			PullRequest: globalEntities.PullRequest{
 				ID:     pr.PullRequestID,
@@ -66,6 +63,7 @@ func (p *Provider) ListOpenPullRequests(
 			SourceBranch: strings.TrimPrefix(pr.SourceRefName, "refs/heads/"),
 			TargetBranch: strings.TrimPrefix(pr.TargetRefName, "refs/heads/"),
 			Author:       pr.CreatedBy.DisplayName,
+			IsDraft:      pr.IsDraft,
 		})
 	}
 

@@ -16,6 +16,15 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added `UpdatePullRequestThreadStatus` to the `ReviewProvider` interface for marking pull request threads as `fixed`/`closed`/etc. (Azure DevOps PATCHes the thread; GitHub returns `ErrThreadStatusUpdateUnsupported` until GraphQL `resolveReviewThread` is wired up)
+- added `GetPullRequestStatus` to the `ReviewProvider` interface so callers can re-check whether a PR is still active before posting comments (Azure DevOps returns the raw `status` field; GitHub maps `state` plus `merged` into `open`/`closed`/`merged`)
+
+### Changed
+
+- **BREAKING CHANGE:** `ReviewProvider.PostPullRequestThreadComment` now returns `(int, error)` instead of `error`; the new integer is the thread ID (Azure DevOps) or review ID (GitHub) and can be passed to `UpdatePullRequestThreadStatus` to update the thread later. All callers must be updated to capture the thread ID from the return tuple.
+
 ### Fixed
 
 - fixed Azure DevOps inline review threads being rendered with the warning "This file no longer exists in the latest pull request changes" by adding the `pullRequestThreadContext.iterationContext` and `pullRequestThreadContext.changeTrackingId` fields to the `POST .../threads` payload in `PostPullRequestThreadComment` (looked up via the `iterations` and `iterations/{id}/changes` ADO endpoints, with defensive fall-back that still posts the thread when either lookup fails); covered by new `httptest`-based test rows for the happy path, iteration-lookup failure, no-matching-change-entry, and leading-slash path normalisation

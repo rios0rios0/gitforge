@@ -65,9 +65,11 @@ const (
 	ReviewVerdictRequestChanges ReviewVerdict = "request_changes"
 
 	// ReviewVerdictWaitingForAuthor asks the provider to record a soft
-	// "waiting on the author" signal. Azure DevOps maps to vote=-5; GitHub
-	// has no native equivalent and falls back to event=REQUEST_CHANGES so
-	// the verdict still surfaces in the platform UI.
+	// "waiting on the author" signal that does not block the PR. Azure
+	// DevOps maps to vote=-5; GitHub has no native equivalent and falls
+	// back to event=COMMENT (a comment-only review) so the verdict still
+	// surfaces in the platform UI without flipping the PR into a hard
+	// "Changes requested" state.
 	ReviewVerdictWaitingForAuthor ReviewVerdict = "waiting_for_author"
 
 	// ReviewVerdictComment asks the provider to record a comment-only
@@ -170,7 +172,7 @@ type ReviewProvider interface {
 	//
 	//   ReviewVerdictApprove          -> GitHub event "APPROVE"          / ADO vote 10
 	//   ReviewVerdictRequestChanges   -> GitHub event "REQUEST_CHANGES"  / ADO vote -10
-	//   ReviewVerdictWaitingForAuthor -> GitHub event "REQUEST_CHANGES"  / ADO vote -5
+	//   ReviewVerdictWaitingForAuthor -> GitHub event "COMMENT"          / ADO vote -5
 	//   ReviewVerdictComment          -> GitHub event "COMMENT"          / ADO vote 0 (skipped when body is empty)
 	//
 	// On Azure DevOps the bot is added as a reviewer (idempotent PUT) before

@@ -1347,6 +1347,55 @@ func stubConnectionDataFor(t *testing.T, mux *http.ServeMux, organization, revie
 	})
 }
 
+func TestSubmitPullRequestReviewUsesPreviewAPIVersionForConnectionData(t *testing.T) {
+	t.Parallel()
+
+	// Pin the preview-suffix contract on the connectionData endpoint.
+	// Captured live in dev pod logs at 2026-05-01 20:52 UTC where every
+	// native review failed with `VssInvalidPreviewVersionException` because
+	// the request used `api-version=7.0` (Azure DevOps marks
+	// `/_apis/connectionData` as preview-only). A future "consolidate to a
+	// single api-version" refactor would silently regress without this row.
+	t.Run("should send api-version=7.0-preview.1 on /_apis/connectionData", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var capturedAPIVersion string
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /my-org/_apis/connectionData", func(w http.ResponseWriter, r *http.Request) {
+			capturedAPIVersion = r.URL.Query().Get("api-version")
+			resp := map[string]any{
+				"authenticatedUser": map[string]any{"id": submitReviewerID},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		mux.HandleFunc(
+			"PUT /my-org/my-project/_apis/git/repositories/repo-1/pullrequests/4242/reviewers/"+submitReviewerID,
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		err := p.SubmitPullRequestReview(
+			context.Background(), repo, 4242,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "7.0-preview.1", capturedAPIVersion,
+			"connectionData is preview-only on Azure DevOps; the -preview flag must be supplied")
+	})
+}
+
 func TestSubmitPullRequestReview(t *testing.T) {
 	t.Parallel()
 

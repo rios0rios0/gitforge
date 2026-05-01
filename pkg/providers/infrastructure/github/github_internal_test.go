@@ -970,6 +970,53 @@ func TestSubmitPullRequestReviewSkipsEmptyComment(t *testing.T) {
 	})
 }
 
+func TestSubmitPullRequestReviewRejectsEmptyBodyForRequestChanges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		verdict globalEntities.ReviewVerdict
+	}{
+		{
+			name:    "should reject ReviewVerdictRequestChanges with empty body before the API call",
+			verdict: globalEntities.ReviewVerdictRequestChanges,
+		},
+		{
+			name:    "should reject ReviewVerdictWaitingForAuthor with empty body before the API call",
+			verdict: globalEntities.ReviewVerdictWaitingForAuthor,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var requestCount int
+			mux := http.NewServeMux()
+			mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, _ *http.Request) {
+				requestCount++
+				w.WriteHeader(http.StatusUnprocessableEntity)
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+			repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+			// when
+			err := p.SubmitPullRequestReview(
+				context.Background(), repo, 7,
+				globalEntities.ReviewSubmission{Verdict: tt.verdict},
+			)
+
+			// then
+			require.ErrorIs(t, err, ErrReviewBodyRequired)
+			assert.Equal(t, 0, requestCount, "guard must short-circuit before the API call")
+		})
+	}
+}
+
 func TestSubmitPullRequestReviewSwallowsSelfReview(t *testing.T) {
 	t.Parallel()
 

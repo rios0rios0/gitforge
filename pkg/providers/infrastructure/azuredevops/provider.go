@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
@@ -28,6 +29,18 @@ const (
 type Provider struct {
 	token      string
 	httpClient *http.Client
+
+	// reviewerIDMu guards reviewerIDCache and reviewerIDOnces so concurrent
+	// callers from different organizations can each lazily resolve their own
+	// reviewer ID. The cache is keyed by organization because the bot's
+	// identity is org-scoped on Azure DevOps; a single Provider can be reused
+	// across orgs with the same PAT, so a per-org [sync.Once] is required —
+	// reusing a single Once across orgs would silently return the first org's
+	// cached ID for every subsequent organization.
+	reviewerIDMu     sync.Mutex
+	reviewerIDOnces  map[string]*sync.Once
+	reviewerIDCache  map[string]string
+	reviewerIDErrors map[string]error
 }
 
 // NewProvider creates a new Azure DevOps provider with the given PAT.
@@ -37,6 +50,9 @@ func NewProvider(token string) globalEntities.ForgeProvider {
 		httpClient: &http.Client{
 			Timeout: httpTimeout,
 		},
+		reviewerIDOnces:  make(map[string]*sync.Once),
+		reviewerIDCache:  make(map[string]string),
+		reviewerIDErrors: make(map[string]error),
 	}
 }
 

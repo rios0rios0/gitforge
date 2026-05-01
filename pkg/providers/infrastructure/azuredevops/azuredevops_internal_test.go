@@ -1266,3 +1266,340 @@ func TestPostPullRequestThreadCommentStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestListOpenPullRequestsPropagatesIsDraft(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should preserve isDraft on the resulting PullRequestDetail entries", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"value": []map[string]any{
+						{
+							"pullRequestId": 1,
+							"title":         "draft pr",
+							"status":        "active",
+							"isDraft":       true,
+							"sourceRefName": "refs/heads/feat",
+							"targetRefName": "refs/heads/main",
+							"createdBy":     map[string]any{"displayName": "alice"},
+						},
+						{
+							"pullRequestId": 2,
+							"title":         "ready pr",
+							"status":        "active",
+							"isDraft":       false,
+							"sourceRefName": "refs/heads/feat-2",
+							"targetRefName": "refs/heads/main",
+							"createdBy":     map[string]any{"displayName": "bob"},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		prs, err := p.ListOpenPullRequests(context.Background(), repo)
+
+		// then
+		require.NoError(t, err)
+		require.Len(t, prs, 2, "drafts must be returned alongside ready PRs so the consumer can apply policy")
+		assert.True(t, prs[0].IsDraft)
+		assert.False(t, prs[1].IsDraft)
+	})
+}
+
+const submitReviewerID = "00000000-0000-0000-0000-000000000abc"
+
+// stubConnectionData wires the /{org}/_apis/connectionData endpoint on the given
+// mux so SubmitPullRequestReview can resolve a reviewer ID. The handler counts
+// how many times it is hit so callers can assert the [sync.Once] cache.
+func stubConnectionData(t *testing.T, mux *http.ServeMux, hits *int) {
+	t.Helper()
+	stubConnectionDataFor(t, mux, "my-org", submitReviewerID, hits)
+}
+
+// stubConnectionDataFor wires the connectionData endpoint for a specific
+// organization and reviewer ID. Useful for asserting per-org caching.
+func stubConnectionDataFor(t *testing.T, mux *http.ServeMux, organization, reviewerID string, hits *int) {
+	t.Helper()
+	mux.HandleFunc("GET /"+organization+"/_apis/connectionData", func(w http.ResponseWriter, _ *http.Request) {
+		if hits != nil {
+			*hits++
+		}
+		resp := map[string]any{
+			"authenticatedUser": map[string]any{"id": reviewerID},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+}
+
+func TestSubmitPullRequestReview(t *testing.T) {
+	t.Parallel()
+
+	const (
+		prID         = 4242
+		baseEndpoint = "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/4242"
+	)
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	tests := []struct {
+		name          string
+		verdict       globalEntities.ReviewVerdict
+		body          string
+		expectedVote  int
+		expectComment bool
+	}{
+		{
+			name:          "should send vote 10 for ReviewVerdictApprove",
+			verdict:       globalEntities.ReviewVerdictApprove,
+			body:          "lgtm",
+			expectedVote:  10,
+			expectComment: true,
+		},
+		{
+			name:          "should send vote -10 for ReviewVerdictRequestChanges",
+			verdict:       globalEntities.ReviewVerdictRequestChanges,
+			body:          "needs work",
+			expectedVote:  -10,
+			expectComment: true,
+		},
+		{
+			name:          "should send vote -5 for ReviewVerdictWaitingForAuthor",
+			verdict:       globalEntities.ReviewVerdictWaitingForAuthor,
+			body:          "ping author",
+			expectedVote:  -5,
+			expectComment: true,
+		},
+		{
+			name:          "should send vote 0 for ReviewVerdictComment with body",
+			verdict:       globalEntities.ReviewVerdictComment,
+			body:          "FYI",
+			expectedVote:  0,
+			expectComment: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var capturedVote map[string]any
+			var commentHits int
+			mux := http.NewServeMux()
+			stubConnectionData(t, mux, nil)
+			mux.HandleFunc(
+				"POST "+baseEndpoint+"/threads",
+				func(w http.ResponseWriter, _ *http.Request) {
+					commentHits++
+					resp := map[string]any{"id": 1}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(resp)
+				},
+			)
+			mux.HandleFunc(
+				"PUT "+baseEndpoint+"/reviewers/"+submitReviewerID,
+				func(w http.ResponseWriter, r *http.Request) {
+					capturedVote = captureThreadBody(t, r)
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{}`))
+				},
+			)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			err := p.SubmitPullRequestReview(
+				context.Background(), repo, prID,
+				globalEntities.ReviewSubmission{Verdict: tt.verdict, Body: tt.body},
+			)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, capturedVote)
+			assert.InDelta(t, float64(tt.expectedVote), capturedVote["vote"], 0)
+			assert.Equal(t, submitReviewerID, capturedVote["id"])
+			if tt.expectComment {
+				assert.Equal(t, 1, commentHits, "summary body should be posted as a PR comment first")
+			} else {
+				assert.Equal(t, 0, commentHits)
+			}
+		})
+	}
+}
+
+func TestSubmitPullRequestReviewSkipsEmptyComment(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should skip the API entirely for ReviewVerdictComment with empty body", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var connectionHits int
+		mux := http.NewServeMux()
+		stubConnectionData(t, mux, &connectionHits)
+		// any unexpected POST/PUT will fail the test
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		err := p.SubmitPullRequestReview(
+			context.Background(), repo, 4242,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictComment},
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 0, connectionHits, "skipped path must not even resolve the reviewer ID")
+	})
+}
+
+func TestSubmitPullRequestReviewCachesReviewerID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should call connectionData only once across multiple submissions", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		const baseEndpoint = "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/4242"
+		var connectionHits int
+		mux := http.NewServeMux()
+		stubConnectionData(t, mux, &connectionHits)
+		mux.HandleFunc(
+			"PUT "+baseEndpoint+"/reviewers/"+submitReviewerID,
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		err1 := p.SubmitPullRequestReview(
+			context.Background(), repo, 4242,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+		err2 := p.SubmitPullRequestReview(
+			context.Background(), repo, 4242,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+
+		// then
+		require.NoError(t, err1)
+		require.NoError(t, err2)
+		assert.Equal(t, 1, connectionHits, "reviewer ID lookup must be memoised by sync.Once")
+	})
+}
+
+func TestSubmitPullRequestReviewCachesReviewerIDPerOrganization(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should resolve reviewer ID independently for each organization", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		const (
+			orgA      = "org-a"
+			orgB      = "org-b"
+			reviewerA = "00000000-0000-0000-0000-00000000aaaa"
+			reviewerB = "00000000-0000-0000-0000-00000000bbbb"
+			project   = "my-project"
+			repoID    = "repo-1"
+			prID      = 4242
+		)
+		var hitsA, hitsB int
+		mux := http.NewServeMux()
+		stubConnectionDataFor(t, mux, orgA, reviewerA, &hitsA)
+		stubConnectionDataFor(t, mux, orgB, reviewerB, &hitsB)
+		mux.HandleFunc(
+			"PUT /"+orgA+"/"+project+"/_apis/git/repositories/"+repoID+"/pullrequests/4242/reviewers/"+reviewerA,
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{}`))
+			},
+		)
+		mux.HandleFunc(
+			"PUT /"+orgB+"/"+project+"/_apis/git/repositories/"+repoID+"/pullrequests/4242/reviewers/"+reviewerB,
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repoA := globalEntities.Repository{Organization: orgA, Project: project, ID: repoID}
+		repoB := globalEntities.Repository{Organization: orgB, Project: project, ID: repoID}
+
+		// when
+		errA := p.SubmitPullRequestReview(
+			context.Background(), repoA, prID,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+		errB := p.SubmitPullRequestReview(
+			context.Background(), repoB, prID,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+		errA2 := p.SubmitPullRequestReview(
+			context.Background(), repoA, prID,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+
+		// then
+		require.NoError(t, errA)
+		require.NoError(t, errB)
+		require.NoError(t, errA2)
+		assert.Equal(t, 1, hitsA, "reviewer ID for org-a should be looked up exactly once")
+		assert.Equal(t, 1, hitsB, "reviewer ID for org-b should be looked up exactly once")
+	})
+}
+
+func TestSubmitPullRequestReviewRejectsUnknownVerdict(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return error for unrecognised verdict", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		p := &Provider{token: "test"}
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		err := p.SubmitPullRequestReview(
+			context.Background(), repo, 4242,
+			globalEntities.ReviewSubmission{Verdict: "made-up"},
+		)
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported review verdict")
+	})
+}

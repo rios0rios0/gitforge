@@ -711,7 +711,7 @@ func TestPostPullRequestThreadCommentIterationContext(t *testing.T) {
 		p := newTestProvider(t, server)
 
 		// when
-		err := p.PostPullRequestThreadComment(
+		_, err := p.PostPullRequestThreadComment(
 			context.Background(), repo, prID, "/README.md", 10, "comment body",
 		)
 
@@ -754,7 +754,7 @@ func TestPostPullRequestThreadCommentIterationContext(t *testing.T) {
 		p := newTestProvider(t, server)
 
 		// when
-		err := p.PostPullRequestThreadComment(
+		_, err := p.PostPullRequestThreadComment(
 			context.Background(), repo, prID, "README.md", 10, "comment body",
 		)
 
@@ -810,7 +810,7 @@ func TestPostPullRequestThreadCommentIterationContext(t *testing.T) {
 		p := newTestProvider(t, server)
 
 		// when
-		err := p.PostPullRequestThreadComment(
+		_, err := p.PostPullRequestThreadComment(
 			context.Background(), repo, prID, "README.md", 10, "comment body",
 		)
 
@@ -867,7 +867,7 @@ func TestPostPullRequestThreadCommentIterationContext(t *testing.T) {
 			p := newTestProvider(t, server)
 
 			// when
-			err := p.PostPullRequestThreadComment(
+			_, err := p.PostPullRequestThreadComment(
 				context.Background(), repo, prID, "README.md", 10, "comment body",
 			)
 
@@ -928,7 +928,7 @@ func TestPostPullRequestThreadCommentIterationContext(t *testing.T) {
 		p := newTestProvider(t, server)
 
 		// when - caller passes the path without a leading slash
-		err := p.PostPullRequestThreadComment(
+		_, err := p.PostPullRequestThreadComment(
 			context.Background(), repo, prID, "README.md", 10, "comment body",
 		)
 
@@ -938,5 +938,175 @@ func TestPostPullRequestThreadCommentIterationContext(t *testing.T) {
 		ctxMap, ok := capturedThreadBody["pullRequestThreadContext"].(map[string]any)
 		require.True(t, ok)
 		assert.InDelta(t, float64(7), ctxMap["changeTrackingId"], 0)
+	})
+}
+
+func TestPostPullRequestThreadCommentReturnsID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return the new thread ID from the response", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"POST /my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12/threads",
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":4242}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{
+			Organization: "my-org",
+			Project:      "my-project",
+			ID:           "repo-1",
+		}
+
+		// when
+		threadID, err := p.PostPullRequestThreadComment(
+			context.Background(), repo, 12, "/README.md", 7, "looks good",
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 4242, threadID)
+	})
+}
+
+func TestUpdatePullRequestThreadStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should PATCH the thread with the given status", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var capturedMethod string
+		var capturedBody map[string]any
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12/threads/99",
+			func(w http.ResponseWriter, r *http.Request) {
+				capturedMethod = r.Method
+				defer r.Body.Close()
+				_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":99,"status":"fixed"}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{
+			Organization: "my-org",
+			Project:      "my-project",
+			ID:           "repo-1",
+		}
+
+		// when
+		err := p.UpdatePullRequestThreadStatus(context.Background(), repo, 12, 99, "fixed")
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, http.MethodPatch, capturedMethod)
+		assert.Equal(t, "fixed", capturedBody["status"])
+	})
+
+	t.Run("should return error when API responds with failure", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12/threads/99",
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte("server error"))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{
+			Organization: "my-org",
+			Project:      "my-project",
+			ID:           "repo-1",
+		}
+
+		// when
+		err := p.UpdatePullRequestThreadStatus(context.Background(), repo, 12, 99, "fixed")
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to update pull request thread status")
+	})
+}
+
+func TestGetPullRequestStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return the status field from ADO response", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12",
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"pullRequestId":12,"status":"completed"}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{
+			Organization: "my-org",
+			Project:      "my-project",
+			ID:           "repo-1",
+		}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 12)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "completed", status)
+	})
+
+	t.Run("should return error when API call fails", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12",
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte("not found"))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{
+			Organization: "my-org",
+			Project:      "my-project",
+			ID:           "repo-1",
+		}
+
+		// when
+		status, err := p.GetPullRequestStatus(context.Background(), repo, 12)
+
+		// then
+		require.Error(t, err)
+		assert.Empty(t, status)
 	})
 }

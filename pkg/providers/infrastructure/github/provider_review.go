@@ -111,11 +111,18 @@ func (p *Provider) GetPullRequestFiles(
 	return allFiles, nil
 }
 
+// PostPullRequestComment posts an issue-level comment on the pull request via
+// the Issues REST API. GitHub's REST surface does not expose a per-comment
+// "thread status" field analogous to Azure DevOps, so any
+// entities.WithThreadStatus value supplied by the caller is silently ignored
+// here. The variadic argument exists purely so callers can write provider-
+// agnostic code against the ReviewProvider interface.
 func (p *Provider) PostPullRequestComment(
 	ctx context.Context,
 	repo globalEntities.Repository,
 	prID int,
 	body string,
+	_ ...globalEntities.CommentOption,
 ) error {
 	_, _, err := p.client.Issues.CreateComment(
 		ctx, repo.Organization, repo.Name, prID,
@@ -207,6 +214,12 @@ func (p *Provider) MergePullRequest(
 	return nil
 }
 
+// PostPullRequestThreadComment posts an inline review comment on a specific
+// file and line via the GitHub Reviews REST API. GitHub does not expose a
+// per-thread status field comparable to Azure DevOps, so any
+// entities.WithThreadStatus value supplied by the caller is silently ignored
+// here. The variadic argument exists purely so callers can write provider-
+// agnostic code against the ReviewProvider interface.
 func (p *Provider) PostPullRequestThreadComment(
 	ctx context.Context,
 	repo globalEntities.Repository,
@@ -214,6 +227,7 @@ func (p *Provider) PostPullRequestThreadComment(
 	filePath string,
 	line int,
 	body string,
+	_ ...globalEntities.CommentOption,
 ) (int, error) {
 	event := "COMMENT"
 	review, _, err := p.client.PullRequests.CreateReview(

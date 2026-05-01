@@ -721,3 +721,80 @@ func TestGetPullRequestStatus(t *testing.T) {
 		assert.Empty(t, status)
 	})
 }
+
+func TestPostPullRequestCommentIgnoresThreadStatusOption(t *testing.T) {
+	t.Parallel()
+
+	// GitHub's REST surface does not expose a per-comment thread status,
+	// so the WithThreadStatus option must be silently ignored — passing it
+	// must not break the underlying request or surface an error.
+	t.Run("should accept WithThreadStatus and post the comment normally", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var requestCount int
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"POST /repos/my-org/my-repo/issues/7/comments",
+			func(w http.ResponseWriter, _ *http.Request) {
+				requestCount++
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":1,"body":"informational marker"}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		err := p.PostPullRequestComment(
+			context.Background(), repo, 7, "informational marker",
+			globalEntities.WithThreadStatus("closed"),
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 1, requestCount)
+	})
+}
+
+func TestPostPullRequestThreadCommentIgnoresThreadStatusOption(t *testing.T) {
+	t.Parallel()
+
+	// Same contract as PostPullRequestComment — GitHub has no thread-status
+	// concept on the REST review API, so the option is accepted but ignored.
+	t.Run("should accept WithThreadStatus and create the review normally", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var requestCount int
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"POST /repos/my-org/my-repo/pulls/7/reviews",
+			func(w http.ResponseWriter, _ *http.Request) {
+				requestCount++
+				resp := map[string]any{"id": 4242, "state": "COMMENTED"}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		threadID, err := p.PostPullRequestThreadComment(
+			context.Background(), repo, 7, "README.md", 3, "nit",
+			globalEntities.WithThreadStatus("closed"),
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 4242, threadID)
+		assert.Equal(t, 1, requestCount)
+	})
+}

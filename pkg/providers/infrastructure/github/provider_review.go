@@ -61,6 +61,7 @@ func (p *Provider) ListOpenPullRequests(
 				SourceBranch: pr.GetHead().GetRef(),
 				TargetBranch: pr.GetBase().GetRef(),
 				Author:       pr.GetUser().GetLogin(),
+				IsDraft:      pr.GetDraft(),
 			})
 		}
 

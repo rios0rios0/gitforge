@@ -1267,6 +1267,60 @@ func TestPostPullRequestThreadCommentStatus(t *testing.T) {
 	}
 }
 
+func TestListOpenPullRequestsPropagatesIsDraft(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should preserve isDraft on the resulting PullRequestDetail entries", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"value": []map[string]any{
+						{
+							"pullRequestId": 1,
+							"title":         "draft pr",
+							"status":        "active",
+							"isDraft":       true,
+							"sourceRefName": "refs/heads/feat",
+							"targetRefName": "refs/heads/main",
+							"createdBy":     map[string]any{"displayName": "alice"},
+						},
+						{
+							"pullRequestId": 2,
+							"title":         "ready pr",
+							"status":        "active",
+							"isDraft":       false,
+							"sourceRefName": "refs/heads/feat-2",
+							"targetRefName": "refs/heads/main",
+							"createdBy":     map[string]any{"displayName": "bob"},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		prs, err := p.ListOpenPullRequests(context.Background(), repo)
+
+		// then
+		require.NoError(t, err)
+		require.Len(t, prs, 2, "drafts must be returned alongside ready PRs so the consumer can apply policy")
+		assert.True(t, prs[0].IsDraft)
+		assert.False(t, prs[1].IsDraft)
+	})
+}
+
 const submitReviewerID = "00000000-0000-0000-0000-000000000abc"
 
 // stubConnectionData wires the /{org}/_apis/connectionData endpoint on the given

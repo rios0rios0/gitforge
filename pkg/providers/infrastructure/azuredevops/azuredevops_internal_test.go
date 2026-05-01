@@ -825,6 +825,64 @@ func TestPostPullRequestThreadCommentIterationContext(t *testing.T) {
 		assert.False(t, hasChangeID, "changeTrackingId must be absent when no entry matches")
 	})
 
+	t.Run(
+		"should post thread with iterationContext but no changeTrackingId when the changes lookup fails",
+		func(t *testing.T) {
+			// given: simulating a 5xx from `/iterations/{id}/changes`.
+			// The iteration lookup succeeded so `iterationContext` must
+			// still go on the thread, but `changeTrackingId` must be
+			// absent because the lookup failed. Pinned per Copilot
+			// review on PR #85 thread `PRRT_kwDORQWb3M5-6QSM`.
+			t.Parallel()
+
+			var capturedThreadBody map[string]any
+			mux := http.NewServeMux()
+			mux.HandleFunc(
+				"GET "+baseEndpoint+"/iterations",
+				func(w http.ResponseWriter, _ *http.Request) {
+					resp := map[string]any{
+						"value": []map[string]any{{"id": iterationID}},
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(resp)
+				},
+			)
+			mux.HandleFunc(
+				"GET "+baseEndpoint+"/iterations/7/changes",
+				func(w http.ResponseWriter, _ *http.Request) {
+					http.Error(w, "internal", http.StatusInternalServerError)
+				},
+			)
+			mux.HandleFunc(
+				"POST "+baseEndpoint+"/threads",
+				func(w http.ResponseWriter, r *http.Request) {
+					capturedThreadBody = captureThreadBody(t, r)
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"id":1}`))
+				},
+			)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			err := p.PostPullRequestThreadComment(
+				context.Background(), repo, prID, "README.md", 10, "comment body",
+			)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, capturedThreadBody)
+			ctxMap, ok := capturedThreadBody["pullRequestThreadContext"].(map[string]any)
+			require.True(t, ok, "pullRequestThreadContext must still be present (iteration lookup succeeded)")
+			_, hasIter := ctxMap["iterationContext"].(map[string]any)
+			assert.True(t, hasIter, "iterationContext must be present even when the changes lookup fails")
+			_, hasChangeID := ctxMap["changeTrackingId"]
+			assert.False(t, hasChangeID, "changeTrackingId must be absent when the changes lookup returns 5xx")
+		},
+	)
+
 	t.Run("should match path when caller omits leading slash but ADO returns one", func(t *testing.T) {
 		t.Parallel()
 

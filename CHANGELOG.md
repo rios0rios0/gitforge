@@ -16,16 +16,18 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-01
+
 ### Added
 
-- added `UpdatePullRequestThreadStatus` to the `ReviewProvider` interface for marking pull request threads as `fixed`/`closed`/etc. (Azure DevOps PATCHes the thread; GitHub returns `ErrThreadStatusUpdateUnsupported` until GraphQL `resolveReviewThread` is wired up)
-- added `GetPullRequestStatus` to the `ReviewProvider` interface so callers can re-check whether a PR is still active before posting comments (Azure DevOps returns the raw `status` field; GitHub maps `state` plus `merged` into `open`/`closed`/`merged`)
 - added `entities.CommentOption` functional-options type plus the `entities.WithThreadStatus(status)` helper so callers can post pull request comments and inline thread comments as `"fixed"`/`"closed"` (or any provider-specific status) instead of the default `"active"` — useful for informational annotations (start/success/failure markers) that should not show up as "needs attention" in Azure DevOps; backed by a new `entities.ResolveCommentOptions` helper used by the providers and the `entities.DefaultCommentStatus` constant documenting the historical default
+- added `GetPullRequestStatus` to the `ReviewProvider` interface so callers can re-check whether a PR is still active before posting comments (Azure DevOps returns the raw `status` field; GitHub maps `state` plus `merged` into `open`/`closed`/`merged`)
+- added `UpdatePullRequestThreadStatus` to the `ReviewProvider` interface for marking pull request threads as `fixed`/`closed`/etc. (Azure DevOps PATCHes the thread; GitHub returns `ErrThreadStatusUpdateUnsupported` until GraphQL `resolveReviewThread` is wired up)
 
 ### Changed
 
-- **BREAKING CHANGE:** `ReviewProvider.PostPullRequestThreadComment` now returns `(int, error)` instead of `error`; the new integer is the thread ID (Azure DevOps) or review ID (GitHub) and can be passed to `UpdatePullRequestThreadStatus` to update the thread later. All callers must be updated to capture the thread ID from the return tuple.
 - **BREAKING CHANGE:** `ReviewProvider.PostPullRequestComment` and `ReviewProvider.PostPullRequestThreadComment` now accept a variadic `...entities.CommentOption` parameter at the end of their signatures. Callers that pass no options keep the previous default (`"active"` thread status); callers wanting a closed informational annotation pass `entities.WithThreadStatus("closed")`. Implementers of `ReviewProvider` must update their method signatures even if they do not honour the new option (the GitHub provider, for example, silently ignores `WithThreadStatus` because the REST review API has no per-comment status field).
+- **BREAKING CHANGE:** `ReviewProvider.PostPullRequestThreadComment` now returns `(int, error)` instead of `error`; the new integer is the thread ID (Azure DevOps) or review ID (GitHub) and can be passed to `UpdatePullRequestThreadStatus` to update the thread later. All callers must be updated to capture the thread ID from the return tuple.
 - changed the Go module dependencies to their latest versions
 
 ### Fixed

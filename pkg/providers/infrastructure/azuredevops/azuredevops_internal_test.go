@@ -3,6 +3,7 @@ package azuredevops
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -628,5 +629,314 @@ func TestDoRequest(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.NotEmpty(t, resp)
+	})
+}
+
+// captureThreadBody decodes the JSON body of a thread-create POST so the test can assert
+// against the exact payload that was sent to ADO.
+func captureThreadBody(t *testing.T, r *http.Request) map[string]any {
+	t.Helper()
+	defer func() { _ = r.Body.Close() }()
+	raw, err := io.ReadAll(r.Body)
+	require.NoError(t, err)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(raw, &body))
+	return body
+}
+
+func TestPostPullRequestThreadCommentIterationContext(t *testing.T) {
+	t.Parallel()
+
+	const (
+		prID         = 12105
+		iterationID  = 7
+		baseEndpoint = "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12105"
+	)
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	t.Run("should include iterationContext and changeTrackingId when both lookups succeed", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var capturedThreadBody map[string]any
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET "+baseEndpoint+"/iterations",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"value": []map[string]any{
+						{"id": 1},
+						{"id": iterationID},
+						{"id": 5},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		mux.HandleFunc(
+			"GET "+baseEndpoint+"/iterations/7/changes",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"changeEntries": []map[string]any{
+						{
+							"changeTrackingId": 42,
+							"item":             map[string]string{"path": "/README.md"},
+						},
+						{
+							"changeTrackingId": 99,
+							"item":             map[string]string{"path": "/other.go"},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		mux.HandleFunc(
+			"POST "+baseEndpoint+"/threads",
+			func(w http.ResponseWriter, r *http.Request) {
+				capturedThreadBody = captureThreadBody(t, r)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id":1}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		err := p.PostPullRequestThreadComment(
+			context.Background(), repo, prID, "/README.md", 10, "comment body",
+		)
+
+		// then
+		require.NoError(t, err)
+		require.NotNil(t, capturedThreadBody)
+		ctxMap, ok := capturedThreadBody["pullRequestThreadContext"].(map[string]any)
+		require.True(t, ok, "pullRequestThreadContext must be present")
+		iterMap, ok := ctxMap["iterationContext"].(map[string]any)
+		require.True(t, ok, "iterationContext must be present")
+		assert.InDelta(t, float64(iterationID), iterMap["firstComparingIteration"], 0)
+		assert.InDelta(t, float64(iterationID), iterMap["secondComparingIteration"], 0)
+		assert.InDelta(t, float64(42), ctxMap["changeTrackingId"], 0)
+	})
+
+	t.Run("should post thread without iterationContext when iteration lookup fails", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var capturedThreadBody map[string]any
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET "+baseEndpoint+"/iterations",
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"message":"internal error"}`))
+			},
+		)
+		mux.HandleFunc(
+			"POST "+baseEndpoint+"/threads",
+			func(w http.ResponseWriter, r *http.Request) {
+				capturedThreadBody = captureThreadBody(t, r)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id":1}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		err := p.PostPullRequestThreadComment(
+			context.Background(), repo, prID, "README.md", 10, "comment body",
+		)
+
+		// then
+		require.NoError(t, err)
+		require.NotNil(t, capturedThreadBody)
+		_, hasContext := capturedThreadBody["pullRequestThreadContext"]
+		assert.False(t, hasContext, "pullRequestThreadContext must be absent when iteration lookup fails")
+	})
+
+	t.Run("should post thread with iterationContext but no changeTrackingId when no entry matches", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var capturedThreadBody map[string]any
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET "+baseEndpoint+"/iterations",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"value": []map[string]any{{"id": iterationID}},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		mux.HandleFunc(
+			"GET "+baseEndpoint+"/iterations/7/changes",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"changeEntries": []map[string]any{
+						{
+							"changeTrackingId": 1,
+							"item":             map[string]string{"path": "/some-other-file.go"},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		mux.HandleFunc(
+			"POST "+baseEndpoint+"/threads",
+			func(w http.ResponseWriter, r *http.Request) {
+				capturedThreadBody = captureThreadBody(t, r)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id":1}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		err := p.PostPullRequestThreadComment(
+			context.Background(), repo, prID, "README.md", 10, "comment body",
+		)
+
+		// then
+		require.NoError(t, err)
+		require.NotNil(t, capturedThreadBody)
+		ctxMap, ok := capturedThreadBody["pullRequestThreadContext"].(map[string]any)
+		require.True(t, ok, "pullRequestThreadContext must be present")
+		_, hasIter := ctxMap["iterationContext"].(map[string]any)
+		assert.True(t, hasIter, "iterationContext must be present")
+		_, hasChangeID := ctxMap["changeTrackingId"]
+		assert.False(t, hasChangeID, "changeTrackingId must be absent when no entry matches")
+	})
+
+	t.Run(
+		"should post thread with iterationContext but no changeTrackingId when the changes lookup fails",
+		func(t *testing.T) {
+			// given: simulating a 5xx from `/iterations/{id}/changes`.
+			// The iteration lookup succeeded so `iterationContext` must
+			// still go on the thread, but `changeTrackingId` must be
+			// absent because the lookup failed. Pinned per Copilot
+			// review on PR #85 thread `PRRT_kwDORQWb3M5-6QSM`.
+			t.Parallel()
+
+			var capturedThreadBody map[string]any
+			mux := http.NewServeMux()
+			mux.HandleFunc(
+				"GET "+baseEndpoint+"/iterations",
+				func(w http.ResponseWriter, _ *http.Request) {
+					resp := map[string]any{
+						"value": []map[string]any{{"id": iterationID}},
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(resp)
+				},
+			)
+			mux.HandleFunc(
+				"GET "+baseEndpoint+"/iterations/7/changes",
+				func(w http.ResponseWriter, _ *http.Request) {
+					http.Error(w, "internal", http.StatusInternalServerError)
+				},
+			)
+			mux.HandleFunc(
+				"POST "+baseEndpoint+"/threads",
+				func(w http.ResponseWriter, r *http.Request) {
+					capturedThreadBody = captureThreadBody(t, r)
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"id":1}`))
+				},
+			)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			err := p.PostPullRequestThreadComment(
+				context.Background(), repo, prID, "README.md", 10, "comment body",
+			)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, capturedThreadBody)
+			ctxMap, ok := capturedThreadBody["pullRequestThreadContext"].(map[string]any)
+			require.True(t, ok, "pullRequestThreadContext must still be present (iteration lookup succeeded)")
+			_, hasIter := ctxMap["iterationContext"].(map[string]any)
+			assert.True(t, hasIter, "iterationContext must be present even when the changes lookup fails")
+			_, hasChangeID := ctxMap["changeTrackingId"]
+			assert.False(t, hasChangeID, "changeTrackingId must be absent when the changes lookup returns 5xx")
+		},
+	)
+
+	t.Run("should match path when caller omits leading slash but ADO returns one", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		var capturedThreadBody map[string]any
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET "+baseEndpoint+"/iterations",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"value": []map[string]any{{"id": iterationID}},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		mux.HandleFunc(
+			"GET "+baseEndpoint+"/iterations/7/changes",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"changeEntries": []map[string]any{
+						{
+							"changeTrackingId": 7,
+							"item":             map[string]string{"path": "/README.md"},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		mux.HandleFunc(
+			"POST "+baseEndpoint+"/threads",
+			func(w http.ResponseWriter, r *http.Request) {
+				capturedThreadBody = captureThreadBody(t, r)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id":1}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when - caller passes the path without a leading slash
+		err := p.PostPullRequestThreadComment(
+			context.Background(), repo, prID, "README.md", 10, "comment body",
+		)
+
+		// then
+		require.NoError(t, err)
+		require.NotNil(t, capturedThreadBody)
+		ctxMap, ok := capturedThreadBody["pullRequestThreadContext"].(map[string]any)
+		require.True(t, ok)
+		assert.InDelta(t, float64(7), ctxMap["changeTrackingId"], 0)
 	})
 }

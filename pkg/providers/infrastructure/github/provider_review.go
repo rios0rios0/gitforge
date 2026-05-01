@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	gh "github.com/google/go-github/v66/github"
 	log "github.com/sirupsen/logrus"
@@ -285,10 +286,12 @@ func (p *Provider) UpdatePullRequestThreadStatus(
 // native equivalent on GitHub and is collapsed to REQUEST_CHANGES.
 //
 // A self-review attempt (the authenticated identity is the PR author) returns
-// HTTP 422 from GitHub. The error is logged at warn level and swallowed so the
-// caller's fallback comment path still has a chance to surface the verdict —
-// failing the whole review here would cause silent regressions on bot-authored
-// PRs (e.g. autobump runs).
+// HTTP 422 from GitHub with a body whose `message` matches selfReviewErrFragment.
+// That specific case is logged at warn level and swallowed so the caller's
+// fallback comment path still has a chance to surface the verdict — failing the
+// whole review here would cause silent regressions on bot-authored PRs (e.g.
+// autobump runs). Any other 422 (missing fields, invalid PR state, etc.) is
+// returned as a wrapped error so genuine validation failures stay visible.
 //
 // A ReviewVerdictComment with an empty body is skipped without an API call:
 // GitHub rejects empty COMMENT reviews with 422 ("Body is too short") and
@@ -318,16 +321,13 @@ func (p *Provider) SubmitPullRequestReview(
 		ctx, repo.Organization, repo.Name, prID, req,
 	)
 	if err != nil {
-		var ghErr *gh.ErrorResponse
-		if errors.As(err, &ghErr) &&
-			ghErr.Response != nil &&
-			ghErr.Response.StatusCode == http.StatusUnprocessableEntity {
+		if isSelfReviewError(err) {
 			log.WithFields(log.Fields{
 				"repo":    repo.Organization + "/" + repo.Name,
 				"prID":    prID,
 				"verdict": sub.Verdict,
 			}).Warnf(
-				"GitHub rejected native review submission (likely self-review): %v",
+				"GitHub rejected native review submission (self-review): %v",
 				err,
 			)
 			return nil
@@ -336,6 +336,27 @@ func (p *Provider) SubmitPullRequestReview(
 	}
 
 	return nil
+}
+
+// selfReviewErrFragment is the substring GitHub puts in the 422 response body
+// when the authenticated user tries to review their own pull request. Matching
+// the string keeps the swallow narrow so unrelated 422 validation failures
+// (missing fields, invalid PR state, etc.) still surface as errors.
+const selfReviewErrFragment = "Can not approve your own pull request"
+
+// isSelfReviewError reports whether err is a GitHub 422 caused by a self-review
+// attempt. It checks both the typed ErrorResponse message and the raw body so
+// fixture / replay payloads where only one is populated still match.
+func isSelfReviewError(err error) bool {
+	var ghErr *gh.ErrorResponse
+	if !errors.As(err, &ghErr) || ghErr.Response == nil {
+		return false
+	}
+	if ghErr.Response.StatusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	return strings.Contains(ghErr.Message, selfReviewErrFragment) ||
+		strings.Contains(err.Error(), selfReviewErrFragment)
 }
 
 // mapVerdictToReviewEvent translates a gitforge ReviewVerdict to the GitHub

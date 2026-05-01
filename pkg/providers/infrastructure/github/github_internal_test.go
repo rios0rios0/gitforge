@@ -812,12 +812,13 @@ func captureSubmitReviewEvent(
 	var capturedEvent, capturedBody string
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
+		raw, err := io.ReadAll(r.Body)
+		assert.NoError(t, err, "failed to read request body")
 		var payload struct {
 			Event string `json:"event"`
 			Body  string `json:"body"`
 		}
-		_ = json.Unmarshal(raw, &payload)
+		assert.NoError(t, json.Unmarshal(raw, &payload), "failed to unmarshal request body")
 		capturedEvent = payload.Event
 		capturedBody = payload.Body
 
@@ -921,7 +922,7 @@ func TestSubmitPullRequestReviewSkipsEmptyComment(t *testing.T) {
 func TestSubmitPullRequestReviewSwallowsSelfReview(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should treat HTTP 422 as a soft failure", func(t *testing.T) {
+	t.Run("should swallow HTTP 422 when the body matches the self-review message", func(t *testing.T) {
 		t.Parallel()
 
 		// given
@@ -947,6 +948,39 @@ func TestSubmitPullRequestReviewSwallowsSelfReview(t *testing.T) {
 
 		// then
 		require.NoError(t, err)
+	})
+
+	t.Run("should return an error when HTTP 422 is not a self-review", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("POST /repos/my-org/my-repo/pulls/7/reviews", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write(
+				[]byte(
+					`{"message":"Validation Failed","errors":[{"resource":"PullRequestReview","code":"missing_field"}]}`,
+				),
+			)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		err := p.SubmitPullRequestReview(
+			context.Background(), repo, 7,
+			globalEntities.ReviewSubmission{
+				Verdict: globalEntities.ReviewVerdictApprove,
+				Body:    "lgtm",
+			},
+		)
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to submit pull request review")
 	})
 }
 

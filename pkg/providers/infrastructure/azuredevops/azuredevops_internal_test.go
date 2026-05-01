@@ -1274,12 +1274,19 @@ const submitReviewerID = "00000000-0000-0000-0000-000000000abc"
 // how many times it is hit so callers can assert the [sync.Once] cache.
 func stubConnectionData(t *testing.T, mux *http.ServeMux, hits *int) {
 	t.Helper()
-	mux.HandleFunc("GET /my-org/_apis/connectionData", func(w http.ResponseWriter, _ *http.Request) {
+	stubConnectionDataFor(t, mux, "my-org", submitReviewerID, hits)
+}
+
+// stubConnectionDataFor wires the connectionData endpoint for a specific
+// organization and reviewer ID. Useful for asserting per-org caching.
+func stubConnectionDataFor(t *testing.T, mux *http.ServeMux, organization, reviewerID string, hits *int) {
+	t.Helper()
+	mux.HandleFunc("GET /"+organization+"/_apis/connectionData", func(w http.ResponseWriter, _ *http.Request) {
 		if hits != nil {
 			*hits++
 		}
 		resp := map[string]any{
-			"authenticatedUser": map[string]any{"id": submitReviewerID},
+			"authenticatedUser": map[string]any{"id": reviewerID},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -1454,6 +1461,70 @@ func TestSubmitPullRequestReviewCachesReviewerID(t *testing.T) {
 		require.NoError(t, err1)
 		require.NoError(t, err2)
 		assert.Equal(t, 1, connectionHits, "reviewer ID lookup must be memoised by sync.Once")
+	})
+}
+
+func TestSubmitPullRequestReviewCachesReviewerIDPerOrganization(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should resolve reviewer ID independently for each organization", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		const (
+			orgA      = "org-a"
+			orgB      = "org-b"
+			reviewerA = "00000000-0000-0000-0000-00000000aaaa"
+			reviewerB = "00000000-0000-0000-0000-00000000bbbb"
+			project   = "my-project"
+			repoID    = "repo-1"
+			prID      = 4242
+		)
+		var hitsA, hitsB int
+		mux := http.NewServeMux()
+		stubConnectionDataFor(t, mux, orgA, reviewerA, &hitsA)
+		stubConnectionDataFor(t, mux, orgB, reviewerB, &hitsB)
+		mux.HandleFunc(
+			"PUT /"+orgA+"/"+project+"/_apis/git/repositories/"+repoID+"/pullrequests/4242/reviewers/"+reviewerA,
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{}`))
+			},
+		)
+		mux.HandleFunc(
+			"PUT /"+orgB+"/"+project+"/_apis/git/repositories/"+repoID+"/pullrequests/4242/reviewers/"+reviewerB,
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repoA := globalEntities.Repository{Organization: orgA, Project: project, ID: repoID}
+		repoB := globalEntities.Repository{Organization: orgB, Project: project, ID: repoID}
+
+		// when
+		errA := p.SubmitPullRequestReview(
+			context.Background(), repoA, prID,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+		errB := p.SubmitPullRequestReview(
+			context.Background(), repoB, prID,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+		errA2 := p.SubmitPullRequestReview(
+			context.Background(), repoA, prID,
+			globalEntities.ReviewSubmission{Verdict: globalEntities.ReviewVerdictApprove},
+		)
+
+		// then
+		require.NoError(t, errA)
+		require.NoError(t, errB)
+		require.NoError(t, errA2)
+		assert.Equal(t, 1, hitsA, "reviewer ID for org-a should be looked up exactly once")
+		assert.Equal(t, 1, hitsB, "reviewer ID for org-b should be looked up exactly once")
 	})
 }
 

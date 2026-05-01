@@ -21,6 +21,12 @@ var ErrThreadStatusUpdateUnsupported = errors.New(
 	"updating pull request thread status is not supported on GitHub",
 )
 
+// ErrReviewBodyRequired signals that SubmitPullRequestReview was called with a
+// verdict GitHub mandates a body for (REQUEST_CHANGES, COMMENT) but the caller
+// did not provide one. Returned up-front so callers see a deterministic error
+// instead of an opaque HTTP 422 from GitHub.
+var ErrReviewBodyRequired = errors.New("review body is required for this verdict")
+
 // GitHub PR review event strings accepted by PullRequests.CreateReview.
 // Defined as constants so the verdict-mapping switch and the inline-comment
 // path share a single source of truth.
@@ -296,7 +302,11 @@ func (p *Provider) UpdatePullRequestThreadStatus(
 //
 // A ReviewVerdictComment with an empty body is skipped without an API call:
 // GitHub rejects empty COMMENT reviews with 422 ("Body is too short") and
-// nothing meaningful would surface anyway.
+// nothing meaningful would surface anyway. ReviewVerdictRequestChanges (and
+// ReviewVerdictWaitingForAuthor, which collapses to REQUEST_CHANGES) likewise
+// requires a body — GitHub rejects an empty REQUEST_CHANGES with 422, so the
+// caller is told up-front via ErrReviewBodyRequired instead of triggering a
+// failed round-trip.
 func (p *Provider) SubmitPullRequestReview(
 	ctx context.Context,
 	repo globalEntities.Repository,
@@ -310,6 +320,11 @@ func (p *Provider) SubmitPullRequestReview(
 
 	if event == reviewEventComment && sub.Body == "" {
 		return nil
+	}
+
+	if event == reviewEventRequestChanges && sub.Body == "" {
+		return fmt.Errorf("%w: verdict %q requires a non-empty body on GitHub",
+			ErrReviewBodyRequired, sub.Verdict)
 	}
 
 	body := sub.Body

@@ -1110,3 +1110,162 @@ func TestGetPullRequestStatus(t *testing.T) {
 		assert.Empty(t, status)
 	})
 }
+
+func TestPostPullRequestCommentStatus(t *testing.T) {
+	t.Parallel()
+
+	const baseEndpoint = "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12"
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	tests := []struct {
+		name           string
+		opts           []globalEntities.CommentOption
+		expectedStatus string
+	}{
+		{
+			name:           "should default to active status when no options are provided",
+			opts:           nil,
+			expectedStatus: "active",
+		},
+		{
+			name:           "should send closed status when WithThreadStatus closed is provided",
+			opts:           []globalEntities.CommentOption{globalEntities.WithThreadStatus("closed")},
+			expectedStatus: "closed",
+		},
+		{
+			name:           "should send fixed status when WithThreadStatus fixed is provided",
+			opts:           []globalEntities.CommentOption{globalEntities.WithThreadStatus("fixed")},
+			expectedStatus: "fixed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var capturedBody map[string]any
+			mux := http.NewServeMux()
+			mux.HandleFunc(
+				"POST "+baseEndpoint+"/threads",
+				func(w http.ResponseWriter, r *http.Request) {
+					capturedBody = captureThreadBody(t, r)
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"id":1}`))
+				},
+			)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			err := p.PostPullRequestComment(
+				context.Background(), repo, 12, "informational marker", tt.opts...,
+			)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, capturedBody)
+			assert.Equal(t, tt.expectedStatus, capturedBody["status"])
+		})
+	}
+}
+
+func TestPostPullRequestThreadCommentStatus(t *testing.T) {
+	t.Parallel()
+
+	const (
+		prID         = 12105
+		iterationID  = 7
+		baseEndpoint = "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12105"
+	)
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	tests := []struct {
+		name           string
+		opts           []globalEntities.CommentOption
+		expectedStatus string
+	}{
+		{
+			name:           "should default to active status when no options are provided",
+			opts:           nil,
+			expectedStatus: "active",
+		},
+		{
+			name:           "should send closed status when WithThreadStatus closed is provided",
+			opts:           []globalEntities.CommentOption{globalEntities.WithThreadStatus("closed")},
+			expectedStatus: "closed",
+		},
+		{
+			name:           "should send fixed status when WithThreadStatus fixed is provided",
+			opts:           []globalEntities.CommentOption{globalEntities.WithThreadStatus("fixed")},
+			expectedStatus: "fixed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var capturedBody map[string]any
+			mux := http.NewServeMux()
+			mux.HandleFunc(
+				"GET "+baseEndpoint+"/iterations",
+				func(w http.ResponseWriter, _ *http.Request) {
+					resp := map[string]any{
+						"value": []map[string]any{{"id": iterationID}},
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(resp)
+				},
+			)
+			mux.HandleFunc(
+				"GET "+baseEndpoint+"/iterations/7/changes",
+				func(w http.ResponseWriter, _ *http.Request) {
+					resp := map[string]any{
+						"changeEntries": []map[string]any{
+							{
+								"changeTrackingId": 7,
+								"item":             map[string]string{"path": "/README.md"},
+							},
+						},
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(resp)
+				},
+			)
+			mux.HandleFunc(
+				"POST "+baseEndpoint+"/threads",
+				func(w http.ResponseWriter, r *http.Request) {
+					capturedBody = captureThreadBody(t, r)
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"id":1}`))
+				},
+			)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			_, err := p.PostPullRequestThreadComment(
+				context.Background(), repo, prID, "/README.md", 10, "comment body", tt.opts...,
+			)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, capturedBody)
+			assert.Equal(t, tt.expectedStatus, capturedBody["status"])
+		})
+	}
+}

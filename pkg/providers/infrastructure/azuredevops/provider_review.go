@@ -382,6 +382,7 @@ func (p *Provider) PostPullRequestComment(
 	repo globalEntities.Repository,
 	prID int,
 	body string,
+	opts ...globalEntities.CommentOption,
 ) error {
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
@@ -404,7 +405,10 @@ func (p *Provider) PostPullRequestComment(
 		// same provider would obscure that the update path is
 		// patching a status the create path produced — pinned per
 		// Copilot review on PR #86 thread `PRRT_kwDORQWb3M5-6QAf`.
-		"status": "active",
+		// Defaults to `"active"`; callers wanting to post a closed
+		// informational annotation pass
+		// `entities.WithThreadStatus("closed")`.
+		"status": globalEntities.ResolveCommentOptions(opts...),
 	}
 
 	_, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, threadBody)
@@ -422,6 +426,7 @@ func (p *Provider) PostPullRequestThreadComment(
 	filePath string,
 	line int,
 	body string,
+	opts ...globalEntities.CommentOption,
 ) (int, error) {
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := fmt.Sprintf(
@@ -450,8 +455,10 @@ func (p *Provider) PostPullRequestThreadComment(
 		},
 		// See the `status` note on the sibling create path above
 		// — string form aligns with `UpdatePullRequestThreadStatus`
-		// and the ADO REST docs default.
-		"status": "active",
+		// and the ADO REST docs default. Defaults to `"active"`;
+		// callers can pass `entities.WithThreadStatus("closed")` to
+		// post the inline thread as already-closed.
+		"status": globalEntities.ResolveCommentOptions(opts...),
 	}
 
 	// look up the latest iteration so ADO can anchor the comment to the correct diff;

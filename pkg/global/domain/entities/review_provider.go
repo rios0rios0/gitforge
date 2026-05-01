@@ -78,13 +78,14 @@ const (
 )
 
 // ReviewSubmission carries the verdict and optional summary body submitted to
-// the provider's native PR review endpoint. The body is rendered by the
-// platform alongside the vote / event so reviewers can see the bot's reasoning
-// without opening a separate comment thread.
+// the provider's native PR review flow. Depending on provider capabilities,
+// the body may be rendered alongside the vote / review event or posted as a
+// regular pull request comment so reviewers can see the bot's reasoning.
 type ReviewSubmission struct {
 	// Verdict selects which native review state to set. Required.
 	Verdict ReviewVerdict
-	// Body is the optional summary shown alongside the vote / review event.
+	// Body is the optional summary shown with the review, either alongside the
+	// vote / review event or as a regular pull request comment.
 	// May be empty; providers handle the empty-body case per their docs.
 	Body string
 }

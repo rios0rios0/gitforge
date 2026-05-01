@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
 	log "github.com/sirupsen/logrus"
@@ -881,19 +882,23 @@ func (p *Provider) SubmitPullRequestReview(
 	return nil
 }
 
-// getReviewerID returns the authenticated identity's UUID — the value Azure
-// DevOps expects in the path of the reviewer-vote endpoint. The lookup hits
-// /_apis/connectionData, which always uses the org-level base URL (no
-// project segment), and is cached via [sync.Once] so the second call onwards
-// is free.
+// getReviewerID returns the authenticated identity's UUID for the given
+// organization — the value Azure DevOps expects in the path of the
+// reviewer-vote endpoint. The lookup hits /_apis/connectionData, which always
+// uses the org-level base URL (no project segment), and is cached per
+// organization via a [sync.Once] so the second call onwards is free for a
+// given org. Caching per-org (rather than once for the whole Provider) keeps
+// the reviewer ID correct when a single Provider — say one constructed from a
+// multi-org PAT — is reused across organizations.
 func (p *Provider) getReviewerID(ctx context.Context, organization string) (string, error) {
-	p.reviewerIDOnce.Do(func() {
+	once := p.reviewerIDOnceFor(organization)
+	once.Do(func() {
 		baseURL := buildBaseURL(organization)
 		endpoint := fmt.Sprintf("/_apis/connectionData?api-version=%s", apiVersion)
 
 		resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
 		if err != nil {
-			p.reviewerIDErr = fmt.Errorf("failed to fetch connection data: %w", err)
+			p.setReviewerIDError(organization, fmt.Errorf("failed to fetch connection data: %w", err))
 			return
 		}
 
@@ -903,18 +908,60 @@ func (p *Provider) getReviewerID(ctx context.Context, organization string) (stri
 			} `json:"authenticatedUser"`
 		}
 		if unmarshalErr := json.Unmarshal(resp, &data); unmarshalErr != nil {
-			p.reviewerIDErr = fmt.Errorf("failed to parse connection data: %w", unmarshalErr)
+			p.setReviewerIDError(organization, fmt.Errorf("failed to parse connection data: %w", unmarshalErr))
 			return
 		}
 
 		if data.AuthenticatedUser.ID == "" {
-			p.reviewerIDErr = errors.New("connection data response missing authenticatedUser.id")
+			p.setReviewerIDError(organization, errors.New("connection data response missing authenticatedUser.id"))
 			return
 		}
 
-		p.reviewerID = data.AuthenticatedUser.ID
+		p.setReviewerID(organization, data.AuthenticatedUser.ID)
 	})
-	return p.reviewerID, p.reviewerIDErr
+	return p.lookupReviewerID(organization)
+}
+
+// reviewerIDOnceFor returns the [sync.Once] guarding the reviewer-ID lookup for
+// the given organization, creating it (and initializing the per-org caches)
+// lazily so callers do not have to pre-register orgs at construction time and
+// zero-value Providers used in tests still behave correctly.
+func (p *Provider) reviewerIDOnceFor(organization string) *sync.Once {
+	p.reviewerIDMu.Lock()
+	defer p.reviewerIDMu.Unlock()
+	if p.reviewerIDOnces == nil {
+		p.reviewerIDOnces = make(map[string]*sync.Once)
+	}
+	if p.reviewerIDCache == nil {
+		p.reviewerIDCache = make(map[string]string)
+	}
+	if p.reviewerIDErrors == nil {
+		p.reviewerIDErrors = make(map[string]error)
+	}
+	once, ok := p.reviewerIDOnces[organization]
+	if !ok {
+		once = &sync.Once{}
+		p.reviewerIDOnces[organization] = once
+	}
+	return once
+}
+
+func (p *Provider) setReviewerID(organization, id string) {
+	p.reviewerIDMu.Lock()
+	defer p.reviewerIDMu.Unlock()
+	p.reviewerIDCache[organization] = id
+}
+
+func (p *Provider) setReviewerIDError(organization string, err error) {
+	p.reviewerIDMu.Lock()
+	defer p.reviewerIDMu.Unlock()
+	p.reviewerIDErrors[organization] = err
+}
+
+func (p *Provider) lookupReviewerID(organization string) (string, error) {
+	p.reviewerIDMu.Lock()
+	defer p.reviewerIDMu.Unlock()
+	return p.reviewerIDCache[organization], p.reviewerIDErrors[organization]
 }
 
 // mapVerdictToADOVote translates a gitforge ReviewVerdict to the integer vote

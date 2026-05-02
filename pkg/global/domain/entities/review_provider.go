@@ -166,6 +166,24 @@ type ReviewProvider interface {
 		ctx context.Context, repo Repository, prID int, strategy string,
 	) error
 
+	// ListPullRequestComments returns every comment on the pull request —
+	// both PR-wide ("issue") comments and inline review comments anchored
+	// to a file + line. Providers map their wire shape into the unified
+	// PullRequestComment struct so consumers can iterate once for two
+	// distinct concerns:
+	//
+	//   1. "Has the bot already reviewed this PR?" — scan the result for
+	//      the bot's own marker comments (the dedup-on-second-push gate).
+	//   2. "Is this proposed inline comment a duplicate?" — scan for an
+	//      existing bot comment on the same file + line with a near-
+	//      identical body before posting (the comment-flood gate).
+	//
+	// Providers MAY paginate internally; the returned slice is the full
+	// page-walked list.
+	ListPullRequestComments(
+		ctx context.Context, repo Repository, prID int,
+	) ([]PullRequestComment, error)
+
 	// SubmitPullRequestReview records a native pull request review on the
 	// underlying provider so the verdict surfaces in the platform's reviewer
 	// panel rather than only in a free-form comment. The mapping is:

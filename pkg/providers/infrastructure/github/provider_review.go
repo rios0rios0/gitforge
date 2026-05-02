@@ -131,6 +131,108 @@ func (p *Provider) GetPullRequestFiles(
 	return allFiles, nil
 }
 
+// ListPullRequestComments returns every comment on the PR — both PR-wide
+// "issue" comments (`GET /repos/.../issues/:n/comments`) and inline review
+// comments (`GET /repos/.../pulls/:n/comments`). GitHub splits these
+// across two endpoints so the implementation walks both, paginates each,
+// and concatenates into the unified `PullRequestComment` shape.
+//
+// PR-wide comments land with `FilePath`/`Line` zeroed and `ThreadID` zero
+// (GitHub does not group issue comments into threads). Inline comments
+// land with `FilePath` + `Line` populated and `ThreadID` set to the
+// underlying review thread's database ID — which lets a re-review pass
+// walk a thread without an extra "list replies" call (`InReplyToID`
+// also carries the parent comment's ID for replies).
+func (p *Provider) ListPullRequestComments(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) ([]globalEntities.PullRequestComment, error) {
+	issueComments, err := p.listIssueComments(ctx, repo, prID)
+	if err != nil {
+		return nil, err
+	}
+	inlineComments, err := p.listInlineComments(ctx, repo, prID)
+	if err != nil {
+		return nil, err
+	}
+	return append(issueComments, inlineComments...), nil
+}
+
+// listIssueComments paginates GET /repos/.../issues/:n/comments. GitHub
+// represents PR-wide comments as issue comments because every PR is an
+// issue under the hood — no FilePath / Line / ThreadID context.
+func (p *Provider) listIssueComments(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) ([]globalEntities.PullRequestComment, error) {
+	var out []globalEntities.PullRequestComment
+	opts := &gh.IssueListCommentsOptions{
+		ListOptions: gh.ListOptions{PerPage: perPage},
+	}
+	for {
+		comments, resp, err := p.client.Issues.ListComments(
+			ctx, repo.Organization, repo.Name, prID, opts,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list issue comments: %w", err)
+		}
+		for _, c := range comments {
+			out = append(out, globalEntities.PullRequestComment{
+				ID:     c.GetID(),
+				Body:   c.GetBody(),
+				Author: c.GetUser().GetLogin(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return out, nil
+}
+
+// listInlineComments paginates GET /repos/.../pulls/:n/comments. Inline
+// comments carry the FilePath + Line they are anchored to and group into
+// review threads — the `pull_request_review_id` field maps to the
+// thread the comment belongs to (GitHub does not expose a separate
+// "thread ID" but reuses the review ID for that purpose).
+func (p *Provider) listInlineComments(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) ([]globalEntities.PullRequestComment, error) {
+	var out []globalEntities.PullRequestComment
+	opts := &gh.PullRequestListCommentsOptions{
+		ListOptions: gh.ListOptions{PerPage: perPage},
+	}
+	for {
+		comments, resp, err := p.client.PullRequests.ListComments(
+			ctx, repo.Organization, repo.Name, prID, opts,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list inline comments: %w", err)
+		}
+		for _, c := range comments {
+			out = append(out, globalEntities.PullRequestComment{
+				ID:          c.GetID(),
+				ThreadID:    c.GetPullRequestReviewID(),
+				Body:        c.GetBody(),
+				Author:      c.GetUser().GetLogin(),
+				FilePath:    c.GetPath(),
+				Line:        c.GetLine(),
+				InReplyToID: c.GetInReplyTo(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return out, nil
+}
+
 // PostPullRequestComment posts an issue-level comment on the pull request via
 // the Issues REST API. GitHub's REST surface does not expose a per-comment
 // "thread status" field analogous to Azure DevOps, so any

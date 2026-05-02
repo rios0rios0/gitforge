@@ -1746,4 +1746,74 @@ func TestListPullRequestComments(t *testing.T) {
 		assert.Equal(t, int64(2), comments[2].InReplyToID,
 			"a reply must carry the parent comment ID via parentCommentId")
 	})
+
+	t.Run("should follow continuation token across pages", func(t *testing.T) {
+		t.Parallel()
+
+		// given: two-page response. The first page returns a continuation token
+		// in the `X-Ms-Continuationtoken` header; without the loop the second
+		// page's threads would be silently dropped, breaking dedup and the
+		// "already reviewed" gate on busy PRs.
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests/4242/threads",
+			func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Query().Get("continuationToken") == "" {
+					w.Header().Set(paginationHeader, "next-page-token")
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"value": []map[string]any{
+							{
+								"id": 1001,
+								"comments": []map[string]any{
+									{
+										"id":          11,
+										"content":     "page-1 comment",
+										"commentType": "text",
+										"author": map[string]any{
+											"uniqueName": "alice@example",
+										},
+									},
+								},
+							},
+						},
+					})
+					return
+				}
+				assert.Equal(t, "next-page-token", r.URL.Query().Get("continuationToken"))
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"value": []map[string]any{
+						{
+							"id": 1002,
+							"comments": []map[string]any{
+								{
+									"id":          22,
+									"content":     "page-2 comment",
+									"commentType": "text",
+									"author": map[string]any{
+										"uniqueName": "bob@example",
+									},
+								},
+							},
+						},
+					},
+				})
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		comments, err := p.ListPullRequestComments(context.Background(), repo, 4242)
+
+		// then
+		require.NoError(t, err)
+		require.Len(t, comments, 2,
+			"both pages must be flattened; missing the loop drops the second page")
+		assert.Equal(t, "page-1 comment", comments[0].Body)
+		assert.Equal(t, "page-2 comment", comments[1].Body)
+	})
 }

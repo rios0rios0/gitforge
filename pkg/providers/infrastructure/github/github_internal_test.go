@@ -1181,8 +1181,12 @@ func TestListPullRequestComments(t *testing.T) {
 		assert.Zero(t, comments[0].ThreadID)
 		assert.Equal(t, "internal/foo.go", comments[2].FilePath)
 		assert.Equal(t, 42, comments[2].Line)
-		assert.Equal(t, int64(5000), comments[2].ThreadID)
+		assert.Equal(t, int64(200), comments[2].ThreadID,
+			"a top-level inline comment is its own thread root, so ThreadID = comment ID")
 		assert.Zero(t, comments[2].InReplyToID, "top-level inline comment must have InReplyToID=0")
+		assert.Equal(t, int64(200), comments[3].ThreadID,
+			"a reply must share the thread root's ID — using pull_request_review_id "+
+				"would merge unrelated threads from the same review submission")
 		assert.Equal(t, int64(200), comments[3].InReplyToID,
 			"a reply must carry the parent comment ID so a re-review pass can walk the thread")
 	})

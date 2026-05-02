@@ -139,10 +139,15 @@ func (p *Provider) GetPullRequestFiles(
 //
 // PR-wide comments land with `FilePath`/`Line` zeroed and `ThreadID` zero
 // (GitHub does not group issue comments into threads). Inline comments
-// land with `FilePath` + `Line` populated and `ThreadID` set to the
-// underlying review thread's database ID — which lets a re-review pass
-// walk a thread without an extra "list replies" call (`InReplyToID`
-// also carries the parent comment's ID for replies).
+// land with `FilePath` + `Line` populated and `ThreadID` set to the root
+// comment's ID for that conversation — every reply on a GitHub review
+// thread carries `in_reply_to_id` pointing at the top-level comment, so
+// using `in_reply_to_id` (or the comment's own ID when it is the root)
+// gives callers a stable per-thread handle for dedup and walk. Reusing
+// `pull_request_review_id` for grouping would be wrong: that field is
+// the review submission ID and a single review can scatter inline
+// comments across multiple unrelated threads (different files / lines),
+// so it would merge conversations the platform treats as distinct.
 func (p *Provider) ListPullRequestComments(
 	ctx context.Context,
 	repo globalEntities.Repository,
@@ -195,9 +200,13 @@ func (p *Provider) listIssueComments(
 
 // listInlineComments paginates GET /repos/.../pulls/:n/comments. Inline
 // comments carry the FilePath + Line they are anchored to and group into
-// review threads — the `pull_request_review_id` field maps to the
-// thread the comment belongs to (GitHub does not expose a separate
-// "thread ID" but reuses the review ID for that purpose).
+// review threads via the `in_reply_to_id` chain: a top-level comment is
+// the thread root and every reply points back to it, so `in_reply_to_id`
+// (when set) is the thread ID, otherwise the comment's own ID is. The
+// `pull_request_review_id` field is intentionally not used — that's the
+// review submission ID, and a single review can contain several
+// unrelated inline threads, which would collide if treated as the same
+// thread.
 func (p *Provider) listInlineComments(
 	ctx context.Context,
 	repo globalEntities.Repository,
@@ -215,14 +224,19 @@ func (p *Provider) listInlineComments(
 			return nil, fmt.Errorf("failed to list inline comments: %w", err)
 		}
 		for _, c := range comments {
+			parentID := c.GetInReplyTo()
+			threadID := parentID
+			if threadID == 0 {
+				threadID = c.GetID()
+			}
 			out = append(out, globalEntities.PullRequestComment{
 				ID:          c.GetID(),
-				ThreadID:    c.GetPullRequestReviewID(),
+				ThreadID:    threadID,
 				Body:        c.GetBody(),
 				Author:      c.GetUser().GetLogin(),
 				FilePath:    c.GetPath(),
 				Line:        c.GetLine(),
-				InReplyToID: c.GetInReplyTo(),
+				InReplyToID: parentID,
 			})
 		}
 		if resp.NextPage == 0 {

@@ -376,6 +376,81 @@ func (p *Provider) GetPullRequestFiles(
 	return files, nil
 }
 
+// ListPullRequestComments returns every comment on the PR by paginating
+// the threads API and flattening each thread's `comments[]` array. Azure
+// DevOps groups every comment into a thread (PR-wide threads have no
+// `threadContext`; inline threads carry `threadContext.filePath` +
+// `threadContext.rightFileStart.line`), so the same loop handles both
+// surfaces. System comments (vote / status changes) are dropped — the
+// dedup and "already reviewed" callers want only human + bot text.
+func (p *Provider) ListPullRequestComments(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) ([]globalEntities.PullRequestComment, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/threads?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pull request threads: %w", err)
+	}
+
+	var result struct {
+		Value []struct {
+			ID            int `json:"id"`
+			ThreadContext struct {
+				FilePath       string `json:"filePath"`
+				RightFileStart struct {
+					Line int `json:"line"`
+				} `json:"rightFileStart"`
+			} `json:"threadContext"`
+			Comments []struct {
+				ID              int    `json:"id"`
+				ParentCommentID int    `json:"parentCommentId"`
+				Content         string `json:"content"`
+				CommentType     string `json:"commentType"`
+				Author          struct {
+					DisplayName string `json:"displayName"`
+					UniqueName  string `json:"uniqueName"`
+				} `json:"author"`
+			} `json:"comments"`
+		} `json:"value"`
+	}
+	if unmarshalErr := json.Unmarshal(resp, &result); unmarshalErr != nil {
+		return nil, fmt.Errorf("failed to parse pull request threads: %w", unmarshalErr)
+	}
+
+	var comments []globalEntities.PullRequestComment
+	for _, thread := range result.Value {
+		for _, c := range thread.Comments {
+			// Skip system comments (vote changes, status updates).
+			// Both consumers (review-once gate, comment dedup) want
+			// only human + bot text.
+			if c.CommentType == "system" {
+				continue
+			}
+			author := c.Author.UniqueName
+			if author == "" {
+				author = c.Author.DisplayName
+			}
+			comments = append(comments, globalEntities.PullRequestComment{
+				ID:          int64(c.ID),
+				ThreadID:    int64(thread.ID),
+				Body:        c.Content,
+				Author:      author,
+				FilePath:    thread.ThreadContext.FilePath,
+				Line:        thread.ThreadContext.RightFileStart.Line,
+				InReplyToID: int64(c.ParentCommentID),
+			})
+		}
+	}
+	return comments, nil
+}
+
 func (p *Provider) PostPullRequestComment(
 	ctx context.Context,
 	repo globalEntities.Repository,

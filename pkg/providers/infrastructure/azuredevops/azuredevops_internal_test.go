@@ -1652,3 +1652,98 @@ func TestSubmitPullRequestReviewRejectsUnknownVerdict(t *testing.T) {
 		assert.Contains(t, err.Error(), "unsupported review verdict")
 	})
 }
+
+func TestListPullRequestComments(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should flatten threads into comments and drop system entries", func(t *testing.T) {
+		t.Parallel()
+
+		// given: one PR-wide thread (no threadContext), one inline thread
+		// (with filePath + rightFileStart.line), and one system thread
+		// (vote-changed) that must be dropped — both consumers (review-
+		// once gate + comment dedup) want only human + bot text.
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"GET /my-org/my-project/_apis/git/repositories/repo-1/pullrequests/4242/threads",
+			func(w http.ResponseWriter, _ *http.Request) {
+				resp := map[string]any{
+					"value": []map[string]any{
+						{
+							"id": 9001,
+							"comments": []map[string]any{
+								{
+									"id":              1,
+									"parentCommentId": 0,
+									"content":         "✅ **Code Guru review complete.**",
+									"commentType":     "text",
+									"author": map[string]any{
+										"displayName": "code-guru",
+										"uniqueName":  "code-guru@bot",
+									},
+								},
+							},
+						},
+						{
+							"id": 9002,
+							"threadContext": map[string]any{
+								"filePath":       "/internal/foo.go",
+								"rightFileStart": map[string]any{"line": 42},
+							},
+							"comments": []map[string]any{
+								{
+									"id":              2,
+									"parentCommentId": 0,
+									"content":         "[high] this could be nil-checked",
+									"commentType":     "text",
+									"author": map[string]any{
+										"displayName": "code-guru",
+										"uniqueName":  "code-guru@bot",
+									},
+								},
+								{
+									"id":              3,
+									"parentCommentId": 2,
+									"content":         "addressed in next push",
+									"commentType":     "text",
+									"author": map[string]any{
+										"displayName": "Felipe",
+										"uniqueName":  "felipe@example",
+									},
+								},
+							},
+						},
+						{
+							"id": 9003,
+							"comments": []map[string]any{
+								{"id": 4, "content": "vote changed", "commentType": "system"},
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		comments, err := p.ListPullRequestComments(context.Background(), repo, 4242)
+
+		// then
+		require.NoError(t, err)
+		require.Len(t, comments, 3, "system thread must be dropped, leaving 1 + 2 text comments")
+		assert.Equal(t, "✅ **Code Guru review complete.**", comments[0].Body)
+		assert.Equal(t, "code-guru@bot", comments[0].Author)
+		assert.Empty(t, comments[0].FilePath, "PR-wide thread has no file path")
+		assert.Equal(t, "/internal/foo.go", comments[1].FilePath)
+		assert.Equal(t, 42, comments[1].Line)
+		assert.Equal(t, int64(9002), comments[1].ThreadID)
+		assert.Equal(t, int64(2), comments[2].InReplyToID,
+			"a reply must carry the parent comment ID via parentCommentId")
+	})
+}

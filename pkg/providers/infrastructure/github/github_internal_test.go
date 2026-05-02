@@ -1118,3 +1118,76 @@ func TestSubmitPullRequestReviewRejectsUnknownVerdict(t *testing.T) {
 		assert.Contains(t, err.Error(), "unsupported review verdict")
 	})
 }
+
+func TestListPullRequestComments(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should merge issue comments and inline comments into a single list", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /repos/my-org/my-repo/issues/7/comments", func(w http.ResponseWriter, _ *http.Request) {
+			resp := []map[string]any{
+				{"id": 100, "body": "PR-wide comment from a user", "user": map[string]any{"login": "alice"}},
+				{
+					"id":   101,
+					"body": "✅ **Code Guru review complete.**",
+					"user": map[string]any{"login": "code-guru[bot]"},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7/comments", func(w http.ResponseWriter, _ *http.Request) {
+			resp := []map[string]any{
+				{
+					"id":                     200,
+					"pull_request_review_id": 5000,
+					"path":                   "internal/foo.go",
+					"line":                   42,
+					"body":                   "[high] this could be nil-checked",
+					"user":                   map[string]any{"login": "code-guru[bot]"},
+				},
+				{
+					"id":                     201,
+					"pull_request_review_id": 5000,
+					"path":                   "internal/foo.go",
+					"line":                   42,
+					"body":                   "thanks, addressed in next push",
+					"user":                   map[string]any{"login": "alice"},
+					"in_reply_to_id":         200,
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+		// when
+		comments, err := p.ListPullRequestComments(context.Background(), repo, 7)
+
+		// then
+		require.NoError(t, err)
+		require.Len(t, comments, 4)
+		assert.Equal(t, "PR-wide comment from a user", comments[0].Body)
+		assert.Equal(t, "alice", comments[0].Author)
+		assert.Empty(t, comments[0].FilePath, "PR-wide comment must not carry a file path")
+		assert.Zero(t, comments[0].Line)
+		assert.Zero(t, comments[0].ThreadID)
+		assert.Equal(t, "internal/foo.go", comments[2].FilePath)
+		assert.Equal(t, 42, comments[2].Line)
+		assert.Equal(t, int64(200), comments[2].ThreadID,
+			"a top-level inline comment is its own thread root, so ThreadID = comment ID")
+		assert.Zero(t, comments[2].InReplyToID, "top-level inline comment must have InReplyToID=0")
+		assert.Equal(t, int64(200), comments[3].ThreadID,
+			"a reply must share the thread root's ID — using pull_request_review_id "+
+				"would merge unrelated threads from the same review submission")
+		assert.Equal(t, int64(200), comments[3].InReplyToID,
+			"a reply must carry the parent comment ID so a re-review pass can walk the thread")
+	})
+}

@@ -376,6 +376,124 @@ func (p *Provider) GetPullRequestFiles(
 	return files, nil
 }
 
+// ListPullRequestComments returns every comment on the PR by paginating
+// the threads API and flattening each thread's `comments[]` array. Azure
+// DevOps groups every comment into a thread (PR-wide threads have no
+// `threadContext`; inline threads carry `threadContext.filePath` +
+// `threadContext.rightFileStart.line`), so the same loop handles both
+// surfaces. System comments (vote / status changes) are dropped — the
+// dedup and "already reviewed" callers want only human + bot text.
+//
+// The threads endpoint paginates via the `X-Ms-Continuationtoken`
+// response header the same way the projects listing does in
+// `provider_discovery.go`; without the loop a PR with enough discussion
+// to spill onto a second page returns an incomplete set, breaking both
+// the "already reviewed" gate and the comment dedup.
+func (p *Provider) ListPullRequestComments(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID int,
+) ([]globalEntities.PullRequestComment, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	basePath := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/threads?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+
+	var comments []globalEntities.PullRequestComment
+	continuationToken := ""
+	for {
+		endpoint := basePath
+		if continuationToken != "" {
+			endpoint += "&continuationToken=" + continuationToken
+		}
+
+		page, nextToken, err := p.fetchThreadsPage(ctx, baseURL, endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		comments = append(comments, page...)
+
+		continuationToken = nextToken
+		if continuationToken == "" {
+			break
+		}
+	}
+	return comments, nil
+}
+
+// adoThreadsPage is the JSON shape returned by the ADO threads listing endpoint.
+type adoThreadsPage struct {
+	Value []struct {
+		ID            int `json:"id"`
+		ThreadContext struct {
+			FilePath       string `json:"filePath"`
+			RightFileStart struct {
+				Line int `json:"line"`
+			} `json:"rightFileStart"`
+		} `json:"threadContext"`
+		Comments []struct {
+			ID              int    `json:"id"`
+			ParentCommentID int    `json:"parentCommentId"`
+			Content         string `json:"content"`
+			CommentType     string `json:"commentType"`
+			Author          struct {
+				DisplayName string `json:"displayName"`
+				UniqueName  string `json:"uniqueName"`
+			} `json:"author"`
+		} `json:"comments"`
+	} `json:"value"`
+}
+
+// fetchThreadsPage performs a single GET against the ADO threads endpoint and
+// flattens the response into PullRequestComment entries (system comments
+// dropped). The continuation token returned by ADO is propagated back so the
+// caller can iterate until exhausted.
+func (p *Provider) fetchThreadsPage(
+	ctx context.Context,
+	baseURL, endpoint string,
+) ([]globalEntities.PullRequestComment, string, error) {
+	resp, headers, err := p.doRequestWithHeaders(
+		ctx, baseURL, http.MethodGet, endpoint, nil,
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to list pull request threads: %w", err)
+	}
+
+	var page adoThreadsPage
+	if unmarshalErr := json.Unmarshal(resp, &page); unmarshalErr != nil {
+		return nil, "", fmt.Errorf("failed to parse pull request threads: %w", unmarshalErr)
+	}
+
+	var comments []globalEntities.PullRequestComment
+	for _, thread := range page.Value {
+		for _, c := range thread.Comments {
+			// Skip system comments (vote changes, status updates).
+			// Both consumers (review-once gate, comment dedup) want
+			// only human + bot text.
+			if c.CommentType == "system" {
+				continue
+			}
+			author := c.Author.UniqueName
+			if author == "" {
+				author = c.Author.DisplayName
+			}
+			comments = append(comments, globalEntities.PullRequestComment{
+				ID:          int64(c.ID),
+				ThreadID:    int64(thread.ID),
+				Body:        c.Content,
+				Author:      author,
+				FilePath:    thread.ThreadContext.FilePath,
+				Line:        thread.ThreadContext.RightFileStart.Line,
+				InReplyToID: int64(c.ParentCommentID),
+			})
+		}
+	}
+
+	return comments, headers.Get(paginationHeader), nil
+}
+
 func (p *Provider) PostPullRequestComment(
 	ctx context.Context,
 	repo globalEntities.Repository,

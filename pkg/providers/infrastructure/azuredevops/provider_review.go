@@ -889,13 +889,15 @@ const (
 	adoMergeStrategySquash        = 1
 	adoMergeStrategyNoFastForward = 2
 	adoMergeStrategyRebase        = 3
+	adoMergeStrategyRebaseMerge   = 4
 )
 
 func mapADOMergeStrategy(strategy string) int {
 	strategyMap := map[string]int{
-		"squash": adoMergeStrategySquash,
-		"merge":  adoMergeStrategyNoFastForward,
-		"rebase": adoMergeStrategyRebase,
+		"squash":      adoMergeStrategySquash,
+		"merge":       adoMergeStrategyNoFastForward,
+		"rebase":      adoMergeStrategyRebase,
+		"rebaseMerge": adoMergeStrategyRebaseMerge,
 	}
 
 	if val, ok := strategyMap[strategy]; ok {

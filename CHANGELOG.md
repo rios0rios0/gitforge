@@ -16,6 +16,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed `golangci-lint` failures (`goconst`, `nolintlint`) by extracting repeated string literals into package-level constants across the `changelog`, `azuredevops`, and `github` packages and removing an unused `//nolint:gosec` directive in `pkg/signing/infrastructure/helpers/gpg.go`
+
 ### Added
 
 - added `"rebaseMerge"` to the Azure DevOps `MergePullRequest` strategy map (previously only `"squash"`, `"merge"`, `"rebase"` were honoured). Surfaced live by an internal repo whose `Require a merge strategy` branch policy on `main` had `allowRebaseMerge: true` as the only allowed strategy — every `MergePullRequest` call against that repo was rejected with `GitPullRequestUpdateRejectedByPolicyException` because no string in the existing map produced the policy-compliant integer. The new entry maps to `4` (`adoMergeStrategyRebaseMerge`), the `GitPullRequestMergeStrategy` value documented in the [ADO REST update endpoint](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/update). Pinned by a new `TestMapADOMergeStrategy` table covering every supported string plus the empty / unknown fallback to `squash`

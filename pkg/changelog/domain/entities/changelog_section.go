@@ -9,6 +9,15 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
+const (
+	sectionAdded      = "Added"
+	sectionChanged    = "Changed"
+	sectionDeprecated = "Deprecated"
+	sectionRemoved    = "Removed"
+	sectionFixed      = "Fixed"
+	sectionSecurity   = "Security"
+)
+
 // MakeNewSectionsFromUnreleased creates new section contents for initial release.
 func MakeNewSectionsFromUnreleased(unreleasedSection []string, version semver.Version) []string {
 	var newSection []string
@@ -55,7 +64,7 @@ func MakeNewSections(
 	)
 	newSection = append(newSection, "")
 
-	keys := []string{"Added", "Changed", "Deprecated", "Fixed", "Removed", "Security"}
+	keys := []string{sectionAdded, sectionChanged, sectionDeprecated, sectionFixed, sectionRemoved, sectionSecurity}
 	for _, key := range keys {
 		section := sections[key]
 
@@ -92,7 +101,7 @@ func ParseUnreleasedIntoSections(
 			switch {
 			case strings.HasPrefix(line, "- **BREAKING CHANGE:**"):
 				*majorChanges++
-			case currentSection == sections["Added"]:
+			case currentSection == sections[sectionAdded]:
 				*minorChanges++
 			default:
 				*patchChanges++
@@ -109,12 +118,12 @@ func UpdateSection(
 	FixSectionHeadings(unreleasedSection)
 
 	sections := map[string]*[]string{
-		"Added":      {},
-		"Changed":    {},
-		"Deprecated": {},
-		"Removed":    {},
-		"Fixed":      {},
-		"Security":   {},
+		sectionAdded:      {},
+		sectionChanged:    {},
+		sectionDeprecated: {},
+		sectionRemoved:    {},
+		sectionFixed:      {},
+		sectionSecurity:   {},
 	}
 
 	var currentSection *[]string
@@ -159,16 +168,23 @@ func UpdateSection(
 //
 //nolint:gochecknoglobals // constant-like lookup table
 var verbSectionMap = map[string]string{
-	"removed":    "Removed",
-	"added":      "Added",
-	"fixed":      "Fixed",
-	"deprecated": "Deprecated",
+	"removed":    sectionRemoved,
+	"added":      sectionAdded,
+	"fixed":      sectionFixed,
+	"deprecated": sectionDeprecated,
 }
 
 // sectionKeys defines the fixed iteration order for changelog sections.
 //
 //nolint:gochecknoglobals // constant-like ordered list
-var sectionKeys = []string{"Added", "Changed", "Deprecated", "Fixed", "Removed", "Security"}
+var sectionKeys = []string{
+	sectionAdded,
+	sectionChanged,
+	sectionDeprecated,
+	sectionFixed,
+	sectionRemoved,
+	sectionSecurity,
+}
 
 // ReclassifyEntriesByVerb moves entries to the correct section based on their leading verb.
 // For example, an entry "- removed old feature" under "### Changed" is moved to "### Removed".
@@ -219,7 +235,7 @@ func recountChanges(sections map[string]*[]string) (int, int, int) {
 			switch {
 			case strings.HasPrefix(line, "- **BREAKING CHANGE:**"):
 				major++
-			case key == "Added":
+			case key == sectionAdded:
 				minor++
 			default:
 				patch++

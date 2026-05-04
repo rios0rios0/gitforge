@@ -508,11 +508,11 @@ func (p *Provider) PostPullRequestComment(
 	)
 
 	threadBody := map[string]any{
-		"comments": []map[string]any{
+		jsonKeyComments: []map[string]any{
 			{
-				"parentCommentId": 0,
-				"content":         body,
-				"commentType":     1,
+				jsonKeyParentCommentID: 0,
+				jsonKeyContent:         body,
+				jsonKeyCommentType:     1,
 			},
 		},
 		// String form (`"active"` / `"fixed"` / `"closed"`) matches
@@ -525,7 +525,7 @@ func (p *Provider) PostPullRequestComment(
 		// Defaults to `"active"`; callers wanting to post a closed
 		// informational annotation pass
 		// `entities.WithThreadStatus("closed")`.
-		"status": globalEntities.ResolveCommentOptions(opts...),
+		jsonKeyStatus: globalEntities.ResolveCommentOptions(opts...),
 	}
 
 	_, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, threadBody)
@@ -552,22 +552,22 @@ func (p *Provider) PostPullRequestThreadComment(
 	)
 
 	threadBody := map[string]any{
-		"comments": []map[string]any{
+		jsonKeyComments: []map[string]any{
 			{
-				"parentCommentId": 0,
-				"content":         body,
-				"commentType":     1,
+				jsonKeyParentCommentID: 0,
+				jsonKeyContent:         body,
+				jsonKeyCommentType:     1,
 			},
 		},
 		"threadContext": map[string]any{
-			"filePath": filePath,
+			jsonKeyFilePath: filePath,
 			"rightFileStart": map[string]int{
-				"line":   line,
-				"offset": 1,
+				jsonKeyLine: line,
+				"offset":    1,
 			},
 			"rightFileEnd": map[string]int{
-				"line":   line,
-				"offset": 1,
+				jsonKeyLine: line,
+				"offset":    1,
 			},
 		},
 		// See the `status` note on the sibling create path above
@@ -575,7 +575,7 @@ func (p *Provider) PostPullRequestThreadComment(
 		// and the ADO REST docs default. Defaults to `"active"`;
 		// callers can pass `entities.WithThreadStatus("closed")` to
 		// post the inline thread as already-closed.
-		"status": globalEntities.ResolveCommentOptions(opts...),
+		jsonKeyStatus: globalEntities.ResolveCommentOptions(opts...),
 	}
 
 	// look up the latest iteration so ADO can anchor the comment to the correct diff;
@@ -583,7 +583,7 @@ func (p *Provider) PostPullRequestThreadComment(
 	iterationID, iterErr := p.getLatestPullRequestIterationID(ctx, repo, prID)
 	if iterErr != nil {
 		log.WithError(iterErr).
-			WithField("prID", prID).
+			WithField(logFieldPRID, prID).
 			Warn("failed to look up latest PR iteration; posting thread without iterationContext")
 	} else {
 		prThreadContext := map[string]any{
@@ -601,10 +601,10 @@ func (p *Provider) PostPullRequestThreadComment(
 		switch {
 		case changeErr != nil:
 			log.WithError(changeErr).
-				WithFields(log.Fields{"prID": prID, "filePath": filePath}).
+				WithFields(log.Fields{logFieldPRID: prID, jsonKeyFilePath: filePath}).
 				Warn("failed to look up changeTrackingId; posting thread without it")
 		case !found:
-			log.WithFields(log.Fields{"prID": prID, "filePath": filePath}).
+			log.WithFields(log.Fields{logFieldPRID: prID, jsonKeyFilePath: filePath}).
 				Warn("no matching change entry found; posting thread without changeTrackingId")
 		case len(changeTrackingID) == 0:
 			// Defensive: ADO returned a `changeEntries` row that
@@ -614,7 +614,7 @@ func (p *Provider) PostPullRequestThreadComment(
 			// is unusable — distinguish the warning from the
 			// no-match branch above so an operator scanning logs can
 			// tell which side of the API contract broke.
-			log.WithFields(log.Fields{"prID": prID, "filePath": filePath}).
+			log.WithFields(log.Fields{logFieldPRID: prID, jsonKeyFilePath: filePath}).
 				Warn("matching change entry has empty changeTrackingId; posting thread without it")
 		default:
 			prThreadContext["changeTrackingId"] = changeTrackingID
@@ -655,7 +655,7 @@ func (p *Provider) UpdatePullRequestThreadStatus(
 	)
 
 	body := map[string]any{
-		"status": status,
+		jsonKeyStatus: status,
 	}
 
 	_, err := p.doRequest(ctx, baseURL, http.MethodPatch, endpoint, body)
@@ -869,7 +869,7 @@ func (p *Provider) MergePullRequest(
 	)
 
 	body := map[string]any{
-		"status":                "completed",
+		jsonKeyStatus:           "completed",
 		"lastMergeSourceCommit": prData.LastMergeSourceCommit,
 		"completionOptions": map[string]any{
 			"deleteSourceBranch": false,
@@ -977,7 +977,7 @@ func (p *Provider) SubmitPullRequestReview(
 	if sub.Body != "" {
 		if commentErr := p.PostPullRequestComment(ctx, repo, prID, sub.Body); commentErr != nil {
 			log.WithError(commentErr).
-				WithFields(log.Fields{"prID": prID, "verdict": sub.Verdict}).
+				WithFields(log.Fields{logFieldPRID: prID, "verdict": sub.Verdict}).
 				Warn("failed to post review summary comment; submitting vote without it")
 		}
 	}

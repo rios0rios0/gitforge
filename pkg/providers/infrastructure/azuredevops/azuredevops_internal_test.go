@@ -1880,3 +1880,95 @@ func TestMapADOMergeStrategy(t *testing.T) {
 		})
 	}
 }
+
+func TestMergePullRequestBypassPolicy(t *testing.T) {
+	t.Parallel()
+
+	// Pins the wire shape of the PATCH body that completes a PR. The
+	// `completionOptions.bypassPolicy` / `bypassReason` keys (and their
+	// nesting under `completionOptions`) are the contract ADO actually
+	// reads — a typo or relocation here would silently downgrade
+	// `WithBypassPolicy` to a no-op while the surrounding plumbing kept
+	// claiming success.
+
+	prURL := "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12"
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	tests := []struct {
+		name           string
+		opts           []globalEntities.MergeOption
+		expectedBypass any
+		expectedReason any
+	}{
+		{
+			name:           "should omit bypassPolicy when no MergeOption is supplied",
+			opts:           nil,
+			expectedBypass: nil,
+			expectedReason: nil,
+		},
+		{
+			name:           "should send bypassPolicy=true and the supplied reason when WithBypassPolicy is set",
+			opts:           []globalEntities.MergeOption{globalEntities.WithBypassPolicy("operator opt-in")},
+			expectedBypass: true,
+			expectedReason: "operator opt-in",
+		},
+		{
+			name:           "should fall back to the literal `bypass` reason when WithBypassPolicy is called with an empty string",
+			opts:           []globalEntities.MergeOption{globalEntities.WithBypassPolicy("")},
+			expectedBypass: true,
+			expectedReason: "bypass",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var patchBody map[string]any
+			mux := http.NewServeMux()
+			mux.HandleFunc(prURL, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.Method {
+				case http.MethodGet:
+					_, _ = w.Write([]byte(`{"pullRequestId":12,"lastMergeSourceCommit":{"commitId":"abc123"}}`))
+				case http.MethodPatch:
+					defer r.Body.Close()
+					_ = json.NewDecoder(r.Body).Decode(&patchBody)
+					_, _ = w.Write([]byte(`{"pullRequestId":12,"status":"completed"}`))
+				default:
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			err := p.MergePullRequest(context.Background(), repo, 12, "squash", tt.opts...)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, patchBody, "PATCH body should have been captured")
+
+			completionOptions, ok := patchBody["completionOptions"].(map[string]any)
+			require.True(t, ok, "completionOptions should be a nested object")
+			assert.Equal(t, "completed", patchBody[jsonKeyStatus])
+
+			if tt.expectedBypass == nil {
+				_, hasBypass := completionOptions["bypassPolicy"]
+				assert.False(t, hasBypass, "bypassPolicy should be omitted when no option is set")
+				_, hasReason := completionOptions["bypassReason"]
+				assert.False(t, hasReason, "bypassReason should be omitted when no option is set")
+				return
+			}
+			assert.Equal(t, tt.expectedBypass, completionOptions["bypassPolicy"])
+			assert.Equal(t, tt.expectedReason, completionOptions["bypassReason"])
+		})
+	}
+}

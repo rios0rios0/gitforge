@@ -1191,3 +1191,77 @@ func TestListPullRequestComments(t *testing.T) {
 			"a reply must carry the parent comment ID so a re-review pass can walk the thread")
 	})
 }
+
+func TestMergePullRequestAcceptsBypassPolicyOption(t *testing.T) {
+	t.Parallel()
+
+	// Pins the cross-provider contract: callers MUST be able to pass
+	// `WithBypassPolicy(...)` against the GitHub provider — the variadic
+	// `MergeOption` exists to let consumers write provider-agnostic code,
+	// and GitHub silently ignores it because branch-protection bypass is
+	// governed by the authenticated user's permission model rather than
+	// a per-call flag. A regression that started rejecting or mishandling
+	// the option (e.g. a future refactor that switched to a typed merge
+	// struct accepting only specific options) would break that contract
+	// without any signal — this test fails fast on that.
+
+	tests := []struct {
+		name string
+		opts []globalEntities.MergeOption
+	}{
+		{
+			name: "should merge normally when no MergeOption is supplied",
+			opts: nil,
+		},
+		{
+			name: "should accept WithBypassPolicy and still issue the standard merge request",
+			opts: []globalEntities.MergeOption{globalEntities.WithBypassPolicy("operator opt-in")},
+		},
+		{
+			name: "should accept WithBypassPolicy with an empty reason and still merge",
+			opts: []globalEntities.MergeOption{globalEntities.WithBypassPolicy("")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var (
+				requestCount int
+				capturedBody map[string]any
+			)
+			mux := http.NewServeMux()
+			mux.HandleFunc(
+				"PUT /repos/my-org/my-repo/pulls/7/merge",
+				func(w http.ResponseWriter, r *http.Request) {
+					requestCount++
+					defer r.Body.Close()
+					_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write(
+						[]byte(`{"merged":true,"sha":"abc123","message":"Pull Request successfully merged"}`),
+					)
+				},
+			)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+			repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+			// when
+			err := p.MergePullRequest(context.Background(), repo, 7, "squash", tt.opts...)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, 1, requestCount, "merge endpoint must be hit exactly once")
+			assert.Equal(t, "squash", capturedBody["merge_method"])
+			_, hasBypass := capturedBody["bypassPolicy"]
+			assert.False(t, hasBypass, "GitHub merge request must NOT carry ADO-specific bypassPolicy keys")
+			_, hasReason := capturedBody["bypassReason"]
+			assert.False(t, hasReason, "GitHub merge request must NOT carry ADO-specific bypassReason keys")
+		})
+	}
+}

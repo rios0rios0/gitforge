@@ -134,12 +134,12 @@ func (p *Provider) CreateBranchWithChanges(
 	for _, change := range input.Changes {
 		entry := map[string]any{
 			"changeType": change.ChangeType,
-			"item": map[string]string{
-				"path": change.Path,
+			jsonKeyItem: map[string]string{
+				jsonKeyPath: change.Path,
 			},
 			"newContent": map[string]string{
-				"content":     base64.StdEncoding.EncodeToString([]byte(change.Content)),
-				"contentType": "base64encoded",
+				jsonKeyContent: base64.StdEncoding.EncodeToString([]byte(change.Content)),
+				"contentType":  "base64encoded",
 			},
 		}
 		fileChanges = append(fileChanges, entry)
@@ -148,7 +148,7 @@ func (p *Provider) CreateBranchWithChanges(
 	pushBody := map[string]any{
 		"refUpdates": []map[string]string{
 			{
-				"name":        "refs/heads/" + input.BranchName,
+				jsonKeyName:   "refs/heads/" + input.BranchName,
 				"oldObjectId": allZeroObjectID,
 			},
 		},

@@ -1817,3 +1817,66 @@ func TestListPullRequestComments(t *testing.T) {
 		assert.Equal(t, "page-2 comment", comments[1].Body)
 	})
 }
+
+func TestMapADOMergeStrategy(t *testing.T) {
+	t.Parallel()
+
+	// Pins the ADO `mergeStrategy` integer mapping. ADO branch
+	// policies frequently restrict the allowed strategy on `main`
+	// (e.g. `Require a merge strategy` with `allowRebaseMerge: true`
+	// only); without `rebaseMerge` in the map every `MergePullRequest`
+	// call against such a repo would be rejected with
+	// `GitPullRequestUpdateRejectedByPolicyException`. The integer
+	// values are sent verbatim on `completionOptions.mergeStrategy`,
+	// so a regression on these constants would silently change the
+	// merge type the platform produces.
+
+	cases := []struct {
+		name     string
+		input    string
+		expected int
+	}{
+		{
+			name:     "should map `squash` to its ADO integer",
+			input:    "squash",
+			expected: adoMergeStrategySquash,
+		},
+		{
+			name:     "should map `merge` to ADO's noFastForward integer (the regular merge-commit strategy)",
+			input:    "merge",
+			expected: adoMergeStrategyNoFastForward,
+		},
+		{
+			name:     "should map `rebase` to its ADO integer (rebase + fast-forward, no merge commit)",
+			input:    "rebase",
+			expected: adoMergeStrategyRebase,
+		},
+		{
+			name:     "should map `rebaseMerge` to its ADO integer (rebase + merge commit) — the only strategy some branch policies permit",
+			input:    "rebaseMerge",
+			expected: adoMergeStrategyRebaseMerge,
+		},
+		{
+			name:     "should fall back to `squash` for an empty string",
+			input:    "",
+			expected: adoMergeStrategySquash,
+		},
+		{
+			name:     "should fall back to `squash` for an unknown strategy string",
+			input:    "wibble",
+			expected: adoMergeStrategySquash,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// when
+			got := mapADOMergeStrategy(tc.input)
+
+			// then
+			assert.Equal(t, tc.expected, got)
+		})
+	}
+}

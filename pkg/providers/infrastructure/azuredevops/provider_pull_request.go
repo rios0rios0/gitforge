@@ -42,10 +42,10 @@ func (p *Provider) CreatePullRequest(
 	repoIdentifier := resolveRepoIdentifier(repo)
 
 	body := map[string]any{
-		"sourceRefName": ensureRefsPrefix(input.SourceBranch),
-		"targetRefName": ensureRefsPrefix(input.TargetBranch),
-		"title":         input.Title,
-		"description":   input.Description,
+		jsonKeySourceRefName: ensureRefsPrefix(input.SourceBranch),
+		jsonKeyTargetRefName: ensureRefsPrefix(input.TargetBranch),
+		jsonKeyTitle:         input.Title,
+		"description":        input.Description,
 	}
 
 	endpoint := fmt.Sprintf(

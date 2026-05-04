@@ -23,6 +23,24 @@ const (
 	httpStatusOKMax  = 300
 	paginationHeader = "X-Ms-Continuationtoken"
 	allZeroObjectID  = "0000000000000000000000000000000000000000"
+
+	// JSON payload keys reused across multiple API requests.
+	jsonKeyItem            = "item"
+	jsonKeyPath            = "path"
+	jsonKeyContent         = "content"
+	jsonKeyName            = "name"
+	jsonKeySourceRefName   = "sourceRefName"
+	jsonKeyTargetRefName   = "targetRefName"
+	jsonKeyTitle           = "title"
+	jsonKeyComments        = "comments"
+	jsonKeyParentCommentID = "parentCommentId"
+	jsonKeyCommentType     = "commentType"
+	jsonKeyStatus          = "status"
+	jsonKeyFilePath        = "filePath"
+	jsonKeyLine            = "line"
+
+	// logFieldPRID is the structured-log field name for the pull request ID.
+	logFieldPRID = "prID"
 )
 
 // Provider implements ForgeProvider, FileAccessProvider, and LocalGitAuthProvider for Azure DevOps.

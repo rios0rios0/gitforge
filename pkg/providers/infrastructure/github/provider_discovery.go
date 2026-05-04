@@ -131,7 +131,7 @@ func (p *Provider) discoverPublicUserRepos(
 }
 
 func githubRepoToDomain(r *gh.Repository, org string) globalEntities.Repository {
-	defaultBranch := "main"
+	defaultBranch := defaultBranchName
 	if r.DefaultBranch != nil {
 		defaultBranch = *r.DefaultBranch
 	}

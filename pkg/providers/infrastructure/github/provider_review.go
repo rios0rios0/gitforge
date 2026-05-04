@@ -332,7 +332,14 @@ func (p *Provider) MergePullRequest(
 	repo globalEntities.Repository,
 	prID int,
 	strategy string,
+	_ ...globalEntities.MergeOption,
 ) error {
+	// `MergeOption.WithBypassPolicy` is silently ignored on GitHub: branch
+	// protection bypass is governed by the authenticated user's permission
+	// model (admin / branch-protection-bypass) rather than a per-call flag,
+	// so a caller asking the bot to bypass policies on GitHub MUST mint a
+	// PAT with the right permissions instead — there is nothing to wire on
+	// the request side.
 	mergeMethod := strategy
 	if mergeMethod == "" {
 		mergeMethod = "squash"

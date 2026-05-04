@@ -48,6 +48,67 @@ func ResolveCommentOptions(opts ...CommentOption) string {
 	return resolved.status
 }
 
+// MergeOption configures behavior of MergePullRequest. Use the With* helpers
+// (e.g. WithBypassPolicy) rather than constructing the option type directly so
+// the underlying option struct can grow new fields without breaking callers.
+type MergeOption func(*mergeOptions)
+
+// mergeOptions captures the resolved option values applied by MergeOption
+// helpers. Unexported on purpose; providers reach into it only through
+// ResolveMergeOptions.
+type mergeOptions struct {
+	bypassPolicy bool
+	bypassReason string
+}
+
+// WithBypassPolicy asks the provider to complete the pull request with branch
+// policies bypassed. Azure DevOps honours this via the
+// `completionOptions.bypassPolicy` flag and records `bypassReason` in the
+// audit trail; the calling identity must hold the
+// `Bypass policies when completing pull requests` permission on the repo.
+// GitHub has no direct equivalent and silently ignores the option (admin /
+// branch-protection bypass is governed by the GitHub permission model on the
+// authenticated user).
+//
+// `reason` is mandatory because Azure DevOps requires a non-empty audit
+// string when `bypassPolicy=true` is set; passing the empty string falls back
+// to the literal "bypass" so the wire request still validates.
+func WithBypassPolicy(reason string) MergeOption {
+	return func(o *mergeOptions) {
+		o.bypassPolicy = true
+		if reason == "" {
+			reason = "bypass"
+		}
+		o.bypassReason = reason
+	}
+}
+
+// MergeBypassPolicy is the resolved-shape view of MergeOption. Provider
+// implementations consume this struct to decide whether to set the
+// `bypassPolicy` flag and what audit string to send.
+type MergeBypassPolicy struct {
+	Enabled bool
+	Reason  string
+}
+
+// ResolveMergeOptions applies the given MergeOption helpers in order and
+// returns the resolved bypass-policy configuration. Provider implementations
+// should call this at the top of MergePullRequest so a future caller-side
+// option (e.g. delete-source-branch) can be added by extending mergeOptions
+// without changing every provider's signature.
+func ResolveMergeOptions(opts ...MergeOption) MergeBypassPolicy {
+	var resolved mergeOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&resolved)
+		}
+	}
+	return MergeBypassPolicy{
+		Enabled: resolved.bypassPolicy,
+		Reason:  resolved.bypassReason,
+	}
+}
+
 // ReviewVerdict identifies which native PR review state SubmitPullRequestReview
 // should set on the underlying provider. Each value maps to the closest
 // equivalent surface on GitHub (review event) and Azure DevOps (reviewer vote).
@@ -161,9 +222,15 @@ type ReviewProvider interface {
 		ctx context.Context, repo Repository, prID int,
 	) (bool, error)
 
-	// MergePullRequest merges a pull request using the specified strategy (e.g. "merge", "squash", "rebase").
+	// MergePullRequest merges a pull request using the specified strategy
+	// (e.g. "merge", "squash", "rebase", "rebaseMerge"). Optional MergeOption
+	// helpers tune the completion call — most notably WithBypassPolicy, which
+	// asks Azure DevOps to skip branch-policy checks (required reviewers,
+	// minimum approver count, etc.). Providers that do not expose a per-call
+	// bypass concept (GitHub) silently ignore the option.
 	MergePullRequest(
 		ctx context.Context, repo Repository, prID int, strategy string,
+		opts ...MergeOption,
 	) error
 
 	// ListPullRequestComments returns every comment on the pull request —

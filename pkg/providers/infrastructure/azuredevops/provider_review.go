@@ -839,8 +839,10 @@ func (p *Provider) MergePullRequest(
 	repo globalEntities.Repository,
 	prID int,
 	strategy string,
+	opts ...globalEntities.MergeOption,
 ) error {
 	baseURL := buildBaseURL(repo.Organization)
+	bypass := globalEntities.ResolveMergeOptions(opts...)
 
 	// first get the PR to obtain the last merge source commit
 	getEndpoint := fmt.Sprintf(
@@ -868,13 +870,18 @@ func (p *Provider) MergePullRequest(
 		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
 	)
 
+	completionOptions := map[string]any{
+		"deleteSourceBranch": false,
+		"mergeStrategy":      mapADOMergeStrategy(strategy),
+	}
+	if bypass.Enabled {
+		completionOptions["bypassPolicy"] = true
+		completionOptions["bypassReason"] = bypass.Reason
+	}
 	body := map[string]any{
 		jsonKeyStatus:           "completed",
 		"lastMergeSourceCommit": prData.LastMergeSourceCommit,
-		"completionOptions": map[string]any{
-			"deleteSourceBranch": false,
-			"mergeStrategy":      mapADOMergeStrategy(strategy),
-		},
+		"completionOptions":     completionOptions,
 	}
 
 	_, err = p.doRequest(ctx, baseURL, http.MethodPatch, updateEndpoint, body)

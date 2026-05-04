@@ -16,6 +16,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added `entities.MergeOption` functional-options type plus `entities.WithBypassPolicy(reason)` so callers can ask `MergePullRequest` to bypass branch policies on completion. The `ReviewProvider.MergePullRequest` signature gains a variadic `...MergeOption` parameter (non-breaking — existing callers that pass no options keep the previous "respect policies" behaviour). The Azure DevOps provider sets `completionOptions.bypassPolicy=true` and forwards `bypassReason` so the action is recorded in the ADO audit trail; an empty reason falls back to the literal `"bypass"` because ADO rejects an empty audit string. The GitHub provider silently ignores the option (branch-protection bypass on GitHub is governed by the authenticated user's permission model, not a per-call flag, so callers wanting bypass on GitHub must mint a PAT with the right permissions). Surfaced live on `code-guru` where `Required reviewers` policies were rejecting trivial-detector auto-merges with `GitPullRequestUpdateRejectedByPolicyException` — the new option lets the bot self-merge per operator opt-in. Pinned by `TestResolveMergeOptions` covering the disabled default, the enabled-with-reason path, the empty-reason fallback, and a defensive nil-option entry
+
 ### Fixed
 
 - fixed `golangci-lint` failures (`goconst`, `nolintlint`) by extracting repeated string literals into package-level constants across the `changelog`, `azuredevops`, and `github` packages and removing an unused `//nolint:gosec` directive in `pkg/signing/infrastructure/helpers/gpg.go`

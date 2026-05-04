@@ -56,7 +56,7 @@ func (p *Provider) ListFiles(
 		files = append(files, globalEntities.File{
 			Path:     entry.GetPath(),
 			ObjectID: entry.GetSHA(),
-			IsDir:    entry.GetType() == "tree",
+			IsDir:    entry.GetType() == treeType,
 		})
 	}
 

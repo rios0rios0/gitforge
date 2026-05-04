@@ -49,7 +49,7 @@ func (p *Provider) PullRequestExists(
 		ctx, repo.Organization, repo.Name,
 		&gh.PullRequestListOptions{
 			Head:  repo.Organization + ":" + sourceBranch,
-			State: "open",
+			State: prStateOpen,
 		},
 	)
 	if err != nil {

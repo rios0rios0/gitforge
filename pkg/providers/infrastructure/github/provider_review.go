@@ -44,7 +44,7 @@ func (p *Provider) ListOpenPullRequests(
 ) ([]globalEntities.PullRequestDetail, error) {
 	var allPRs []globalEntities.PullRequestDetail
 	opts := &gh.PullRequestListOptions{
-		State:       "open",
+		State:       prStateOpen,
 		ListOptions: gh.ListOptions{PerPage: perPage},
 	}
 
@@ -534,8 +534,8 @@ func (p *Provider) GetPullRequestStatus(
 		return "", fmt.Errorf("failed to get pull request: %w", err)
 	}
 
-	if pr.GetState() == "closed" && !pr.GetMergedAt().IsZero() {
-		return "merged", nil
+	if pr.GetState() == prStateClosed && !pr.GetMergedAt().IsZero() {
+		return prStateMerged, nil
 	}
 
 	return pr.GetState(), nil

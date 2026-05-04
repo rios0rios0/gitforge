@@ -18,6 +18,15 @@ const (
 	perPage      = 100
 	blobMode     = "100644"
 	blobType     = "blob"
+	treeType     = "tree"
+
+	// defaultBranchName is the fallback branch name when GitHub does not report one.
+	defaultBranchName = "main"
+
+	// Pull request state values reported by the GitHub API.
+	prStateOpen   = "open"
+	prStateClosed = "closed"
+	prStateMerged = "merged"
 )
 
 // Provider implements ForgeProvider, FileAccessProvider, and LocalGitAuthProvider for GitHub.

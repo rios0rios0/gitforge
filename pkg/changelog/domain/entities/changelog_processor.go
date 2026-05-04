@@ -84,12 +84,12 @@ func (c *Changelog) ProcessNew() (*semver.Version, []string, error) {
 		FixSectionHeadings(unreleasedSection)
 
 		sections := map[string]*[]string{
-			"Added":      {},
-			"Changed":    {},
-			"Deprecated": {},
-			"Removed":    {},
-			"Fixed":      {},
-			"Security":   {},
+			sectionAdded:      {},
+			sectionChanged:    {},
+			sectionDeprecated: {},
+			sectionRemoved:    {},
+			sectionFixed:      {},
+			sectionSecurity:   {},
 		}
 		var currentSection *[]string
 		majorChanges, minorChanges, patchChanges := 0, 0, 0

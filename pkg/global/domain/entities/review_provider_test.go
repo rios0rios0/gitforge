@@ -16,7 +16,7 @@ func TestResolveMergeOptions(t *testing.T) {
 	// regression here would silently flip auto-merge from
 	// "bypass branch policies" back to "respect branch policies", which
 	// is the same failure mode that surfaced live on `code-guru` smoke
-	// PRs (`<internal-repo>`'s required-reviewers policy rejecting
+	// PRs (an internal repo's required-reviewers policy rejecting
 	// the merge with `GitPullRequestUpdateRejectedByPolicyException`).
 
 	t.Run("should default to bypass disabled when no options are passed", func(t *testing.T) {

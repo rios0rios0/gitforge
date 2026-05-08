@@ -16,8 +16,11 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-05-08
+
 ### Added
 
+- added `"rebaseMerge"` to the Azure DevOps `MergePullRequest` strategy map (previously only `"squash"`, `"merge"`, `"rebase"` were honoured). Surfaced live by an internal repo whose `Require a merge strategy` branch policy on `main` had `allowRebaseMerge: true` as the only allowed strategy — every `MergePullRequest` call against that repo was rejected with `GitPullRequestUpdateRejectedByPolicyException` because no string in the existing map produced the policy-compliant integer. The new entry maps to `4` (`adoMergeStrategyRebaseMerge`), the `GitPullRequestMergeStrategy` value documented in the [ADO REST update endpoint](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/update). Pinned by a new `TestMapADOMergeStrategy` table covering every supported string plus the empty / unknown fallback to `squash`
 - added `entities.MergeOption` functional-options type plus `entities.WithBypassPolicy(reason)` so callers can ask `MergePullRequest` to bypass branch policies on completion. The Azure DevOps provider sets `completionOptions.bypassPolicy=true` and forwards `bypassReason` so the action is recorded in the ADO audit trail; an empty reason falls back to the literal `"bypass"` because ADO rejects an empty audit string. The GitHub provider silently ignores the option (branch-protection bypass on GitHub is governed by the authenticated user's permission model, not a per-call flag, so callers wanting bypass on GitHub must mint a PAT with the right permissions). Surfaced live on `code-guru` where `Required reviewers` policies were rejecting trivial-detector auto-merges with `GitPullRequestUpdateRejectedByPolicyException` — the new option lets the bot self-merge per operator opt-in. Pinned by `TestResolveMergeOptions` covering the disabled default, the enabled-with-reason path, the empty-reason fallback, and a defensive nil-option entry, plus provider-level `httptest` rows asserting the Azure DevOps PATCH body carries `completionOptions.bypassPolicy`/`bypassReason` and the GitHub merge request still issues the normal `PUT /pulls/:n/merge` call when `WithBypassPolicy` is supplied
 
 ### Changed
@@ -28,10 +31,6 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Fixed
 
 - fixed `golangci-lint` failures (`goconst`, `nolintlint`) by extracting repeated string literals into package-level constants across the `changelog`, `azuredevops`, and `github` packages and removing an unused `//nolint:gosec` directive in `pkg/signing/infrastructure/helpers/gpg.go`
-
-### Added
-
-- added `"rebaseMerge"` to the Azure DevOps `MergePullRequest` strategy map (previously only `"squash"`, `"merge"`, `"rebase"` were honoured). Surfaced live by an internal repo whose `Require a merge strategy` branch policy on `main` had `allowRebaseMerge: true` as the only allowed strategy — every `MergePullRequest` call against that repo was rejected with `GitPullRequestUpdateRejectedByPolicyException` because no string in the existing map produced the policy-compliant integer. The new entry maps to `4` (`adoMergeStrategyRebaseMerge`), the `GitPullRequestMergeStrategy` value documented in the [ADO REST update endpoint](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/update). Pinned by a new `TestMapADOMergeStrategy` table covering every supported string plus the empty / unknown fallback to `squash`
 
 ## [1.0.0] - 2026-05-03
 
@@ -49,8 +48,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - **BREAKING CHANGE:** `ReviewProvider.ListOpenPullRequests` on the Azure DevOps provider now returns draft PRs alongside ready ones; consumers that previously relied on the client-side filter must inspect `PullRequestDetail.IsDraft` and skip them themselves.
 - **BREAKING CHANGE:** `ReviewProvider.PostPullRequestComment` and `ReviewProvider.PostPullRequestThreadComment` now accept a variadic `...entities.CommentOption` parameter at the end of their signatures. Callers that pass no options keep the previous default (`"active"` thread status); callers wanting a closed informational annotation pass `entities.WithThreadStatus("closed")`. Implementers of `ReviewProvider` must update their method signatures even if they do not honour the new option (the GitHub provider, for example, silently ignores `WithThreadStatus` because the REST review API has no per-comment status field).
 - **BREAKING CHANGE:** `ReviewProvider.PostPullRequestThreadComment` now returns `(int, error)` instead of `error`; the new integer is the thread ID (Azure DevOps) or review ID (GitHub) and can be passed to `UpdatePullRequestThreadStatus` to update the thread later. All callers must be updated to capture the thread ID from the return tuple.
-- **BREAKING CHANGE:** `ReviewProvider` gained `SubmitPullRequestReview(ctx, repo, prID, sub)`. All implementers of `ReviewProvider` must add the new method; the GitHub and Azure DevOps providers ship with native implementations.
 - **BREAKING CHANGE:** `ReviewProvider` gained `ListPullRequestComments(ctx, repo, prID)`. All implementers of `ReviewProvider` must add the new method; the GitHub and Azure DevOps providers ship with implementations that unify PR-wide and inline comments into the `PullRequestComment` shape.
+- **BREAKING CHANGE:** `ReviewProvider` gained `SubmitPullRequestReview(ctx, repo, prID, sub)`. All implementers of `ReviewProvider` must add the new method; the GitHub and Azure DevOps providers ship with native implementations.
 - changed the Go module dependencies to their latest versions
 
 ### Fixed

@@ -23,7 +23,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Changed
 
 - **BREAKING CHANGE:** `ReviewProvider.MergePullRequest` now accepts a variadic `...entities.MergeOption` parameter at the end of its signature. Call sites that pass no options keep the previous "respect policies" behaviour, but downstream types that implement `ReviewProvider` (custom providers, wrappers, mocks) MUST update their method set to compile against this version
-- changed the Go version to `1.26.3` and updated all module dependencies
+- changed the Go version to `1.26.3` and bumped `github.com/go-git/go-git/v5` to `v5.19.0` (with the transitive `github.com/go-git/go-billy/v5` to `v5.9.0` and `golang.org/x/exp` to the `v0.0.0-20260410095643-746e56fc9e2f` snapshot)
 
 ### Fixed
 

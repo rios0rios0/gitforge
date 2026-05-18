@@ -55,7 +55,9 @@ gitforge/
 │   │   │   │   ├── config_test.go     # BDD tests for Config.Validate and ProviderConfig.ResolveToken
 │   │   │   │   └── provider_config.go # ProviderConfig struct: ResolveToken (env var / file path expansion)
 │   │   │   └── helpers/
-│   │   │       └── finder.go          # FindConfigFile: searches standard locations for app config files
+│   │   │       ├── finder.go          # FindConfigFile: searches standard locations for app config files
+│   │   │       ├── token_env.go       # ResolveTokenFromEnv, TokenEnvHint: provider-specific token resolution from env vars
+│   │   │       └── token_env_test.go  # BDD tests for token env resolution
 │   │   └── infrastructure/
 │   │       ├── config_loader.go       # LoadConfig: reads and validates YAML config from file or URL
 │   │       └── helpers/
@@ -98,11 +100,13 @@ gitforge/
 │   │       │   ├── pull_request.go          # PullRequest struct: ID, Title, URL, Status
 │   │       │   ├── pull_request_detail.go   # PullRequestDetail struct (embeds PullRequest + SourceBranch, TargetBranch, Author)
 │   │       │   ├── pull_request_file.go     # PullRequestFile struct: Path, OldPath, Status, Additions, Deletions, Patch
+│   │       │   ├── pull_request_comment.go   # PullRequestComment struct: ID, ThreadID, Body, Author, FilePath, Line, InReplyToID
 │   │       │   ├── pull_request_input.go    # PullRequestInput struct
 │   │       │   ├── repository.go            # Repository struct
 │   │       │   ├── repository_discoverer.go # RepositoryDiscoverer interface: Name(), DiscoverRepositories()
-│   │       │   ├── review_provider.go       # ReviewProvider interface (extends ForgeProvider)
-│   │       │   └── service_type.go          # ServiceType enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT
+│   │       │   ├── review_provider.go       # ReviewProvider interface (extends ForgeProvider); CommentOption, MergeOption, ReviewVerdict, ReviewSubmission types
+│   │       │   ├── review_provider_test.go # BDD tests for ReviewVerdict, CommentOption, MergeOption helpers
+│   │       │   └── service_type.go          # ServiceType enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT, CODEBERG
 │   │       └── helpers/
 │   │           └── versions.go              # SortVersionsDescending, NormalizeVersion
 │   ├── providers/
@@ -167,7 +171,7 @@ gitforge/
 │       ├── repository_builder.go                   # Builder for Repository
 │       └── repository_discoverer_stub_builder.go   # Builder for RepositoryDiscovererStub
 ├── Makefile                      # Imports pipeline scripts (lint, test, sast)
-├── go.mod                        # Module: github.com/rios0rios0/gitforge (Go 1.26.2)
+├── go.mod                        # Module: github.com/rios0rios0/gitforge (Go 1.26.3)
 └── .github/
     └── workflows/default.yaml    # CI/CD pipeline (delegates to rios0rios0/pipelines go-library workflow)
 ```
@@ -183,7 +187,7 @@ gitforge/
 | **Git / Infrastructure**           | `pkg/git/infrastructure/`                    | `GitOperations` struct (go-git): branch, commit, push, tag, remote detection, URL parsing. Injected with `AdapterFinder`.             |
 | **Global / Domain**                | `pkg/global/domain/entities/`                | All shared interfaces (`ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, `CommitSigner`, etc.) and value objects. |
 | **Global / Helpers**               | `pkg/global/domain/helpers/`                 | `SortVersionsDescending`, `NormalizeVersion`.                                                                                         |
-| **Providers / Infrastructure**     | `pkg/providers/infrastructure/{github,gitlab,azuredevops,codeberg}/` | Concrete provider implementations. GitHub/GitLab/ADO satisfy `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`. Codeberg satisfies `ForgeProvider`, `LocalGitAuthProvider`, `MirrorProvider`. |
+| **Providers / Infrastructure**     | `pkg/providers/infrastructure/{github,gitlab,azuredevops,codeberg}/` | Concrete provider implementations. GitHub/GitLab/ADO satisfy `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`. Codeberg satisfies `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`, `MirrorProvider`. |
 | **Registry / Infrastructure**      | `pkg/registry/infrastructure/`               | `ProviderRegistry`: factory + adapter patterns, `DiscovererFactory` support, `GetReviewProvider`.                                     |
 | **Signing / Infrastructure**       | `pkg/signing/infrastructure/`                | `GPGSigner` and `SSHSigner` — both implement `CommitSigner`.                                                                          |
 | **Test Doubles**                   | `test/doubles/` and `test/builders/`         | Stubs and builder helpers for isolated unit testing without real Git hosting connections.                                             |
@@ -211,9 +215,11 @@ ForgeProvider (base)
 │
 ├── ReviewProvider (extends ForgeProvider)
 │   ├── ListOpenPullRequests(), GetPullRequestDiff(), GetPullRequestFiles()
-│   ├── PostPullRequestComment(), PostPullRequestThreadComment()
-│   ├── GetPullRequestCheckStatus()
-│   └── MergePullRequest()
+│   ├── PostPullRequestComment(...CommentOption), PostPullRequestThreadComment(...CommentOption) (int, error)
+│   ├── UpdatePullRequestThreadStatus(), GetPullRequestStatus()
+│   ├── GetPullRequestCheckStatus(), MergePullRequest(...MergeOption)
+│   ├── ListPullRequestComments()
+│   └── SubmitPullRequestReview()
 │
 ├── LocalGitAuthProvider (extends ForgeProvider)
 │   ├── GetServiceType(), PrepareCloneURL(), ConfigureTransport()
@@ -230,7 +236,7 @@ ForgeProvider (base)
 | `Repository`            | `pkg/global/domain/entities`              | Git repository: ID, Name, Organization, Project, DefaultBranch, RemoteURL, SSHURL, ProviderName                 |
 | `ServiceType`           | `pkg/global/domain/entities`              | Enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT, CODEBERG                                     |
 | `PullRequest`           | `pkg/global/domain/entities`              | PR entity: ID, Title, URL, Status                                                                                |
-| `PullRequestDetail`     | `pkg/global/domain/entities`              | Extends `PullRequest` with SourceBranch, TargetBranch, Author (used by `ReviewProvider`)                        |
+| `PullRequestDetail`     | `pkg/global/domain/entities`              | Extends `PullRequest` with SourceBranch, TargetBranch, Author, IsDraft (used by `ReviewProvider`)                        |
 | `PullRequestFile`       | `pkg/global/domain/entities`              | Changed file in a PR: Path, OldPath, Status, Additions, Deletions, Patch                                        |
 | `PullRequestInput`      | `pkg/global/domain/entities`              | PR creation input: SourceBranch, TargetBranch, Title, Description, AutoComplete                                  |
 | `BranchInput`           | `pkg/global/domain/entities`              | Branch creation input: BranchName, BaseBranch, Changes, CommitMessage                                           |
@@ -240,6 +246,11 @@ ForgeProvider (base)
 | `Controller`            | `pkg/global/domain/entities`              | CLI controller interface (Cobra bridge): GetBind(), Execute() error                                              |
 | `MirrorProvider`        | `pkg/global/domain/entities`              | Interface: MigrateRepository(ctx, MirrorInput) error — implemented by Codeberg provider                         |
 | `MirrorInput`           | `pkg/global/domain/entities`              | Migration input: CloneAddr, RepoName, RepoOwner, Private, Description, Mirror, Service                          |
+| `PullRequestComment`    | `pkg/global/domain/entities`              | Unified PR comment: ID, ThreadID, Body, Author, FilePath, Line, InReplyToID (used by `ListPullRequestComments`)  |
+| `CommentOption`         | `pkg/global/domain/entities`              | Functional option for `PostPullRequestComment`/`PostPullRequestThreadComment` (e.g. `WithThreadStatus`)          |
+| `MergeOption`           | `pkg/global/domain/entities`              | Functional option for `MergePullRequest` (e.g. `WithBypassPolicy`)                                              |
+| `ReviewVerdict`         | `pkg/global/domain/entities`              | Enum: `approve`, `request_changes`, `waiting_for_author`, `comment` — used by `SubmitPullRequestReview`          |
+| `ReviewSubmission`      | `pkg/global/domain/entities`              | Review input: Verdict (`ReviewVerdict`), Body (optional summary) — passed to `SubmitPullRequestReview`           |
 | `CommitSigner`          | `pkg/global/domain/entities`              | Interface: Sign(ctx, commitContent) (string, error) — implemented by GPGSigner and SSHSigner                    |
 | `AdapterFinder`         | `pkg/git/domain/entities`                 | Interface: GetAdapterByServiceType(), GetAdapterByURL() — implemented by ProviderRegistry                        |
 | `Config`                | `pkg/config/domain/entities`              | Full app config: Providers []ProviderConfig; methods: NewConfig(), Validate()                                    |
@@ -267,6 +278,8 @@ ForgeProvider (base)
 - `(c *Config) Validate() error` -- validates all provider entries (type, token, organizations)
 - `(p *ProviderConfig) ResolveToken() string` -- expands `${ENV_VAR}` references and reads from file if path exists
 - `FindConfigFile(appName string) (string, error)` -- searches standard locations for `.{appName}.yaml` config files
+- `ResolveTokenFromEnv(serviceType ServiceType) string` -- resolves provider token from the standard env var for that service type
+- `TokenEnvHint(serviceType ServiceType) string` -- returns the expected env var name for a service type (e.g. `GITHUB_TOKEN`)
 
 **Config infrastructure** (`pkg/config/infrastructure`):
 - `LoadConfig(path string) (*Config, error)` -- reads, parses, and validates a YAML config from file or URL

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-gitforge is a shared Go library (no `main.go`, no CLI) providing unified abstractions for GitHub, GitLab, and Azure DevOps. Consumed by [autobump](https://github.com/rios0rios0/autobump) and [autoupdate](https://github.com/rios0rios0/autoupdate). Breaking changes to exported types affect both consumers.
+gitforge is a shared Go library (no `main.go`, no CLI) providing unified abstractions for GitHub, GitLab, Azure DevOps, and Codeberg (Forgejo). Consumed by [autobump](https://github.com/rios0rios0/autobump) and [autoupdate](https://github.com/rios0rios0/autoupdate). Breaking changes to exported types affect both consumers.
 
 ## Commands
 
@@ -36,7 +36,7 @@ Clean Architecture with DDD bounded contexts under `pkg/`. Each context owns `do
 
 ### Provider Interface Hierarchy
 
-`ForgeProvider` (base) is extended by `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. GitHub, GitLab, and ADO implement `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`. Codeberg implements `ForgeProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. Consumers type-assert to the interface level they need.
+`ForgeProvider` (base) is extended by `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. GitHub, GitLab, and ADO implement `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`. Codeberg implements `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. Consumers type-assert to the interface level they need.
 
 ### Key Patterns
 

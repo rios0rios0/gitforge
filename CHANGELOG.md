@@ -19,6 +19,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Changed
 
 - changed the Go module dependencies to their latest versions
+- refreshed `CLAUDE.md` and `.github/copilot-instructions.md` to document Codeberg's `FileAccessProvider` implementation, new `ReviewProvider` methods (`SubmitPullRequestReview`, `ListPullRequestComments`, `UpdatePullRequestThreadStatus`, `GetPullRequestStatus`), new entity types (`PullRequestComment`, `ReviewVerdict`, `ReviewSubmission`, `CommentOption`, `MergeOption`), `PullRequestDetail.IsDraft`, config helpers (`ResolveTokenFromEnv`, `TokenEnvHint`), and Go 1.26.3
 
 ## [2.0.0] - 2026-05-08
 

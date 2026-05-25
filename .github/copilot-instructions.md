@@ -10,7 +10,7 @@ Always reference these instructions first and fall back to search or bash comman
 
 - Install dependencies: `go mod download`
 - Build (compile check): `go build ./...`
-- Run tests: `make test` -- NEVER run `go test` directly.
+- Run tests: `make test` (preferred) or `go test ./...` (acceptable shortcut during development).
 - Run linting: `make lint` -- NEVER run `golangci-lint` directly.
 - Run security analysis: `make sast` -- NEVER run `gitleaks`, `semgrep`, `trivy`, `hadolint`, or `codeql` directly.
 - Tidy dependencies: `go mod tidy`
@@ -195,7 +195,7 @@ gitforge/
 ### Key Design Patterns
 
 - **DDD bounded contexts**: Each sub-domain (`changelog`, `config`, `git`, `global`, `providers`, `registry`, `signing`) owns its own `domain/` and `infrastructure/` sub-packages under `pkg/`.
-- **Interface composition**: `ForgeProvider` (base) -> `FileAccessProvider` (adds API file ops) / `ReviewProvider` (adds PR review ops) / `LocalGitAuthProvider` (adds go-git auth) / `MirrorProvider` (adds repo migration/mirror). GitHub, GitLab, and ADO implement `ForgeProvider` + `FileAccessProvider` + `ReviewProvider` + `LocalGitAuthProvider`. Codeberg implements `ForgeProvider` + `LocalGitAuthProvider` + `MirrorProvider`.
+- **Interface composition**: `ForgeProvider` (base) -> `FileAccessProvider` (adds API file ops) / `ReviewProvider` (adds PR review ops) / `LocalGitAuthProvider` (adds go-git auth) / `MirrorProvider` (adds repo migration/mirror). GitHub, GitLab, and ADO implement `ForgeProvider` + `FileAccessProvider` + `ReviewProvider` + `LocalGitAuthProvider`. Codeberg implements `ForgeProvider` + `FileAccessProvider` + `LocalGitAuthProvider` + `MirrorProvider`.
 - **Adapter pattern**: Consumers type-assert to the interface level they need (`ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, or `MirrorProvider`).
 - **Factory pattern**: `ProviderRegistry` creates providers by name + token via registered factory functions.
 - **Registry pattern**: `ProviderRegistry` supports factory-based creation, direct adapter lookup by URL or service type, and `GetReviewProvider`.

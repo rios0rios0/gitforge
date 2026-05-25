@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-05-25
+
 ### Changed
 
 - refreshed `.github/copilot-instructions.md` to add missing `FileAccessProvider` to Codeberg's interface list and align `go test` guidance with `CLAUDE.md`

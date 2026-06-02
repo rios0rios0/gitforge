@@ -16,6 +16,14 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added `ReviewProvider.ReplyToThread(ctx, repo, prID, threadID, body)` so callers can append a comment to an EXISTING pull request thread (a nested reply) instead of opening a new same-line thread that fragments the discussion. The Azure DevOps provider POSTs to the thread's `/comments` collection with no `threadContext`, so the comment nests in the existing conversation rather than anchoring a brand-new thread; the GitHub provider replies to the thread's root review comment via `CreateCommentInReplyTo` (on GitHub `PullRequestComment.ThreadID` carries the root comment's id). Lets `code-guru`'s `@code-guru` re-review post its per-thread verdict nested under the author's reply — behaving like a human reviewer — instead of as a confusing parallel comment on the same line. Pinned by provider-level `httptest` tests asserting the ADO reply carries no `threadContext` and the GitHub reply carries `in_reply_to=<root comment id>`
+
+### Changed
+
+- **BREAKING CHANGE:** `ReviewProvider` gained a `ReplyToThread` method. Downstream types that implement `ReviewProvider` (custom providers, wrappers, mocks) MUST add this method to compile against this version
+
 ## [2.0.5] - 2026-06-03
 
 ### Changed

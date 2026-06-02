@@ -396,6 +396,30 @@ func (p *Provider) PostPullRequestThreadComment(
 	return int(review.GetID()), nil
 }
 
+// ReplyToThread appends a comment to an existing review thread by replying to
+// the thread's root review comment, so the bot's re-review verdict nests in
+// the same conversation instead of opening a separate inline review. GitHub
+// has no first-class thread object; `threadID` is the root review comment's
+// database ID (the value ListPullRequestComments puts on
+// PullRequestComment.ThreadID), and CreateCommentInReplyTo is GitHub's
+// "reply to a review comment" endpoint, which groups the reply under that
+// comment's thread. Returns the new reply comment's ID.
+func (p *Provider) ReplyToThread(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID, threadID int,
+	body string,
+) (int, error) {
+	comment, _, err := p.client.PullRequests.CreateCommentInReplyTo(
+		ctx, repo.Organization, repo.Name, prID, body, int64(threadID),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to reply to pull request thread: %w", err)
+	}
+
+	return int(comment.GetID()), nil
+}
+
 // UpdatePullRequestThreadStatus is not supported on GitHub via the REST API.
 // GitHub exposes thread resolution only through the GraphQL resolveReviewThread
 // mutation; until that is wired up, this method always returns

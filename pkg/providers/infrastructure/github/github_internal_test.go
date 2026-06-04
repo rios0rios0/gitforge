@@ -1287,8 +1287,13 @@ func TestReplyToThread(t *testing.T) {
 				"POST /repos/my-org/my-repo/pulls/42/comments",
 				func(w http.ResponseWriter, r *http.Request) {
 					defer func() { _ = r.Body.Close() }()
-					raw, _ := io.ReadAll(r.Body)
-					_ = json.Unmarshal(raw, &capturedBody)
+					raw, err := io.ReadAll(r.Body)
+					assert.NoError(t, err, "failed to read request body")
+					assert.NoError(
+						t,
+						json.Unmarshal(raw, &capturedBody),
+						"failed to unmarshal request body",
+					)
 					w.WriteHeader(http.StatusCreated)
 					_, _ = w.Write([]byte(`{"id":7777}`))
 				},

@@ -208,13 +208,20 @@ type ReviewProvider interface {
 	// the same line that fragments the discussion and confuses the author.
 	//
 	// `threadID` is the provider thread identifier carried on
-	// PullRequestComment.ThreadID (and returned by PostPullRequestThreadComment
-	// on Azure DevOps). On Azure DevOps this POSTs to the thread's `/comments`
-	// collection. On GitHub — which has no first-class thread object —
-	// ThreadID is the root review comment's database ID, so the reply is posted
-	// via the "reply to a review comment" API, which threads it under the same
-	// conversation. Returns a provider-specific identifier for the new reply
-	// comment.
+	// PullRequestComment.ThreadID — obtain it from ListPullRequestComments, not
+	// from PostPullRequestThreadComment. On Azure DevOps this POSTs to the
+	// thread's `/comments` collection, and there the PostPullRequestThreadComment
+	// return value happens to equal the thread ID. On GitHub — which has no
+	// first-class thread object — ThreadID is the root review comment's database
+	// ID, so the reply is posted via the "reply to a review comment" API, which
+	// threads it under the same conversation.
+	//
+	// CAUTION (GitHub): PostPullRequestThreadComment returns a pull-request
+	// REVIEW id, which is NOT a valid `threadID` here. Passing it makes GitHub
+	// reject the reply with HTTP 422/404; always source `threadID` from
+	// PullRequestComment.ThreadID instead.
+	//
+	// Returns a provider-specific identifier for the new reply comment.
 	ReplyToThread(
 		ctx context.Context, repo Repository, prID, threadID int, body string,
 	) (int, error)

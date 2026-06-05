@@ -638,6 +638,45 @@ func (p *Provider) PostPullRequestThreadComment(
 	return created.ID, nil
 }
 
+// ReplyToThread appends a comment to an existing ADO pull request thread, so
+// the bot's re-review verdict nests inside the original conversation instead
+// of opening a second same-line thread that confuses the author. It targets
+// the thread's `/comments` collection; `parentCommentId: 0` adds the comment
+// to the thread (the same shape the ADO UI uses when a reviewer types a reply
+// into an existing discussion).
+func (p *Provider) ReplyToThread(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID, threadID int,
+	body string,
+) (int, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/threads/%d/comments?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, threadID, apiVersion,
+	)
+
+	commentBody := map[string]any{
+		jsonKeyParentCommentID: 0,
+		jsonKeyContent:         body,
+		jsonKeyCommentType:     1,
+	}
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodPost, endpoint, commentBody)
+	if err != nil {
+		return 0, fmt.Errorf("failed to reply to pull request thread: %w", err)
+	}
+
+	var created struct {
+		ID int `json:"id"`
+	}
+	if unmarshalErr := json.Unmarshal(resp, &created); unmarshalErr != nil {
+		return 0, fmt.Errorf("failed to parse thread reply response: %w", unmarshalErr)
+	}
+
+	return created.ID, nil
+}
+
 // UpdatePullRequestThreadStatus updates an existing pull request thread's status.
 // Accepted ADO status strings include: "active", "fixed", "wontFix", "closed",
 // "byDesign", "pending". The string is sent as-is in the PATCH body so callers

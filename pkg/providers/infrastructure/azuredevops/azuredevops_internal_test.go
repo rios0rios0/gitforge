@@ -1972,3 +1972,89 @@ func TestMergePullRequestBypassPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestReplyToThread(t *testing.T) {
+	t.Parallel()
+
+	const (
+		prID     = 12105
+		threadID = 77
+		endpoint = "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12105/threads/77/comments"
+	)
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	t.Run(
+		"should POST the reply into the existing thread's comments collection and return the new comment id",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var capturedBody map[string]any
+			var capturedMethod string
+			mux := http.NewServeMux()
+			mux.HandleFunc(
+				"POST "+endpoint,
+				func(w http.ResponseWriter, r *http.Request) {
+					capturedMethod = r.Method
+					capturedBody = captureThreadBody(t, r)
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"id":4242}`))
+				},
+			)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+			p := newTestProvider(t, server)
+
+			// when
+			id, err := p.ReplyToThread(context.Background(), repo, prID, threadID, "the reply body")
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, http.MethodPost, capturedMethod)
+			assert.Equal(t, 4242, id, "the new reply comment id must round-trip from the response")
+			require.NotNil(t, capturedBody)
+			assert.Equal(t, "the reply body", capturedBody["content"])
+			assert.InDelta(t, float64(1), capturedBody["commentType"], 0, "commentType 1 = text")
+			assert.InDelta(
+				t,
+				float64(0),
+				capturedBody["parentCommentId"],
+				0,
+				"parentCommentId 0 appends the comment to the thread",
+			)
+			assert.NotContains(
+				t,
+				capturedBody,
+				"threadContext",
+				"a reply MUST NOT carry threadContext — that would anchor a brand-new same-line thread instead of nesting in the existing conversation (the whole point of ReplyToThread)",
+			)
+		},
+	)
+
+	t.Run("should return an error when the API rejects the reply", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"POST "+endpoint,
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"message":"bad thread"}`))
+			},
+		)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+		p := newTestProvider(t, server)
+
+		// when
+		_, err := p.ReplyToThread(context.Background(), repo, prID, threadID, "x")
+
+		// then
+		require.Error(t, err)
+	})
+}

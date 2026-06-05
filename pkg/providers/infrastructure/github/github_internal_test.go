@@ -1265,3 +1265,78 @@ func TestMergePullRequestAcceptsBypassPolicyOption(t *testing.T) {
 		})
 	}
 }
+
+func TestReplyToThread(t *testing.T) {
+	t.Parallel()
+
+	repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+	const (
+		prID     = 42
+		threadID = 9001 // the root review comment id (GitHub has no thread object)
+	)
+
+	t.Run(
+		"should reply to the root comment with in_reply_to so the reply nests in the same thread",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var capturedBody map[string]any
+			mux := http.NewServeMux()
+			mux.HandleFunc(
+				"POST /repos/my-org/my-repo/pulls/42/comments",
+				func(w http.ResponseWriter, r *http.Request) {
+					defer func() { _ = r.Body.Close() }()
+					raw, err := io.ReadAll(r.Body)
+					assert.NoError(t, err, "failed to read request body")
+					assert.NoError(
+						t,
+						json.Unmarshal(raw, &capturedBody),
+						"failed to unmarshal request body",
+					)
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"id":7777}`))
+				},
+			)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+			p := newTestProvider(t, server)
+
+			// when
+			id, err := p.ReplyToThread(context.Background(), repo, prID, threadID, "the reply")
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, 7777, id, "the new reply comment id must round-trip from the response")
+			require.NotNil(t, capturedBody)
+			assert.Equal(t, "the reply", capturedBody["body"])
+			assert.InDelta(
+				t,
+				float64(threadID),
+				capturedBody["in_reply_to"],
+				0,
+				"the reply MUST carry in_reply_to=<root comment id> so GitHub nests it under the existing thread rather than starting a new inline review",
+			)
+		},
+	)
+
+	t.Run("should return an error when the API rejects the reply", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("POST /repos/my-org/my-repo/pulls/42/comments", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"message":"no such comment"}`))
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+		p := newTestProvider(t, server)
+
+		// when
+		_, err := p.ReplyToThread(context.Background(), repo, prID, threadID, "x")
+
+		// then
+		require.Error(t, err)
+	})
+}

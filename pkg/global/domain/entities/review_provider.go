@@ -202,6 +202,30 @@ type ReviewProvider interface {
 		opts ...CommentOption,
 	) (int, error)
 
+	// ReplyToThread appends a comment to an EXISTING pull request thread so a
+	// follow-up (e.g. the bot's re-review verdict on a prior finding) lands
+	// nested inside the original conversation, rather than as a new comment on
+	// the same line that fragments the discussion and confuses the author.
+	//
+	// `threadID` is the provider thread identifier carried on
+	// PullRequestComment.ThreadID — obtain it from ListPullRequestComments, not
+	// from PostPullRequestThreadComment. On Azure DevOps this POSTs to the
+	// thread's `/comments` collection, and there the PostPullRequestThreadComment
+	// return value happens to equal the thread ID. On GitHub — which has no
+	// first-class thread object — ThreadID is the root review comment's database
+	// ID, so the reply is posted via the "reply to a review comment" API, which
+	// threads it under the same conversation.
+	//
+	// CAUTION (GitHub): PostPullRequestThreadComment returns a pull-request
+	// REVIEW id, which is NOT a valid `threadID` here. Passing it makes GitHub
+	// reject the reply with HTTP 422/404; always source `threadID` from
+	// PullRequestComment.ThreadID instead.
+	//
+	// Returns a provider-specific identifier for the new reply comment.
+	ReplyToThread(
+		ctx context.Context, repo Repository, prID, threadID int, body string,
+	) (int, error)
+
 	// UpdatePullRequestThreadStatus updates the status of an existing pull request thread
 	// (e.g. "fixed", "closed", "active"). The exact set of valid status strings is
 	// provider-specific. Providers that do not support thread status updates may return

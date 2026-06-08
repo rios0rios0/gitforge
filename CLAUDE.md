@@ -36,7 +36,7 @@ Clean Architecture with DDD bounded contexts under `pkg/`. Each context owns `do
 
 ### Provider Interface Hierarchy
 
-`ForgeProvider` (base) is extended by `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. GitHub, GitLab, and ADO implement `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`. Codeberg implements `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. Consumers type-assert to the interface level they need.
+`ForgeProvider` (base) is extended by `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. GitHub and Azure DevOps implement `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`. GitLab implements `ForgeProvider`, `FileAccessProvider`, and `LocalGitAuthProvider` — it does **not** implement `ReviewProvider` (no `pkg/providers/infrastructure/gitlab/provider_review.go`). Codeberg implements `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. Consumers type-assert to the interface level they need.
 
 ### Key Patterns
 
@@ -46,7 +46,7 @@ Clean Architecture with DDD bounded contexts under `pkg/`. Each context owns `do
 
 ## Testing
 
-All tests use `//go:build unit` build tags, BDD structure (`// given` / `// when` / `// then`), `t.Parallel()`, and `testify` assertions. Test doubles live in `test/doubles/` (stubs) and `test/builders/` (builder pattern).
+All tests use BDD structure (`// given` / `// when` / `// then`), `t.Parallel()`, and `testify` assertions. Some test files carry a `//go:build unit` tag (newer tests adopted it; not all have been migrated), so a bare `go test ./...` silently skips them — `make test` is the canonical command that runs the full suite. Test doubles live in `test/doubles/` (stubs) and `test/builders/` (builder pattern).
 
 **Provider test patterns:**
 - GitHub/GitLab: override SDK `BaseURL` → `httptest.Server`

@@ -24,6 +24,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 - **BREAKING CHANGE:** `ReviewProvider` gained a `ReplyToThread` method. Downstream types that implement `ReviewProvider` (custom providers, wrappers, mocks) MUST add this method to compile against this version
 - refreshed `CLAUDE.md` and `.github/copilot-instructions.md` to correct the provider interface hierarchy — GitLab implements `ForgeProvider`, `FileAccessProvider`, and `LocalGitAuthProvider` but not `ReviewProvider` (only GitHub and Azure DevOps do); also fixed the `//go:build unit` testing note in `CLAUDE.md` (not all test files carry the tag) and documented the new `ReplyToThread` method in `.github/copilot-instructions.md`
+- changed the Go module dependencies to their latest versions
 
 ## [2.0.5] - 2026-06-03
 

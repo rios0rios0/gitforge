@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-06-09
+
 ### Added
 
 - added `ReviewProvider.ReplyToThread(ctx, repo, prID, threadID, body)` so callers can append a comment to an EXISTING pull request thread (a nested reply) instead of opening a new same-line thread that fragments the discussion. The Azure DevOps provider POSTs to the thread's `/comments` collection with no `threadContext`, so the comment nests in the existing conversation rather than anchoring a brand-new thread; the GitHub provider replies to the thread's root review comment via `CreateCommentInReplyTo` (on GitHub `PullRequestComment.ThreadID` carries the root comment's id). Callers must source `threadID` from `PullRequestComment.ThreadID` (e.g. via `ListPullRequestComments`), not from the review id returned by `PostPullRequestThreadComment` on GitHub, which the reply API rejects with HTTP 422/404. Lets `code-guru`'s `@code-guru` re-review post its per-thread verdict nested under the author's reply — behaving like a human reviewer — instead of as a confusing parallel comment on the same line. Pinned by provider-level `httptest` tests asserting the ADO reply carries no `threadContext` and the GitHub reply carries `in_reply_to=<root comment id>`
@@ -23,8 +25,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Changed
 
 - **BREAKING CHANGE:** `ReviewProvider` gained a `ReplyToThread` method. Downstream types that implement `ReviewProvider` (custom providers, wrappers, mocks) MUST add this method to compile against this version
-- refreshed `CLAUDE.md` and `.github/copilot-instructions.md` to correct the provider interface hierarchy — GitLab implements `ForgeProvider`, `FileAccessProvider`, and `LocalGitAuthProvider` but not `ReviewProvider` (only GitHub and Azure DevOps do); also fixed the `//go:build unit` testing note in `CLAUDE.md` (not all test files carry the tag) and documented the new `ReplyToThread` method in `.github/copilot-instructions.md`
 - changed the Go module dependencies to their latest versions
+- refreshed `CLAUDE.md` and `.github/copilot-instructions.md` to correct the provider interface hierarchy — GitLab implements `ForgeProvider`, `FileAccessProvider`, and `LocalGitAuthProvider` but not `ReviewProvider` (only GitHub and Azure DevOps do); also fixed the `//go:build unit` testing note in `CLAUDE.md` (not all test files carry the tag) and documented the new `ReplyToThread` method in `.github/copilot-instructions.md`
 
 ## [2.0.5] - 2026-06-03
 

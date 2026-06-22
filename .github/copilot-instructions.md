@@ -73,6 +73,7 @@ gitforge/
 │   │       ├── operations_clone.go    # Repository cloning
 │   │       ├── operations_commit.go   # Commit creation (GPG/SSH signing)
 │   │       ├── operations_push.go     # Push (SSH/HTTPS)
+│   │       ├── operations_push_test.go # BDD tests for push / transport detection
 │   │       ├── operations_repo.go     # Repository-level helpers
 │   │       ├── operations_test.go     # BDD tests for git operations
 │   │       ├── operations_worktree.go # Worktree management
@@ -148,11 +149,14 @@ gitforge/
 │   │       ├── discoverer_factory.go  # DiscovererFactory type (func(token) RepositoryDiscoverer)
 │   │       ├── provider_factory.go    # ProviderFactory type (func(token) ForgeProvider)
 │   │       ├── provider_registry.go   # ProviderRegistry: RegisterFactory/Adapter/Discoverer, Get, GetDiscoverer, GetAdapterByURL, GetAdapterByServiceType, GetReviewProvider, Names
-│   │       └── registry_test.go       # BDD tests for registry
+│   │       ├── provider_registry_test.go # BDD tests for ProviderRegistry methods
+│   │       └── registry_test.go       # BDD tests for registry construction
 │   └── signing/
 │       └── infrastructure/
-│           ├── gpg_signer.go   # GPGSigner struct: NewGPGSigner, Key, Sign
-│           ├── ssh_signer.go   # SSHSigner struct: NewSSHSigner, Sign
+│           ├── gpg_signer.go        # GPGSigner struct: NewGPGSigner, Key, Sign
+│           ├── ssh_signer.go        # SSHSigner struct: NewSSHSigner, Sign
+│           ├── resolve_signer.go    # ResolveSignerFromGitConfig: picks GPG/SSH signer from git config values
+│           ├── resolve_signer_test.go # BDD tests for ResolveSignerFromGitConfig
 │           └── helpers/
 │               ├── gpg.go      # GPG key export, loading, passphrase decryption
 │               └── ssh.go      # SSH signing via ssh-keygen

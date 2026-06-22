@@ -16,6 +16,10 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Changed
+
+- refreshed `.github/copilot-instructions.md` to add `resolve_signer.go`/`resolve_signer_test.go`, `operations_push_test.go`, and `provider_registry_test.go` to the repository structure tree
+
 ## [3.0.1] - 2026-06-18
 
 ### Changed

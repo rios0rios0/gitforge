@@ -1,6 +1,6 @@
 module github.com/rios0rios0/gitforge
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0

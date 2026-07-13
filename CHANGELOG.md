@@ -16,6 +16,12 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed the `sast:gitleaks` pipeline job failing on every `main` build by allowlisting six false positives
+  in a new `.gitleaksignore`: the provider builds an authenticated clone URL from the token it holds at
+  runtime, and the tests assert on that builder with a placeholder, so no credential is committed
+
 ## [3.0.6] - 2026-07-13
 
 ### Changed

@@ -1,0 +1,27 @@
+# Gitleaks false-positive allowlist.
+#
+# Every entry is a full fingerprint: <commit>:<file>:<rule-id>:<line>. The CI scan
+# runs `gitleaks detect --log-opts HEAD`, which walks every commit reachable from
+# HEAD, so a finding keeps being reported even after the offending file is rewritten
+# or removed at the tip. An allowlist entry is the only way to clear it. The shorter
+# <file>:<rule-id>:<line> form is silently ignored by gitleaks -- the commit hash is
+# what anchors a fingerprint.
+#
+# 2026-07-13 -- rule "Password in URL", from the GitLab-customised ruleset that the
+# pipelines repository hands to the second detection pass. Six matches, none of which
+# commits a credential:
+#
+#   * github.go / gitlab.go -- the provider builds an authenticated clone URL by
+#     splicing the token it holds at runtime (the `p.token` field) into the userinfo
+#     position of the remote. The only literal in the source is the URL prefix; the
+#     rule cannot tell that concatenation apart from a real password.
+#
+#   * github_test.go / gitlab_test.go -- BDD assertions covering that URL builder.
+#     The provider under test is constructed with the literal placeholder
+#     "my-token", which is what the expected URL therefore carries.
+40cf623a4946b78198bbbe51324334aaef992c98:infrastructure/providers/github/github_test.go:Password in URL:97
+40cf623a4946b78198bbbe51324334aaef992c98:infrastructure/providers/github/github_test.go:Password in URL:114
+40cf623a4946b78198bbbe51324334aaef992c98:infrastructure/providers/gitlab/gitlab_test.go:Password in URL:107
+40cf623a4946b78198bbbe51324334aaef992c98:infrastructure/providers/gitlab/gitlab_test.go:Password in URL:124
+d6a32145f3ce11c8c0725b731cd2c4285a2f59d5:infrastructure/providers/github/github.go:Password in URL:226
+d6a32145f3ce11c8c0725b731cd2c4285a2f59d5:infrastructure/providers/gitlab/gitlab.go:Password in URL:254

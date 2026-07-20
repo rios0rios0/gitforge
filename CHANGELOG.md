@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [3.0.8] - 2026-07-20
+
 ### Changed
 
 - refreshed `.github/copilot-instructions.md` to drop a stale `pkg/git/infrastructure/helpers/ssh.go`

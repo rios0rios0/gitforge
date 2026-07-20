@@ -81,8 +81,7 @@ gitforge/
 │   │       ├── url_parser_test.go     # BDD tests for URL parsing
 │   │       ├── user_config.go         # Git user config lookup
 │   │       └── helpers/
-│   │           ├── gitconfig.go       # GetGlobalGitConfig, GetOptionFromConfig
-│   │           └── ssh.go             # SSH key helpers
+│   │           └── gitconfig.go       # GetGlobalGitConfig, GetOptionFromConfig
 │   ├── global/
 │   │   └── domain/
 │   │       ├── entities/

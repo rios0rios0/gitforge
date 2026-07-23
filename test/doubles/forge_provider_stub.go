@@ -39,6 +39,11 @@ func (s *ForgeProviderStub) PullRequestExists(
 ) (bool, error) {
 	return false, nil
 }
+func (s *ForgeProviderStub) ClosePullRequest(
+	_ context.Context, _ globalEntities.Repository, _ string,
+) (bool, error) {
+	return false, nil
+}
 func (s *ForgeProviderStub) GetServiceType() globalEntities.ServiceType {
 	return s.ServiceTypeValue
 }

@@ -40,11 +40,13 @@ func (p *Provider) CreatePullRequest(
 	}, nil
 }
 
-func (p *Provider) PullRequestExists(
+// findOpenPullRequestNumber returns the number of the open pull request whose head is
+// sourceBranch. The boolean reports whether such a pull request was found.
+func (p *Provider) findOpenPullRequestNumber(
 	ctx context.Context,
 	repo globalEntities.Repository,
 	sourceBranch string,
-) (bool, error) {
+) (int, bool, error) {
 	prs, _, err := p.client.PullRequests.List(
 		ctx, repo.Organization, repo.Name,
 		&gh.PullRequestListOptions{
@@ -53,8 +55,45 @@ func (p *Provider) PullRequestExists(
 		},
 	)
 	if err != nil {
-		return false, fmt.Errorf("failed to list pull requests: %w", err)
+		return 0, false, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
-	return len(prs) > 0, nil
+	if len(prs) == 0 {
+		return 0, false, nil
+	}
+
+	return prs[0].GetNumber(), true, nil
+}
+
+func (p *Provider) PullRequestExists(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (bool, error) {
+	_, found, err := p.findOpenPullRequestNumber(ctx, repo, sourceBranch)
+	return found, err
+}
+
+func (p *Provider) ClosePullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (bool, error) {
+	number, found, err := p.findOpenPullRequestNumber(ctx, repo, sourceBranch)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+
+	state := prStateClosed
+	if _, _, editErr := p.client.PullRequests.Edit(
+		ctx, repo.Organization, repo.Name, number,
+		&gh.PullRequest{State: &state},
+	); editErr != nil {
+		return false, fmt.Errorf("failed to close pull request %d: %w", number, editErr)
+	}
+
+	return true, nil
 }

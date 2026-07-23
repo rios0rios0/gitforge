@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -52,7 +53,7 @@ func (o *GitOperations) PushChangesHTTPS(
 	log.Info("Pushing local changes to remote repository through HTTPS")
 	pushOptions := &git.PushOptions{
 		RefSpecs:   []config.RefSpec{refSpec},
-		RemoteName: "origin",
+		RemoteName: originRemoteName,
 	}
 
 	service, err := o.GetRemoteServiceType(repo)
@@ -95,7 +96,7 @@ func PushWithTransportDetection(
 	refSpec config.RefSpec,
 	authMethods []transport.AuthMethod,
 ) error {
-	remoteCfg, err := repo.Remote("origin")
+	remoteCfg, err := repo.Remote(originRemoteName)
 	if err != nil {
 		return fmt.Errorf("failed to get origin remote: %w", err)
 	}
@@ -119,9 +120,28 @@ func PushWithTransportDetection(
 		log.Warn("Pushing over plaintext HTTP — credentials may be exposed; consider switching to HTTPS")
 		return pushWithAuthRetry(repo, refSpec, authMethods)
 
+	case strings.HasPrefix(remoteURL, "file://") || filepath.IsAbs(remoteURL):
+		log.Info("Pushing to a remote on the local filesystem")
+		return pushLocal(repo, refSpec)
+
 	default:
 		return fmt.Errorf("unsupported remote URL scheme: %s", remoteURL)
 	}
+}
+
+// pushLocal pushes to a remote living on the local filesystem, where there is no
+// transport to authenticate against. Keeping this case explicit (rather than letting
+// it fall through to the default) preserves the unsupported-scheme error for genuinely
+// malformed remote URLs.
+func pushLocal(repo *git.Repository, refSpec config.RefSpec) error {
+	err := repo.Push(&git.PushOptions{
+		RefSpecs:   []config.RefSpec{refSpec},
+		RemoteName: originRemoteName,
+	})
+	if err != nil {
+		return fmt.Errorf("could not push changes to the local remote repository: %w", err)
+	}
+	return nil
 }
 
 // pushWithAuthRetry tries each auth method in sequence until one succeeds.
@@ -138,7 +158,7 @@ func pushWithAuthRetry(
 	for _, method := range authMethods {
 		lastErr = repo.Push(&git.PushOptions{
 			RefSpecs:   []config.RefSpec{refSpec},
-			RemoteName: "origin",
+			RemoteName: originRemoteName,
 			Auth:       method,
 		})
 		if lastErr == nil {

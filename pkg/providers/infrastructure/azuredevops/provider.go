@@ -39,6 +39,9 @@ const (
 	jsonKeyFilePath        = "filePath"
 	jsonKeyLine            = "line"
 
+	// prStatusAbandoned is the pull request status that closes a PR on Azure DevOps.
+	prStatusAbandoned = "abandoned"
+
 	// logFieldPRID is the structured-log field name for the pull request ID.
 	logFieldPRID = "prID"
 )

@@ -24,11 +24,30 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
   never deletes the head branch — the provider reads the head ref before merging and issues a follow-up
   ref deletion afterwards. Branch deletion is best-effort cleanup: it never fails an otherwise-successful
   merge, and a head branch that lives in a fork the token cannot write to is left untouched
+- added `ClosePullRequest` to the `ForgeProvider` contract so callers can close (or, on Azure DevOps,
+  abandon) the open pull request belonging to a source branch. It reports whether a pull request was
+  actually closed, so "no open pull request for this branch" is a no-op rather than an error, and it
+  never deletes the source branch. Implemented for GitHub, GitLab, Azure DevOps, and Codeberg
+- added the `ListRemoteBranches`, `DeleteRemoteBranch`, and `DeleteLocalBranch` git helpers.
+  `ListRemoteBranches` queries the origin remote directly, so it reflects server state even when the
+  local clone is stale, and `DeleteRemoteBranch` removes a branch by pushing an empty source to its
+  ref. `DeleteLocalBranch` is the companion the remote delete needs: deleting a branch on the remote
+  leaves the local branch in place, and because `CheckBranchExists` reports a branch as existing when
+  it finds either one, a caller that deleted a branch remotely would still be told it exists and would
+  never recreate it. It leaves a missing branch and the checked-out branch alone
+- added support for remotes living on the local filesystem (`file://` URLs and absolute paths) to
+  `PushWithTransportDetection`, which previously rejected them as an unsupported scheme. Local remotes
+  need no transport authentication, and supporting them lets the branch helpers be tested against a
+  real bare repository instead of only asserting on error messages. Malformed remote URLs still fail
+  with the unsupported-scheme error
 
 ### Changed
 
 - changed the Azure DevOps `MergePullRequest` completion call to send `deleteSourceBranch` from the resolved
   merge options instead of a hardcoded `false`, so the new `WithDeleteSourceBranch` option is honoured
+- **BREAKING CHANGE:** added `ClosePullRequest` to the `ForgeProvider` interface. Consumers that only call
+  providers (autobump, autoupdate) are unaffected, but any code implementing `ForgeProvider` outside this
+  repository must add the new method
 
 ## [3.0.8] - 2026-07-22
 

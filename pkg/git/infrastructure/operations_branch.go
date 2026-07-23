@@ -48,7 +48,7 @@ func CheckBranchExists(repo *git.Repository, branchName string) (bool, error) {
 // Exported for use by autobump (github.com/rios0rios0/autobump) and
 // autoupdate (github.com/rios0rios0/autoupdate).
 func ListRemoteBranches(repo *git.Repository, authMethods []transport.AuthMethod) ([]string, error) {
-	remote, err := repo.Remote("origin")
+	remote, err := repo.Remote(originRemoteName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get origin remote: %w", err)
 	}

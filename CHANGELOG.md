@@ -35,6 +35,11 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
   leaves the local branch in place, and because `CheckBranchExists` reports a branch as existing when
   it finds either one, a caller that deleted a branch remotely would still be told it exists and would
   never recreate it. It leaves a missing branch and the checked-out branch alone
+- added support for remotes living on the local filesystem (`file://` URLs and absolute paths) to
+  `PushWithTransportDetection`, which previously rejected them as an unsupported scheme. Local remotes
+  need no transport authentication, and supporting them lets the branch helpers be tested against a
+  real bare repository instead of only asserting on error messages. Malformed remote URLs still fail
+  with the unsupported-scheme error
 
 ### Changed
 

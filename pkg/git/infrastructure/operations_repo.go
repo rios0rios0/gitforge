@@ -16,7 +16,7 @@ import (
 // GetRemoteRepoURL returns the URL of the remote repository.
 // Exported for use by autobump (github.com/rios0rios0/autobump).
 func GetRemoteRepoURL(repo *git.Repository) (string, error) {
-	remote, err := repo.Remote("origin")
+	remote, err := repo.Remote(originRemoteName)
 	if err != nil {
 		return "", fmt.Errorf("could not get remote: %w", err)
 	}

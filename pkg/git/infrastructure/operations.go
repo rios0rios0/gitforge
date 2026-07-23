@@ -12,6 +12,10 @@ import (
 const (
 	DefaultGitTag               = "0.1.0"
 	MaxAcceptableInitialCommits = 5
+
+	// originRemoteName is the remote every operation in this package reads from and
+	// pushes to.
+	originRemoteName = "origin"
 )
 
 var (

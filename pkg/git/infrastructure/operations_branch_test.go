@@ -86,6 +86,69 @@ func TestListRemoteBranches(t *testing.T) {
 	})
 }
 
+func TestDeleteRemoteBranch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should remove the branch from the remote", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := newRepoWithBareRemote(t)
+		const branch = "chore/bump-1.0.0"
+		pushBranch(t, repo, branch)
+		pushBranch(t, repo, "feat/keep-me")
+
+		published, err := gitops.ListRemoteBranches(repo, nil)
+		require.NoError(t, err)
+		require.Contains(t, published, branch)
+
+		// when
+		err = gitops.DeleteRemoteBranch(repo, branch, nil)
+
+		// then the branch is gone from the remote and nothing else was touched,
+		// which is what proves the ":refs/heads/<branch>" refspec and the origin
+		// remote name are both right
+		require.NoError(t, err)
+		remaining, err := gitops.ListRemoteBranches(repo, nil)
+		require.NoError(t, err)
+		assert.NotContains(t, remaining, branch)
+		assert.Contains(t, remaining, "feat/keep-me")
+	})
+
+	t.Run("should report an error when the branch is absent on the remote", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := newRepoWithBareRemote(t)
+
+		// when
+		err := gitops.DeleteRemoteBranch(repo, "chore/bump-9.9.9", nil)
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "chore/bump-9.9.9")
+	})
+
+	t.Run("should reject a remote whose URL scheme is not supported", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := createFilesystemRepoWithCommit(t, t.TempDir())
+		_, err := repo.CreateRemote(&gitcfg.RemoteConfig{
+			Name: "origin",
+			URLs: []string{"nonsense://example.com/repo.git"},
+		})
+		require.NoError(t, err)
+
+		// when
+		err = gitops.DeleteRemoteBranch(repo, "chore/bump-1.0.0", nil)
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported remote URL scheme")
+	})
+}
+
 func TestDeleteLocalBranch(t *testing.T) {
 	t.Parallel()
 

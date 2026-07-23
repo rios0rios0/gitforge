@@ -252,7 +252,7 @@ ForgeProvider (base)
 | `MirrorInput`           | `pkg/global/domain/entities`              | Migration input: CloneAddr, RepoName, RepoOwner, Private, Description, Mirror, Service                          |
 | `PullRequestComment`    | `pkg/global/domain/entities`              | Unified PR comment: ID, ThreadID, Body, Author, FilePath, Line, InReplyToID (used by `ListPullRequestComments`)  |
 | `CommentOption`         | `pkg/global/domain/entities`              | Functional option for `PostPullRequestComment`/`PostPullRequestThreadComment` (e.g. `WithThreadStatus`)          |
-| `MergeOption`           | `pkg/global/domain/entities`              | Functional option for `MergePullRequest` (e.g. `WithBypassPolicy`)                                              |
+| `MergeOption`           | `pkg/global/domain/entities`              | Functional option for `MergePullRequest` (e.g. `WithBypassPolicy`, `WithDeleteSourceBranch`)                    |
 | `ReviewVerdict`         | `pkg/global/domain/entities`              | Enum: `approve`, `request_changes`, `waiting_for_author`, `comment` — used by `SubmitPullRequestReview`          |
 | `ReviewSubmission`      | `pkg/global/domain/entities`              | Review input: Verdict (`ReviewVerdict`), Body (optional summary) — passed to `SubmitPullRequestReview`           |
 | `CommitSigner`          | `pkg/global/domain/entities`              | Interface: Sign(ctx, commitContent) (string, error) — implemented by GPGSigner and SSHSigner                    |

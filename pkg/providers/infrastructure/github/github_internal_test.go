@@ -1266,6 +1266,149 @@ func TestMergePullRequestAcceptsBypassPolicyOption(t *testing.T) {
 	}
 }
 
+func TestMergePullRequestDeleteSourceBranch(t *testing.T) {
+	t.Parallel()
+
+	// GitHub's merge endpoint never removes the head branch (that is the repo's
+	// "automatically delete head branches" setting, applied server-side), so
+	// WithDeleteSourceBranch is honoured with a follow-up ref deletion: the
+	// provider reads the PR's head ref BEFORE merging, then DELETEs
+	// refs/heads/<branch> AFTER a successful merge. These tests pin that
+	// three-call choreography and its best-effort failure handling.
+
+	const prNumber = 7
+
+	// newMux wires the three endpoints the choreography touches and records how
+	// many times each is hit. deleteStatus overrides the DELETE response so a
+	// test can simulate a branch that cannot be removed.
+	newMux := func(counts map[string]int, deleteStatus int, headOwner, headName string) *http.ServeMux {
+		mux := http.NewServeMux()
+		// The GET fixture mirrors the real payload closely enough for the
+		// fork check: `head.repo.owner.login` / `head.repo.name` decide whether
+		// the head branch lives in the base repo (delete) or a fork (skip).
+		getBody := `{"number":7,"head":{"ref":"feature-branch","repo":{"owner":{"login":"` +
+			headOwner + `"},"name":"` + headName + `"}}}`
+		mux.HandleFunc("GET /repos/my-org/my-repo/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
+			counts["get"]++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(getBody))
+		})
+		mux.HandleFunc("PUT /repos/my-org/my-repo/pulls/7/merge", func(w http.ResponseWriter, _ *http.Request) {
+			counts["merge"]++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"merged":true,"sha":"abc123","message":"merged"}`))
+		})
+		mux.HandleFunc(
+			"DELETE /repos/my-org/my-repo/git/refs/heads/feature-branch",
+			func(w http.ResponseWriter, _ *http.Request) {
+				counts["delete"]++
+				if deleteStatus != 0 {
+					w.WriteHeader(deleteStatus)
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+			},
+		)
+		return mux
+	}
+
+	repo := globalEntities.Repository{Organization: "my-org", Name: "my-repo"}
+
+	t.Run("should leave the source branch untouched when WithDeleteSourceBranch is not supplied", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		counts := map[string]int{}
+		server := httptest.NewServer(newMux(counts, 0, "my-org", "my-repo"))
+		defer server.Close()
+		p := newTestProvider(t, server)
+
+		// when
+		err := p.MergePullRequest(context.Background(), repo, prNumber, "squash")
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 1, counts["merge"], "the PR must still be merged")
+		assert.Equal(t, 0, counts["get"], "no head-ref lookup when deletion was not requested")
+		assert.Equal(t, 0, counts["delete"], "the source branch must be left in place")
+	})
+
+	t.Run(
+		"should delete the source branch after a successful merge when WithDeleteSourceBranch is set",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			counts := map[string]int{}
+			server := httptest.NewServer(newMux(counts, 0, "my-org", "my-repo"))
+			defer server.Close()
+			p := newTestProvider(t, server)
+
+			// when
+			err := p.MergePullRequest(
+				context.Background(), repo, prNumber, "squash",
+				globalEntities.WithDeleteSourceBranch(),
+			)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, 1, counts["get"], "the head ref must be read before the merge")
+			assert.Equal(t, 1, counts["merge"], "the PR must be merged exactly once")
+			assert.Equal(t, 1, counts["delete"], "refs/heads/<branch> must be deleted after the merge")
+		},
+	)
+
+	t.Run("should still report success when the branch deletion fails after a merge", func(t *testing.T) {
+		t.Parallel()
+
+		// given: branch deletion is best-effort cleanup — a protected branch or
+		// a head that lives in a fork the token cannot write to returns an
+		// error, but the merge has already succeeded, so MergePullRequest MUST
+		// NOT surface that as a failed merge.
+		counts := map[string]int{}
+		server := httptest.NewServer(newMux(counts, http.StatusUnprocessableEntity, "my-org", "my-repo"))
+		defer server.Close()
+		p := newTestProvider(t, server)
+
+		// when
+		err := p.MergePullRequest(
+			context.Background(), repo, prNumber, "squash",
+			globalEntities.WithDeleteSourceBranch(),
+		)
+
+		// then
+		require.NoError(t, err, "a failed branch deletion MUST NOT fail an otherwise-successful merge")
+		assert.Equal(t, 1, counts["merge"], "the merge must have happened")
+		assert.Equal(t, 1, counts["delete"], "deletion must have been attempted")
+	})
+
+	t.Run("should NOT delete the head branch when the PR head lives in a fork", func(t *testing.T) {
+		t.Parallel()
+
+		// given: a fork PR — the head ref lives in `forker/my-repo`, not the base
+		// `my-org/my-repo`. Deleting `heads/feature-branch` in the BASE repo would
+		// be wrong (a no-op at best; on a name collision it could delete an
+		// unrelated base-repo branch), so the provider must read the PR, see the
+		// head is a fork, and skip the deletion entirely.
+		counts := map[string]int{}
+		server := httptest.NewServer(newMux(counts, 0, "forker", "my-repo"))
+		defer server.Close()
+		p := newTestProvider(t, server)
+
+		// when
+		err := p.MergePullRequest(
+			context.Background(), repo, prNumber, "squash",
+			globalEntities.WithDeleteSourceBranch(),
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, 1, counts["get"], "the head repo must be read to detect the fork")
+		assert.Equal(t, 1, counts["merge"], "the PR must still be merged")
+		assert.Equal(t, 0, counts["delete"], "a fork's head branch must NOT be deleted from the base repo")
+	})
+}
+
 func TestReplyToThread(t *testing.T) {
 	t.Parallel()
 

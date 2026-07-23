@@ -332,7 +332,7 @@ func (p *Provider) MergePullRequest(
 	repo globalEntities.Repository,
 	prID int,
 	strategy string,
-	_ ...globalEntities.MergeOption,
+	opts ...globalEntities.MergeOption,
 ) error {
 	// `MergeOption.WithBypassPolicy` is silently ignored on GitHub: branch
 	// protection bypass is governed by the authenticated user's permission
@@ -340,6 +340,37 @@ func (p *Provider) MergePullRequest(
 	// so a caller asking the bot to bypass policies on GitHub MUST mint a
 	// PAT with the right permissions instead — there is nothing to wire on
 	// the request side.
+	resolved := globalEntities.ResolveMergeOptions(opts...)
+
+	// GitHub's merge endpoint never deletes the head branch — that is the
+	// repository's "automatically delete head branches" setting, applied
+	// server-side after merge. To honour WithDeleteSourceBranch the provider
+	// deletes the ref itself, which means capturing the head branch name while
+	// the PR is still open (its head ref is readable now, before the merge).
+	// Best-effort: if the lookup fails we still merge and simply skip the
+	// deletion rather than aborting the whole operation.
+	var sourceBranch string
+	if resolved.DeleteSourceBranch {
+		pr, _, getErr := p.client.PullRequests.Get(ctx, repo.Organization, repo.Name, prID)
+		switch {
+		case getErr != nil:
+			log.WithError(getErr).Warnf(
+				"github: cannot resolve source branch for PR #%d; merging but skipping branch deletion", prID,
+			)
+		case !headIsInBaseRepo(pr, repo):
+			// Fork PR: the head branch lives in another repository. Deleting the
+			// same-named ref in the BASE repo would be a no-op at best and, on a
+			// name collision, could delete an unrelated base-repo branch — so
+			// leave it alone (the bot could not write to the fork anyway).
+			log.Infof(
+				"github: PR #%d head branch %q lives outside the base repo (%s); leaving it untouched",
+				prID, pr.GetHead().GetRef(), pr.GetHead().GetRepo().GetFullName(),
+			)
+		default:
+			sourceBranch = pr.GetHead().GetRef()
+		}
+	}
+
 	mergeMethod := strategy
 	if mergeMethod == "" {
 		mergeMethod = "squash"
@@ -354,7 +385,38 @@ func (p *Provider) MergePullRequest(
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 
+	// Delete the source branch after a successful merge. Only heads that live in
+	// the base repo reach here (fork heads were filtered out above). This is
+	// cleanup, not part of the merge contract: a failure (e.g. a protected
+	// branch) is logged and swallowed so a successful merge still reports
+	// success. DeleteRef trims a leading "refs/", so "heads/<branch>" resolves
+	// to refs/heads/<branch>.
+	if resolved.DeleteSourceBranch && sourceBranch != "" {
+		if _, delErr := p.client.Git.DeleteRef(
+			ctx, repo.Organization, repo.Name, "heads/"+sourceBranch,
+		); delErr != nil {
+			log.WithError(delErr).Warnf(
+				"github: merged PR #%d but failed to delete source branch %q", prID, sourceBranch,
+			)
+		}
+	}
+
 	return nil
+}
+
+// headIsInBaseRepo reports whether the pull request's head branch lives in the
+// same repository the merge targets. GitHub only lets the provider safely delete
+// a head ref that belongs to the base repo: a fork's head ref lives in the fork,
+// and deleting the same-named ref in the base repo is a no-op at best and a
+// wrong-branch deletion at worst. A missing head repo (e.g. the fork was already
+// deleted) is treated as "not in the base repo", so deletion is skipped.
+func headIsInBaseRepo(pr *gh.PullRequest, base globalEntities.Repository) bool {
+	head := pr.GetHead().GetRepo()
+	if head == nil {
+		return false
+	}
+	return strings.EqualFold(head.GetOwner().GetLogin(), base.Organization) &&
+		strings.EqualFold(head.GetName(), base.Name)
 }
 
 // PostPullRequestThreadComment posts an inline review comment on a specific

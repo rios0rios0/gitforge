@@ -59,11 +59,13 @@ func (p *Provider) CreatePullRequest(
 	}, nil
 }
 
-func (p *Provider) PullRequestExists(
+// findOpenPullRequestNumber returns the number of the open pull request whose head ref
+// is sourceBranch. The boolean reports whether such a pull request was found.
+func (p *Provider) findOpenPullRequestNumber(
 	ctx context.Context,
 	repo globalEntities.Repository,
 	sourceBranch string,
-) (bool, error) {
+) (int, bool, error) {
 	branch := strings.TrimPrefix(sourceBranch, "refs/heads/")
 
 	page := 1
@@ -77,28 +79,63 @@ func (p *Provider) PullRequestExists(
 
 		resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
-			return false, fmt.Errorf("failed to list pull requests: %w", err)
+			return 0, false, fmt.Errorf("failed to list pull requests: %w", err)
 		}
 
 		var prs []forgejoPR
 		if unmarshalErr := json.Unmarshal(resp, &prs); unmarshalErr != nil {
-			return false, fmt.Errorf("failed to parse pull requests response: %w", unmarshalErr)
+			return 0, false, fmt.Errorf("failed to parse pull requests response: %w", unmarshalErr)
 		}
 
 		if len(prs) == 0 {
-			return false, nil
+			return 0, false, nil
 		}
 
 		for _, pr := range prs {
 			if pr.Head.Ref == branch {
-				return true, nil
+				return pr.Number, true, nil
 			}
 		}
 
 		if len(prs) < limit {
-			return false, nil
+			return 0, false, nil
 		}
 
 		page++
 	}
+}
+
+func (p *Provider) PullRequestExists(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (bool, error) {
+	_, found, err := p.findOpenPullRequestNumber(ctx, repo, sourceBranch)
+	return found, err
+}
+
+func (p *Provider) ClosePullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (bool, error) {
+	number, found, err := p.findOpenPullRequestNumber(ctx, repo, sourceBranch)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+
+	endpoint := fmt.Sprintf(
+		"/api/v1/repos/%s/%s/pulls/%d",
+		repo.Organization, repo.Name, number,
+	)
+	body := map[string]any{"state": "closed"}
+
+	if _, closeErr := p.doRequest(ctx, http.MethodPatch, endpoint, body); closeErr != nil {
+		return false, fmt.Errorf("failed to close pull request %d: %w", number, closeErr)
+	}
+
+	return true, nil
 }

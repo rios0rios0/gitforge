@@ -41,4 +41,13 @@ type ForgeProvider interface {
 
 	// PullRequestExists checks if an open pull request already exists for the given source branch.
 	PullRequestExists(ctx context.Context, repo Repository, sourceBranch string) (bool, error)
+
+	// ClosePullRequest closes (or, on Azure DevOps, abandons) the open pull request
+	// whose source branch is sourceBranch. It reports whether a pull request was
+	// actually closed: false with a nil error means no open pull request existed for
+	// that branch, which callers should treat as a no-op rather than a failure.
+	//
+	// Closing a pull request never deletes its source branch; branch removal is a
+	// separate concern handled by the git layer.
+	ClosePullRequest(ctx context.Context, repo Repository, sourceBranch string) (bool, error)
 }

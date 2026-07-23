@@ -89,20 +89,25 @@ func (p *Provider) CreatePullRequest(
 	return pr, nil
 }
 
+// activePullRequestsEndpoint builds the endpoint listing the active pull requests
+// whose source branch is sourceBranch.
+func activePullRequestsEndpoint(repo globalEntities.Repository, sourceBranch string) string {
+	return fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests?searchCriteria.sourceRefName=%s&searchCriteria.status=active&api-version=%s",
+		repo.Project,
+		resolveRepoIdentifier(repo),
+		url.QueryEscape(ensureRefsPrefix(sourceBranch)),
+		apiVersion,
+	)
+}
+
 func (p *Provider) PullRequestExists(
 	ctx context.Context,
 	repo globalEntities.Repository,
 	sourceBranch string,
 ) (bool, error) {
 	baseURL := buildBaseURL(repo.Organization)
-	repoIdentifier := resolveRepoIdentifier(repo)
-	endpoint := fmt.Sprintf(
-		"/%s/_apis/git/repositories/%s/pullrequests?searchCriteria.sourceRefName=%s&searchCriteria.status=active&api-version=%s",
-		repo.Project,
-		repoIdentifier,
-		url.QueryEscape(ensureRefsPrefix(sourceBranch)),
-		apiVersion,
-	)
+	endpoint := activePullRequestsEndpoint(repo, sourceBranch)
 
 	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -117,4 +122,65 @@ func (p *Provider) PullRequestExists(
 	}
 
 	return result.Count > 0, nil
+}
+
+// findActivePullRequestID returns the ID of the active pull request whose source branch
+// is sourceBranch. The boolean reports whether such a pull request was found.
+func (p *Provider) findActivePullRequestID(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (int, bool, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := activePullRequestsEndpoint(repo, sourceBranch)
+
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, false, err
+	}
+
+	var result struct {
+		Value []struct {
+			PullRequestID int `json:"pullRequestId"`
+		} `json:"value"`
+	}
+	if unmarshalErr := json.Unmarshal(resp, &result); unmarshalErr != nil {
+		return 0, false, fmt.Errorf("failed to parse PR list response: %w", unmarshalErr)
+	}
+
+	if len(result.Value) == 0 {
+		return 0, false, nil
+	}
+
+	return result.Value[0].PullRequestID, true, nil
+}
+
+func (p *Provider) ClosePullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (bool, error) {
+	prID, found, err := p.findActivePullRequestID(ctx, repo, sourceBranch)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+
+	baseURL := buildBaseURL(repo.Organization)
+	endpoint := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d?api-version=%s",
+		repo.Project, resolveRepoIdentifier(repo), prID, apiVersion,
+	)
+	body := map[string]any{jsonKeyStatus: prStatusAbandoned}
+
+	if _, abandonErr := p.doRequest(
+		ctx, baseURL, http.MethodPatch, endpoint, body,
+	); abandonErr != nil {
+		return false, fmt.Errorf("failed to abandon pull request %d: %w", prID, abandonErr)
+	}
+
+	log.WithField(logFieldPRID, prID).Info("Abandoned pull request")
+	return true, nil
 }

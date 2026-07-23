@@ -57,8 +57,9 @@ type MergeOption func(*mergeOptions)
 // helpers. Unexported on purpose; providers reach into it only through
 // ResolveMergeOptions.
 type mergeOptions struct {
-	bypassPolicy bool
-	bypassReason string
+	bypassPolicy       bool
+	bypassReason       string
+	deleteSourceBranch bool
 }
 
 // WithBypassPolicy asks the provider to complete the pull request with branch
@@ -83,12 +84,40 @@ func WithBypassPolicy(reason string) MergeOption {
 	}
 }
 
-// MergeBypassPolicy is the resolved-shape view of MergeOption. Provider
-// implementations consume this struct to decide whether to set the
-// `bypassPolicy` flag and what audit string to send.
+// WithDeleteSourceBranch asks the provider to delete the pull request's source
+// (head) branch once the merge completes. Every mainstream Git host supports
+// this; the option maps to each provider's native mechanism:
+//
+//   - Azure DevOps honours it directly via the
+//     `completionOptions.deleteSourceBranch` flag on the completion call, so the
+//     branch is removed server-side as part of completing the PR.
+//   - GitHub has no per-merge flag (its merge endpoint never deletes the head
+//     branch — the "automatically delete head branches" behaviour is a repo
+//     setting), so the provider issues a follow-up ref deletion on the head
+//     branch after a successful merge.
+//
+// Branch deletion is best-effort cleanup: it never fails an otherwise-successful
+// merge, and a source branch that lives in a fork the caller cannot write to is
+// left untouched.
+func WithDeleteSourceBranch() MergeOption {
+	return func(o *mergeOptions) {
+		o.deleteSourceBranch = true
+	}
+}
+
+// MergeBypassPolicy is the resolved-shape view of a MergeOption set. Provider
+// implementations consume this struct to decide how to complete the pull
+// request — whether to set the `bypassPolicy` flag (and what audit string to
+// send) and whether to delete the source branch afterwards. The name is
+// historical (it predates any option other than bypass); it now carries every
+// resolved merge option.
 type MergeBypassPolicy struct {
 	Enabled bool
 	Reason  string
+	// DeleteSourceBranch is true when WithDeleteSourceBranch was supplied.
+	// Providers delete the pull request's source branch after a successful
+	// merge as best-effort cleanup.
+	DeleteSourceBranch bool
 }
 
 // ResolveMergeOptions applies the given MergeOption helpers in order and
@@ -104,8 +133,9 @@ func ResolveMergeOptions(opts ...MergeOption) MergeBypassPolicy {
 		}
 	}
 	return MergeBypassPolicy{
-		Enabled: resolved.bypassPolicy,
-		Reason:  resolved.bypassReason,
+		Enabled:            resolved.bypassPolicy,
+		Reason:             resolved.bypassReason,
+		DeleteSourceBranch: resolved.deleteSourceBranch,
 	}
 }
 

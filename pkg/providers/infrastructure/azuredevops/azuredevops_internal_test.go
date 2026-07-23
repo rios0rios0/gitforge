@@ -1973,6 +1973,89 @@ func TestMergePullRequestBypassPolicy(t *testing.T) {
 	}
 }
 
+func TestMergePullRequestDeleteSourceBranch(t *testing.T) {
+	t.Parallel()
+
+	// Pins the wire contract for WithDeleteSourceBranch on Azure DevOps: the
+	// branch is deleted server-side via `completionOptions.deleteSourceBranch`
+	// on the same completion PATCH, so the flag MUST reflect the resolved
+	// option (it was previously hardcoded `false`, which silently dropped every
+	// caller's delete request). The flag is always present because ADO treats a
+	// missing value as `false`; sending it explicitly keeps the wire shape
+	// stable and self-documenting.
+
+	prURL := "/my-org/my-project/_apis/git/repositories/repo-1/pullrequests/12"
+	repo := globalEntities.Repository{
+		Organization: "my-org",
+		Project:      "my-project",
+		ID:           "repo-1",
+	}
+
+	tests := []struct {
+		name           string
+		opts           []globalEntities.MergeOption
+		expectedDelete bool
+	}{
+		{
+			name:           "should send deleteSourceBranch=false when no MergeOption is supplied",
+			opts:           nil,
+			expectedDelete: false,
+		},
+		{
+			name:           "should send deleteSourceBranch=true when WithDeleteSourceBranch is set",
+			opts:           []globalEntities.MergeOption{globalEntities.WithDeleteSourceBranch()},
+			expectedDelete: true,
+		},
+		{
+			name: "should send deleteSourceBranch=true alongside bypassPolicy when both options are set",
+			opts: []globalEntities.MergeOption{
+				globalEntities.WithDeleteSourceBranch(),
+				globalEntities.WithBypassPolicy("auto-merge"),
+			},
+			expectedDelete: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var patchBody map[string]any
+			mux := http.NewServeMux()
+			mux.HandleFunc(prURL, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.Method {
+				case http.MethodGet:
+					_, _ = w.Write([]byte(`{"pullRequestId":12,"lastMergeSourceCommit":{"commitId":"abc123"}}`))
+				case http.MethodPatch:
+					defer r.Body.Close()
+					_ = json.NewDecoder(r.Body).Decode(&patchBody)
+					_, _ = w.Write([]byte(`{"pullRequestId":12,"status":"completed"}`))
+				default:
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+
+			// when
+			err := p.MergePullRequest(context.Background(), repo, 12, "squash", tt.opts...)
+
+			// then
+			require.NoError(t, err)
+			require.NotNil(t, patchBody, "PATCH body should have been captured")
+
+			completionOptions, ok := patchBody["completionOptions"].(map[string]any)
+			require.True(t, ok, "completionOptions should be a nested object")
+			assert.Equal(t, tt.expectedDelete, completionOptions["deleteSourceBranch"],
+				"deleteSourceBranch on the wire MUST reflect the resolved WithDeleteSourceBranch option")
+		})
+	}
+}
+
 func TestReplyToThread(t *testing.T) {
 	t.Parallel()
 

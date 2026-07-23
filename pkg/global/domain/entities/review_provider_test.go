@@ -77,4 +77,47 @@ func TestResolveMergeOptions(t *testing.T) {
 		assert.True(t, got.Enabled)
 		assert.Equal(t, "force", got.Reason)
 	})
+
+	t.Run("should default DeleteSourceBranch to false when the option is not passed", func(t *testing.T) {
+		t.Parallel()
+
+		// given: the zero value MUST leave the source branch in place; deleting
+		// a branch is destructive and a merge that silently removed branches by
+		// default would surprise every caller that did not ask for it.
+
+		// when
+		got := entities.ResolveMergeOptions()
+
+		// then
+		assert.False(t, got.DeleteSourceBranch,
+			"the zero value MUST preserve the source branch; deletion is opt-in")
+	})
+
+	t.Run("should enable DeleteSourceBranch when WithDeleteSourceBranch is passed", func(t *testing.T) {
+		t.Parallel()
+
+		// when
+		got := entities.ResolveMergeOptions(entities.WithDeleteSourceBranch())
+
+		// then
+		assert.True(t, got.DeleteSourceBranch,
+			"WithDeleteSourceBranch MUST reach the provider so it deletes the head branch after merge")
+	})
+
+	t.Run("should resolve bypass and delete-source-branch independently when both options are set", func(t *testing.T) {
+		t.Parallel()
+
+		// given: the two options are orthogonal — a caller may bypass branch
+		// policies, delete the source branch, both, or neither. Resolving one
+		// MUST NOT clobber the other.
+		got := entities.ResolveMergeOptions(
+			entities.WithBypassPolicy("auto-merge"),
+			entities.WithDeleteSourceBranch(),
+		)
+
+		// then
+		assert.True(t, got.Enabled, "bypass MUST survive alongside delete-source-branch")
+		assert.Equal(t, "auto-merge", got.Reason)
+		assert.True(t, got.DeleteSourceBranch, "delete-source-branch MUST survive alongside bypass")
+	})
 }

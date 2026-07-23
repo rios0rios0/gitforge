@@ -16,6 +16,20 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Added
+
+- added a `WithDeleteSourceBranch` merge option so callers can ask `MergePullRequest` to remove a pull
+  request's source branch after a successful merge; on Azure DevOps it drives the
+  `completionOptions.deleteSourceBranch` flag on the completion call, and on GitHub — whose merge endpoint
+  never deletes the head branch — the provider reads the head ref before merging and issues a follow-up
+  ref deletion afterwards. Branch deletion is best-effort cleanup: it never fails an otherwise-successful
+  merge, and a head branch that lives in a fork the token cannot write to is left untouched
+
+### Changed
+
+- changed the Azure DevOps `MergePullRequest` completion call to send `deleteSourceBranch` from the resolved
+  merge options instead of a hardcoded `false`, so the new `WithDeleteSourceBranch` option is honoured
+
 ## [3.0.8] - 2026-07-22
 
 ### Changed

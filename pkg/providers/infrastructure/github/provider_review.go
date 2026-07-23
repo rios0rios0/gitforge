@@ -332,7 +332,7 @@ func (p *Provider) MergePullRequest(
 	repo globalEntities.Repository,
 	prID int,
 	strategy string,
-	_ ...globalEntities.MergeOption,
+	opts ...globalEntities.MergeOption,
 ) error {
 	// `MergeOption.WithBypassPolicy` is silently ignored on GitHub: branch
 	// protection bypass is governed by the authenticated user's permission
@@ -340,6 +340,27 @@ func (p *Provider) MergePullRequest(
 	// so a caller asking the bot to bypass policies on GitHub MUST mint a
 	// PAT with the right permissions instead — there is nothing to wire on
 	// the request side.
+	resolved := globalEntities.ResolveMergeOptions(opts...)
+
+	// GitHub's merge endpoint never deletes the head branch — that is the
+	// repository's "automatically delete head branches" setting, applied
+	// server-side after merge. To honour WithDeleteSourceBranch the provider
+	// deletes the ref itself, which means capturing the head branch name while
+	// the PR is still open (its head ref is readable now, before the merge).
+	// Best-effort: if the lookup fails we still merge and simply skip the
+	// deletion rather than aborting the whole operation.
+	var sourceBranch string
+	if resolved.DeleteSourceBranch {
+		pr, _, getErr := p.client.PullRequests.Get(ctx, repo.Organization, repo.Name, prID)
+		if getErr != nil {
+			log.WithError(getErr).Warnf(
+				"github: cannot resolve source branch for PR #%d; merging but skipping branch deletion", prID,
+			)
+		} else {
+			sourceBranch = pr.GetHead().GetRef()
+		}
+	}
+
 	mergeMethod := strategy
 	if mergeMethod == "" {
 		mergeMethod = "squash"
@@ -352,6 +373,21 @@ func (p *Provider) MergePullRequest(
 	)
 	if err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
+	}
+
+	// Delete the source branch after a successful merge. This is cleanup, not
+	// part of the merge contract: a failure (protected branch, or a head that
+	// lives in a fork the token cannot write to) is logged and swallowed so a
+	// successful merge still reports success. DeleteRef trims a leading
+	// "refs/", so "heads/<branch>" resolves to refs/heads/<branch>.
+	if resolved.DeleteSourceBranch && sourceBranch != "" {
+		if _, delErr := p.client.Git.DeleteRef(
+			ctx, repo.Organization, repo.Name, "heads/"+sourceBranch,
+		); delErr != nil {
+			log.WithError(delErr).Warnf(
+				"github: merged PR #%d but failed to delete source branch %q", prID, sourceBranch,
+			)
+		}
 	}
 
 	return nil

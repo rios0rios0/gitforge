@@ -910,7 +910,7 @@ func (p *Provider) MergePullRequest(
 	)
 
 	completionOptions := map[string]any{
-		"deleteSourceBranch": false,
+		"deleteSourceBranch": bypass.DeleteSourceBranch,
 		"mergeStrategy":      mapADOMergeStrategy(strategy),
 	}
 	if bypass.Enabled {

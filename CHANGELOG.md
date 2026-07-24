@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-07-24
+
 ### Added
 
 - added a `WithDeleteSourceBranch` merge option so callers can ask `MergePullRequest` to remove a pull

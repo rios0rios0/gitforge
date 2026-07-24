@@ -44,6 +44,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Changed
 
 - changed the Azure DevOps `MergePullRequest` completion call to send `deleteSourceBranch` from the resolved
+- changed the Go module dependencies to their latest versions
   merge options instead of a hardcoded `false`, so the new `WithDeleteSourceBranch` option is honoured
 - **BREAKING CHANGE:** added `ClosePullRequest` to the `ForgeProvider` interface. Consumers that only call
   providers (autobump, autoupdate) are unaffected, but any code implementing `ForgeProvider` outside this

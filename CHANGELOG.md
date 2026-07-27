@@ -49,6 +49,9 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 - **BREAKING CHANGE:** added `ClosePullRequest` to the `ForgeProvider` interface. Consumers that only call
   providers (autobump, autoupdate) are unaffected, but any code implementing `ForgeProvider` outside this
   repository must add the new method
+- refreshed `.github/copilot-instructions.md` to document the new `ForgeProvider.ClosePullRequest` method,
+  the `ListRemoteBranches`/`DeleteRemoteBranch`/`DeleteLocalBranch`/`CheckBranchExists` git helpers,
+  `file://` remote support in `PushWithTransportDetection`, and the presence of Codeberg tests
 
 ## [3.0.8] - 2026-07-22
 

@@ -69,7 +69,7 @@ gitforge/
 │   │   └── infrastructure/
 │   │       ├── operations.go          # GitOperations struct: NewGitOperations, OpenRepo; error sentinels
 │   │       ├── operations_auth.go     # Authentication method resolution
-│   │       ├── operations_branch.go   # Branch creation
+│   │       ├── operations_branch.go   # Branch create/switch/checkout; remote branch list + remote/local delete helpers
 │   │       ├── operations_clone.go    # Repository cloning
 │   │       ├── operations_commit.go   # Commit creation (GPG/SSH signing)
 │   │       ├── operations_push.go     # Push (SSH/HTTPS)
@@ -211,6 +211,7 @@ gitforge/
 ForgeProvider (base)
 ├── Name(), MatchesURL(), AuthToken(), CloneURL(), SSHCloneURL()
 ├── DiscoverRepositories(), CreatePullRequest(), PullRequestExists()
+├── ClosePullRequest()  // closes/abandons the open PR for a source branch; (false, nil) = no PR, no-op
 │
 ├── FileAccessProvider (extends ForgeProvider)
 │   ├── GetFileContent(), ListFiles(), GetTags(), HasFile()
@@ -292,7 +293,10 @@ ForgeProvider (base)
 - `NewGitOperations(finder AdapterFinder) *GitOperations` -- creates a GitOperations instance
 - `OpenRepo(projectPath string) (*git.Repository, error)` -- opens a local git repository
 - `PushChangesSSH(repo, refSpec, authMethods) error` -- pushes over SSH; tries explicit auth methods first, falls back to default SSH agent
-- `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from remote URL and forwards auth methods to both transports
+- `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from remote URL and forwards auth methods to both transports; also accepts local remotes (`file://` URLs and absolute paths), which need no auth
+- `CheckBranchExists(repo, branchName) (bool, error)` -- true if the branch exists locally or on the origin remote
+- `ListRemoteBranches(repo, authMethods) ([]string, error)` -- lists origin branches by querying the remote directly (reflects server state, not the stale local clone)
+- `DeleteRemoteBranch(...)` / `DeleteLocalBranch(repo, branchName)` -- remote delete pushes an empty source to the ref; the local companion is needed because a remote-only delete leaves the local branch (and `CheckBranchExists` would still report it present)
 
 **Signing** (`pkg/signing/infrastructure`):
 - `NewGPGSigner(key *openpgp.Entity) *GPGSigner` -- creates a GPG commit signer
@@ -368,7 +372,7 @@ When adding features to gitforge:
 
 - **GitHub / GitLab**: Override the SDK `BaseURL` to point to an `httptest.Server`.
 - **Azure DevOps**: Use a `redirectTransport` that rewrites hardcoded `dev.azure.com` URLs to an `httptest.Server`.
-- **Codeberg**: No tests yet — uses `NewProviderWithClient` for HTTP client injection.
+- **Codeberg**: Internal tests inject an HTTP client via `NewProviderWithClient`.
 - All provider tests use the **internal** package (`package github`, not `github_test`) so they can access unexported fields.
 
 ### Running Tests

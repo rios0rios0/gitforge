@@ -35,6 +35,11 @@ func newTestProvider(t *testing.T, server *httptest.Server) *Provider {
 			serverURL: server.URL,
 			inner:     http.DefaultTransport,
 		},
+		// Mirrors the redirect policy [NewProvider] installs, so tests observe the
+		// same responses the production client does.
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	return &Provider{
 		token:      "test-token",
@@ -629,6 +634,135 @@ func TestDoRequest(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.NotEmpty(t, resp)
+	})
+}
+
+func TestDoRequestAuthenticationFailure(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return an authentication error when the API redirects to the sign-in page", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Location", "https://login.example.com/_signin")
+			w.WriteHeader(http.StatusFound)
+		}))
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		_, err := p.doRequest(context.Background(), "https://dev.azure.com/org", http.MethodGet, "/test", nil)
+
+		// then
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrAuthentication)
+		assert.Contains(t, err.Error(), "personal access token")
+	})
+
+	t.Run("should return an authentication error when the sign-in page is served as 203 HTML", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusNonAuthoritativeInfo)
+			_, _ = w.Write([]byte("<!DOCTYPE html><html><head><title>Sign In</title></head></html>"))
+		}))
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		_, err := p.doRequest(context.Background(), "https://dev.azure.com/org", http.MethodGet, "/test", nil)
+
+		// then
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrAuthentication)
+		assert.NotContains(t, err.Error(), "invalid character")
+	})
+
+	t.Run("should surface the authentication error when discovering repositories", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusNonAuthoritativeInfo)
+			_, _ = w.Write([]byte("<!DOCTYPE html><html><head><title>Sign In</title></head></html>"))
+		}))
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		repos, err := p.DiscoverRepositories(context.Background(), "org")
+
+		// then
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrAuthentication)
+		assert.Nil(t, repos)
+	})
+
+	t.Run("should not treat a bodyless 304 as an authentication failure", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotModified)
+		}))
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		_, err := p.doRequest(context.Background(), "https://dev.azure.com/org", http.MethodGet, "/test", nil)
+
+		// then
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrAuthentication)
+		assert.Contains(t, err.Error(), "API error")
+	})
+
+	t.Run("should keep a non-HTML 203 body flowing through as a successful response", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNonAuthoritativeInfo)
+			_, _ = w.Write([]byte("plain file content"))
+		}))
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		resp, err := p.doRequest(context.Background(), "https://dev.azure.com/org", http.MethodGet, "/test", nil)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "plain file content", string(resp))
+	})
+}
+
+func TestNewProviderRedirectPolicy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should not follow redirects so the sign-in page cannot masquerade as success", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		provider, ok := NewProvider("test-token").(*Provider)
+		require.True(t, ok)
+
+		// when
+		require.NotNil(t, provider.httpClient.CheckRedirect)
+		err := provider.httpClient.CheckRedirect(nil, nil)
+
+		// then
+		require.ErrorIs(t, err, http.ErrUseLastResponse)
 	})
 }
 

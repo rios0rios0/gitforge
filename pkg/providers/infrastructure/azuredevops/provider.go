@@ -24,6 +24,13 @@ const (
 	paginationHeader = "X-Ms-Continuationtoken"
 	allZeroObjectID  = "0000000000000000000000000000000000000000"
 
+	// httpStatusNonAuthoritative is the status Azure DevOps serves its sign-in
+	// page with. It sits inside the 2xx success window but never carries an API
+	// payload, so it has to be recognized before the body is parsed.
+	httpStatusNonAuthoritative = 203
+	httpStatusRedirectMin      = 300
+	httpStatusRedirectMax      = 400
+
 	// JSON payload keys reused across multiple API requests.
 	jsonKeyItem            = "item"
 	jsonKeyPath            = "path"
@@ -70,6 +77,14 @@ func NewProvider(token string) globalEntities.ForgeProvider {
 		token: token,
 		httpClient: &http.Client{
 			Timeout: httpTimeout,
+			// Azure DevOps answers an unauthenticated REST call with a redirect to
+			// a sign-in page rather than 401. Following that redirect turns a clear
+			// authentication failure into an HTML page served as 203, which looks
+			// like success to every status check downstream, so the redirect is
+			// handed back to the caller untouched instead.
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 		reviewerIDOnces:  make(map[string]*sync.Once),
 		reviewerIDCache:  make(map[string]string),

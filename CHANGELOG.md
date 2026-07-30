@@ -16,6 +16,16 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed the Azure DevOps provider reporting a rejected personal access token as
+  `invalid character '<' looking for beginning of value`. Azure DevOps does not answer an
+  unauthenticated REST call with `401`: it redirects to a sign-in page, and that page is served
+  as `203 Non-Authoritative Information`, which sits inside the 2xx success window. The HTML body
+  therefore passed the status check and reached the JSON parser, turning every credential problem
+  into a parse error. The provider no longer follows those redirects, recognizes the sign-in page,
+  and returns `ErrAuthentication` so callers can match it with `errors.Is`
+
 ## [4.0.1] - 2026-07-30
 
 ### Changed

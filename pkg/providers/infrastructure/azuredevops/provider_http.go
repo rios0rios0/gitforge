@@ -5,10 +5,51 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
+
+// ErrAuthentication indicates Azure DevOps rejected the personal access token.
+// It is returned instead of a parse failure whenever the API answers with its
+// sign-in page, so callers can tell a credential problem apart from a genuine
+// protocol error with [errors.Is].
+var ErrAuthentication = errors.New("authentication failed")
+
+// isSignInResponse reports whether the response is the Azure DevOps sign-in
+// page rather than an API payload.
+//
+// Azure DevOps does not answer an unauthenticated REST call with 401. It
+// answers with a redirect to a sign-in page, and that page is then served as
+// 203 Non-Authoritative Information with an HTML body. Neither shape is ever
+// produced by a successful API call, so either one means the token was
+// missing, expired, or not accepted for the requested resource.
+//
+// Both arms are deliberately narrow. The redirect arm requires a Location
+// header so that a bodyless 3xx such as 304 Not Modified still falls through to
+// the regular status handling, and the 203 arm requires an HTML content type
+// because endpoints such as file content return arbitrary bodies that must keep
+// flowing through untouched. Media types are case-insensitive, so the content
+// type is folded before it is matched.
+//
+// It only inspects the status line and the headers, never the body, so the
+// caller can decide on a sign-in response without buffering the HTML page it
+// carries.
+func isSignInResponse(resp *http.Response) bool {
+	isRedirect := resp.StatusCode >= httpStatusRedirectMin &&
+		resp.StatusCode < httpStatusRedirectMax &&
+		resp.Header.Get("Location") != ""
+	if isRedirect {
+		return true
+	}
+
+	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+
+	return resp.StatusCode == httpStatusNonAuthoritative &&
+		strings.Contains(contentType, "text/html")
+}
 
 func (p *Provider) doRequest(
 	ctx context.Context,
@@ -48,6 +89,17 @@ func (p *Provider) doRequestWithHeaders(
 		return nil, nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Decided before the body is read: a sign-in page carries nothing the error
+	// needs, so there is no reason to buffer it.
+	if isSignInResponse(resp) {
+		return nil, nil, fmt.Errorf(
+			"%w: Azure DevOps returned its sign-in page (status %d) for %s %s "+
+				"instead of an API response, which means the personal access token "+
+				"is missing, expired, or lacks the scopes this call requires",
+			ErrAuthentication, resp.StatusCode, method, endpoint,
+		)
+	}
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

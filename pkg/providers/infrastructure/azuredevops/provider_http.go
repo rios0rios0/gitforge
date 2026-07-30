@@ -31,7 +31,12 @@ var ErrAuthentication = errors.New("authentication failed")
 // header so that a bodyless 3xx such as 304 Not Modified still falls through to
 // the regular status handling, and the 203 arm requires an HTML content type
 // because endpoints such as file content return arbitrary bodies that must keep
-// flowing through untouched.
+// flowing through untouched. Media types are case-insensitive, so the content
+// type is folded before it is matched.
+//
+// It only inspects the status line and the headers, never the body, so the
+// caller can decide on a sign-in response without buffering the HTML page it
+// carries.
 func isSignInResponse(resp *http.Response) bool {
 	isRedirect := resp.StatusCode >= httpStatusRedirectMin &&
 		resp.StatusCode < httpStatusRedirectMax &&
@@ -40,8 +45,10 @@ func isSignInResponse(resp *http.Response) bool {
 		return true
 	}
 
+	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+
 	return resp.StatusCode == httpStatusNonAuthoritative &&
-		strings.Contains(resp.Header.Get("Content-Type"), "text/html")
+		strings.Contains(contentType, "text/html")
 }
 
 func (p *Provider) doRequest(
@@ -83,11 +90,8 @@ func (p *Provider) doRequestWithHeaders(
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
+	// Decided before the body is read: a sign-in page carries nothing the error
+	// needs, so there is no reason to buffer it.
 	if isSignInResponse(resp) {
 		return nil, nil, fmt.Errorf(
 			"%w: Azure DevOps returned its sign-in page (status %d) for %s %s "+
@@ -95,6 +99,11 @@ func (p *Provider) doRequestWithHeaders(
 				"is missing, expired, or lacks the scopes this call requires",
 			ErrAuthentication, resp.StatusCode, method, endpoint,
 		)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode < httpStatusOKMin || resp.StatusCode >= httpStatusOKMax {

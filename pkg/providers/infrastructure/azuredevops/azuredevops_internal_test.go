@@ -705,6 +705,27 @@ func TestDoRequestAuthenticationFailure(t *testing.T) {
 		assert.Nil(t, repos)
 	})
 
+	t.Run("should detect the sign-in page when the content type is unusually cased", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "Text/HTML; charset=utf-8")
+			w.WriteHeader(http.StatusNonAuthoritativeInfo)
+			_, _ = w.Write([]byte("<!DOCTYPE html><html><head><title>Sign In</title></head></html>"))
+		}))
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+
+		// when
+		_, err := p.doRequest(context.Background(), "https://dev.azure.com/org", http.MethodGet, "/test", nil)
+
+		// then
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrAuthentication)
+	})
+
 	t.Run("should not treat a bodyless 304 as an authentication failure", func(t *testing.T) {
 		t.Parallel()
 

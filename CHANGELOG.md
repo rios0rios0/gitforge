@@ -16,6 +16,8 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-07-31
+
 ### Fixed
 
 - fixed the Azure DevOps provider reporting a rejected personal access token as

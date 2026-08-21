@@ -34,7 +34,7 @@ func (p *Provider) discoverOrgRepos(
 ) ([]globalEntities.Repository, error) {
 	var allRepos []globalEntities.Repository
 	opts := &gh.RepositoryListByOrgOptions{
-		ListOptions: gh.ListOptions{PerPage: perPage},
+		PerPage: perPage,
 	}
 
 	for {
@@ -78,7 +78,7 @@ func (p *Provider) discoverAuthenticatedUserRepos(
 ) ([]globalEntities.Repository, error) {
 	var allRepos []globalEntities.Repository
 	opts := &gh.RepositoryListByAuthenticatedUserOptions{
-		ListOptions: gh.ListOptions{PerPage: perPage},
+		PerPage:     perPage,
 		Affiliation: "owner",
 	}
 
@@ -107,8 +107,8 @@ func (p *Provider) discoverPublicUserRepos(
 ) ([]globalEntities.Repository, error) {
 	var allRepos []globalEntities.Repository
 	opts := &gh.RepositoryListByUserOptions{
-		ListOptions: gh.ListOptions{PerPage: perPage},
-		Type:        "all",
+		PerPage: perPage,
+		Type:    "all",
 	}
 
 	for {

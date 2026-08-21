@@ -54,12 +54,10 @@ func (p *Provider) ListOpenPullRequests(
 	prs := make([]globalEntities.PullRequestDetail, 0, len(result.Value))
 	for _, pr := range result.Value {
 		prs = append(prs, globalEntities.PullRequestDetail{
-			PullRequest: globalEntities.PullRequest{
-				ID:     pr.PullRequestID,
-				Title:  pr.Title,
-				URL:    pr.URL,
-				Status: pr.Status,
-			},
+			ID:           pr.PullRequestID,
+			Title:        pr.Title,
+			URL:          pr.URL,
+			Status:       pr.Status,
 			SourceBranch: strings.TrimPrefix(pr.SourceRefName, "refs/heads/"),
 			TargetBranch: strings.TrimPrefix(pr.TargetRefName, "refs/heads/"),
 			Author:       pr.CreatedBy.DisplayName,

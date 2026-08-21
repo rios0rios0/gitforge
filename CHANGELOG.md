@@ -19,6 +19,12 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 ### Changed
 
 - changed the Go module dependencies to their latest versions
+- changed the Go version to `1.27.0` and updated all module dependencies
+- changed struct literals and `errors.As` calls to the Go 1.27 forms required by the `modernize` linter
+
+### Fixed
+
+- fixed `make test` and `make sast` leaving generated reports (`reports/`, `coverage.txt`, `coverage.xml`, `cobertura.xml`, `junit.xml`) as untracked files by adding them to `.gitignore`
 
 ## [4.0.9] - 2026-08-17
 

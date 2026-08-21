@@ -33,7 +33,7 @@ func (p *Provider) discoverGroupProjects(
 	var allRepos []globalEntities.Repository
 	includeSubgroups := true
 	opts := &gl.ListGroupProjectsOptions{
-		ListOptions:      gl.ListOptions{PerPage: perPage},
+		PerPage:          perPage,
 		IncludeSubGroups: &includeSubgroups,
 	}
 
@@ -65,8 +65,8 @@ func (p *Provider) discoverUserProjects(
 	var allRepos []globalEntities.Repository
 	owned := true
 	opts := &gl.ListProjectsOptions{
-		ListOptions: gl.ListOptions{PerPage: perPage},
-		Owned:       &owned,
+		PerPage: perPage,
+		Owned:   &owned,
 	}
 
 	for {

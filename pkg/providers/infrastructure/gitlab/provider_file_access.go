@@ -45,9 +45,9 @@ func (p *Provider) ListFiles(
 	recursive := true
 	var allFiles []globalEntities.File
 	opts := &gl.ListTreeOptions{
-		ListOptions: gl.ListOptions{PerPage: perPage},
-		Ref:         &branch,
-		Recursive:   &recursive,
+		PerPage:   perPage,
+		Ref:       &branch,
+		Recursive: &recursive,
 	}
 
 	for {
@@ -90,7 +90,7 @@ func (p *Provider) GetTags(
 
 	var allTags []string
 	opts := &gl.ListTagsOptions{
-		ListOptions: gl.ListOptions{PerPage: perPage},
+		PerPage: perPage,
 	}
 
 	pid := repo.Organization + "/" + repo.Name

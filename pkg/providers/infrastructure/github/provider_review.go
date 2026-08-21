@@ -44,8 +44,8 @@ func (p *Provider) ListOpenPullRequests(
 ) ([]globalEntities.PullRequestDetail, error) {
 	var allPRs []globalEntities.PullRequestDetail
 	opts := &gh.PullRequestListOptions{
-		State:       prStateOpen,
-		ListOptions: gh.ListOptions{PerPage: perPage},
+		State:   prStateOpen,
+		PerPage: perPage,
 	}
 
 	for {
@@ -58,12 +58,10 @@ func (p *Provider) ListOpenPullRequests(
 
 		for _, pr := range prs {
 			allPRs = append(allPRs, globalEntities.PullRequestDetail{
-				PullRequest: globalEntities.PullRequest{
-					ID:     pr.GetNumber(),
-					Title:  pr.GetTitle(),
-					URL:    pr.GetHTMLURL(),
-					Status: pr.GetState(),
-				},
+				ID:           pr.GetNumber(),
+				Title:        pr.GetTitle(),
+				URL:          pr.GetHTMLURL(),
+				Status:       pr.GetState(),
 				SourceBranch: pr.GetHead().GetRef(),
 				TargetBranch: pr.GetBase().GetRef(),
 				Author:       pr.GetUser().GetLogin(),
@@ -174,7 +172,7 @@ func (p *Provider) listIssueComments(
 ) ([]globalEntities.PullRequestComment, error) {
 	var out []globalEntities.PullRequestComment
 	opts := &gh.IssueListCommentsOptions{
-		ListOptions: gh.ListOptions{PerPage: perPage},
+		PerPage: perPage,
 	}
 	for {
 		comments, resp, err := p.client.Issues.ListComments(
@@ -214,7 +212,7 @@ func (p *Provider) listInlineComments(
 ) ([]globalEntities.PullRequestComment, error) {
 	var out []globalEntities.PullRequestComment
 	opts := &gh.PullRequestListCommentsOptions{
-		ListOptions: gh.ListOptions{PerPage: perPage},
+		PerPage: perPage,
 	}
 	for {
 		comments, resp, err := p.client.PullRequests.ListComments(

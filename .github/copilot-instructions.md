@@ -174,7 +174,7 @@ gitforge/
 │       ├── repository_builder.go                   # Builder for Repository
 │       └── repository_discoverer_stub_builder.go   # Builder for RepositoryDiscovererStub
 ├── Makefile                      # Imports pipeline scripts (lint, test, sast)
-├── go.mod                        # Module: github.com/rios0rios0/gitforge (Go 1.26.5)
+├── go.mod                        # Module: github.com/rios0rios0/gitforge (Go 1.27.0)
 └── .github/
     └── workflows/default.yaml    # CI/CD pipeline (delegates to rios0rios0/pipelines go-library workflow)
 ```

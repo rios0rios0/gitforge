@@ -13,18 +13,15 @@ import (
 
 const appName = "testapp"
 
-// writeConfig creates an empty configuration file at dir/name, creating dir when needed.
-func writeConfig(t *testing.T, dir, name string) string {
+// writeConfig creates a configuration file at dir/name, creating dir when needed.
+func writeConfig(t *testing.T, dir, name string) {
 	t.Helper()
 
 	// A directory has to keep its owner execute bit or nothing can be created inside it, so the
 	// rule's 0o600 ceiling is unmeetable for one; 0o700 is already least privilege here.
 	// nosemgrep: go.lang.correctness.permissions.file_permission.incorrect-default-permission
 	require.NoError(t, os.MkdirAll(dir, 0o700))
-	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, []byte("languages:\n"), 0o600))
-
-	return path
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("languages:\n"), 0o600))
 }
 
 func TestFindGlobalConfigFile(t *testing.T) {
@@ -105,23 +102,47 @@ func TestFindGlobalConfigFile(t *testing.T) {
 }
 
 func TestFindConfigFile(t *testing.T) {
-	t.Run("should return a config in the working directory before the home one", func(t *testing.T) {
+	// The location list now lives in findConfigFileIn, shared with FindGlobalConfigFile. Pinning
+	// the whole chain rather than only its ends means a reordering, or an entry dropped from that
+	// shared list, fails here instead of quietly changing which file a tool reads.
+	t.Run("should honour the full location precedence", func(t *testing.T) {
 		// given
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		writeConfig(t, home, "."+appName+".yaml")
-		project := t.TempDir()
-		expected := writeConfig(t, project, "."+appName+".yaml")
-		t.Chdir(project)
+		t.Chdir(t.TempDir())
+		// the resolved form, because a temp directory may be reached through a symlink and
+		// FindConfigFile returns the working-directory hits relative to the resolved path
+		work, wdErr := os.Getwd()
+		require.NoError(t, wdErr)
+
+		ordered := []string{
+			work,
+			filepath.Join(work, ".config"),
+			filepath.Join(work, "configs"),
+			home,
+			filepath.Join(home, ".config"),
+		}
+		for _, dir := range ordered {
+			writeConfig(t, dir, "."+appName+".yaml")
+		}
+
+		// when / then: each location wins once the ones before it are gone
+		for _, dir := range ordered {
+			path, err := helpers.FindConfigFile(appName)
+			require.NoError(t, err)
+
+			resolved, absErr := filepath.Abs(path)
+			require.NoError(t, absErr)
+			assert.Equal(t, filepath.Join(dir, "."+appName+".yaml"), resolved)
+
+			require.NoError(t, os.Remove(filepath.Join(dir, "."+appName+".yaml")))
+		}
 
 		// when
-		path, err := helpers.FindConfigFile(appName)
+		_, err := helpers.FindConfigFile(appName)
 
 		// then
-		require.NoError(t, err)
-		resolved, absErr := filepath.Abs(path)
-		require.NoError(t, absErr)
-		assert.Equal(t, expected, resolved, "the working directory is searched first, by design")
+		require.ErrorIs(t, err, helpers.ErrConfigFileNotFound, "every location has been exhausted")
 	})
 
 	t.Run("should fall back to the home directory when the working directory has none", func(t *testing.T) {

@@ -17,6 +17,9 @@ const appName = "testapp"
 func writeConfig(t *testing.T, dir, name string) string {
 	t.Helper()
 
+	// A directory has to keep its owner execute bit or nothing can be created inside it, so the
+	// rule's 0o600 ceiling is unmeetable for one; 0o700 is already least privilege here.
+	// nosemgrep: go.lang.correctness.permissions.file_permission.incorrect-default-permission
 	require.NoError(t, os.MkdirAll(dir, 0o700))
 	path := filepath.Join(dir, name)
 	require.NoError(t, os.WriteFile(path, []byte("languages:\n"), 0o600))

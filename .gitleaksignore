@@ -25,3 +25,21 @@
 40cf623a4946b78198bbbe51324334aaef992c98:infrastructure/providers/gitlab/gitlab_test.go:Password in URL:124
 d6a32145f3ce11c8c0725b731cd2c4285a2f59d5:infrastructure/providers/github/github.go:Password in URL:226
 d6a32145f3ce11c8c0725b731cd2c4285a2f59d5:infrastructure/providers/gitlab/gitlab.go:Password in URL:254
+# 2026-08-26 -- false positive raised by gitleaks pass 2, the GitLab-customised ruleset
+# that the pipelines repository supplies. On a branch build the scan walks every commit
+# reachable from HEAD, so a finding survives any edit made at the tip; a fingerprint is
+# the only thing that clears it.
+#
+# The match sits in `.github/skills/code-review/SKILL.md`, inside the very bullet that
+# tells contributors not to commit credential-shaped placeholders. That bullet used to
+# list the vendor prefixes verbatim, and the rule matches the prefix on its own, so the
+# documentation tripped the rule it was documenting. Nothing was ever a credential.
+#
+# The bullet now names the vendors instead of spelling their prefixes, which stops the
+# pattern recurring, but the commit that introduced the original wording is still walked
+# on every build -- hence this entry.
+#
+# The line below is a full fingerprint: <commit>:<file>:<rule-id>:<line>. It embeds the
+# commit hash, so rewriting history invalidates it: re-point the entry at the new hash
+# rather than adding a second one.
+9a0d92880fad0a1462ba26a68c4d107821d5e014:.github/skills/code-review/SKILL.md:Slack token:225

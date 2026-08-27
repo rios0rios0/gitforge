@@ -22,6 +22,25 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-08-27
+
+### Added
+
+- added `FindGlobalConfigFile`, a config lookup that searches only the user's home directory, for the configuration that belongs to the operator rather than to whatever directory they are standing in. `FindConfigFile` searches the working directory first, and a tool that acts *on* a repository normally runs with that repository as the working directory -- so when the repository carries its own `.<app>.yaml` for per-project overrides, the operator's configuration is never reached. Nothing about that looks wrong: the project file's own settings still apply, and only the settings a tool honours exclusively from the operator's configuration go missing, silently and with no error to notice. `FindConfigFile` is unchanged, so callers that want the old order keep it; callers should fall back to it when the new function reports `ErrConfigFileNotFound`, because an operator with no home configuration has no operator-level settings to lose
+
+### Changed
+
+- changed the Claude workflows to call the reusable workflows in `rios0rios0/pipelines` instead of `rios0rios0/.github`, which is where every other reusable workflow and composite action already lives, and renamed them to `claude-review.yaml` and `claude-mention.yaml`, matching the `reusable-claude-review.yaml` / `reusable-claude-mention.yaml` definitions they call
+- changed the Go module dependencies to their latest versions
+
+### Fixed
+
+- restored the `.changes/unreleased/` directory with a `.gitkeep`, so the release tooling keeps recognising this project as [chlog](https://github.com/luizjhonata/chlog)-based after a release consumes the last fragment. Git tracks files rather than directories, so the bump commit that removed the final fragment removed the directory too, and the next run read the empty `[Unreleased]` section as "nothing to release"
+
+### Removed
+
+- removed the unused `id-token: write` permission from the Claude workflow callers, and changed `claude-review.yaml`'s display name to `Claude Review` so it matches its file name and its `Claude Mention` sibling. `anthropics/claude-code-action` needs `id-token: write` only for workload identity federation or the Bedrock / Vertex / Foundry OIDC paths; these authenticate with `claude_code_oauth_token`, so the scope allowed minting OIDC tokens for any audience without ever being used.
+
 ## [4.1.0] - 2026-08-26
 
 ### Added

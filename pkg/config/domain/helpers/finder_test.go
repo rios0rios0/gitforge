@@ -1,0 +1,175 @@
+package helpers_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/rios0rios0/gitforge/pkg/config/domain/helpers"
+)
+
+const appName = "testapp"
+
+// writeConfig creates a configuration file at dir/name, creating dir when needed.
+func writeConfig(t *testing.T, dir, name string) {
+	t.Helper()
+
+	// A directory has to keep its owner execute bit or nothing can be created inside it, so the
+	// rule's 0o600 ceiling is unmeetable for one; 0o700 is already least privilege here.
+	// nosemgrep: go.lang.correctness.permissions.file_permission.incorrect-default-permission
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("languages:\n"), 0o600))
+}
+
+func TestFindGlobalConfigFile(t *testing.T) {
+	t.Run("should return the file in the home directory when one is present", func(t *testing.T) {
+		// given
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		writeConfig(t, home, "."+appName+".yaml")
+
+		// when
+		path, err := helpers.FindGlobalConfigFile(appName)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, filepath.Join(home, "."+appName+".yaml"), path)
+	})
+
+	t.Run("should prefer the dotted YAML name over the other spellings", func(t *testing.T) {
+		// given
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		for _, name := range []string{appName + ".yml", appName + ".yaml", "." + appName + ".yml", "." + appName + ".yaml"} {
+			writeConfig(t, home, name)
+		}
+
+		// when
+		path, err := helpers.FindGlobalConfigFile(appName)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, filepath.Join(home, "."+appName+".yaml"), path)
+	})
+
+	t.Run("should fall through to the .config directory when the home root has none", func(t *testing.T) {
+		// given
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		writeConfig(t, filepath.Join(home, ".config"), appName+".yaml")
+
+		// when
+		path, err := helpers.FindGlobalConfigFile(appName)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, filepath.Join(home, ".config", appName+".yaml"), path)
+	})
+
+	// The reason this function exists. A tool acting on a repository runs with that repository as
+	// the working directory, and the repository may carry its own config; answering with it drops
+	// every operator-level setting without a word.
+	t.Run("should ignore a config in the working directory", func(t *testing.T) {
+		// given
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		project := t.TempDir()
+		writeConfig(t, project, "."+appName+".yaml")
+		t.Chdir(project)
+
+		// when
+		path, err := helpers.FindGlobalConfigFile(appName)
+
+		// then
+		require.ErrorIs(t, err, helpers.ErrConfigFileNotFound)
+		assert.Empty(t, path)
+	})
+
+	t.Run("should report not found when the home directory holds no config", func(t *testing.T) {
+		// given
+		t.Setenv("HOME", t.TempDir())
+
+		// when
+		path, err := helpers.FindGlobalConfigFile(appName)
+
+		// then
+		require.ErrorIs(t, err, helpers.ErrConfigFileNotFound)
+		assert.Empty(t, path)
+	})
+}
+
+func TestFindConfigFile(t *testing.T) {
+	// The location list now lives in findConfigFileIn, shared with FindGlobalConfigFile. Pinning
+	// the whole chain rather than only its ends means a reordering, or an entry dropped from that
+	// shared list, fails here instead of quietly changing which file a tool reads.
+	t.Run("should honour the full location precedence", func(t *testing.T) {
+		// given
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Chdir(t.TempDir())
+		// the resolved form, because a temp directory may be reached through a symlink and
+		// FindConfigFile returns the working-directory hits relative to the resolved path
+		work, wdErr := os.Getwd()
+		require.NoError(t, wdErr)
+
+		ordered := []string{
+			work,
+			filepath.Join(work, ".config"),
+			filepath.Join(work, "configs"),
+			home,
+			filepath.Join(home, ".config"),
+		}
+		for _, dir := range ordered {
+			writeConfig(t, dir, "."+appName+".yaml")
+		}
+
+		// when / then: each location wins once the ones before it are gone
+		for _, dir := range ordered {
+			path, err := helpers.FindConfigFile(appName)
+			require.NoError(t, err)
+
+			resolved, absErr := filepath.Abs(path)
+			require.NoError(t, absErr)
+			assert.Equal(t, filepath.Join(dir, "."+appName+".yaml"), resolved)
+
+			require.NoError(t, os.Remove(filepath.Join(dir, "."+appName+".yaml")))
+		}
+
+		// when
+		_, err := helpers.FindConfigFile(appName)
+
+		// then
+		require.ErrorIs(t, err, helpers.ErrConfigFileNotFound, "every location has been exhausted")
+	})
+
+	t.Run("should fall back to the home directory when the working directory has none", func(t *testing.T) {
+		// given
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		writeConfig(t, home, "."+appName+".yaml")
+		t.Chdir(t.TempDir())
+
+		// when
+		path, err := helpers.FindConfigFile(appName)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, filepath.Join(home, "."+appName+".yaml"), path)
+	})
+
+	t.Run("should report not found when no location holds a config", func(t *testing.T) {
+		// given
+		t.Setenv("HOME", t.TempDir())
+		t.Chdir(t.TempDir())
+
+		// when
+		path, err := helpers.FindConfigFile(appName)
+
+		// then
+		require.ErrorIs(t, err, helpers.ErrConfigFileNotFound)
+		assert.Empty(t, path)
+	})
+}

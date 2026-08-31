@@ -1,6 +1,6 @@
 # gitforge
 
-gitforge is a shared Go library providing common abstractions for Git hosting platforms (GitHub, GitLab, Azure DevOps, and Codeberg/Forgejo). It is consumed by [autobump](https://github.com/rios0rios0/autobump) and [autoupdate](https://github.com/rios0rios0/autoupdate) via Go module imports. This is a **library**, not a standalone binary — there is no `main.go` or CLI.
+gitforge is a shared Go library providing common abstractions for Git hosting platforms (GitHub, GitLab, Azure DevOps, and Codeberg/Forgejo). It is consumed by [autobump](https://github.com/rios0rios0/autobump), [autoupdate](https://github.com/rios0rios0/autoupdate), [code-guru](https://github.com/rios0rios0/code-guru), and dev-toolkit via Go module imports. This is a **library**, not a standalone binary — there is no `main.go` or CLI.
 
 Always reference these instructions first and fall back to search or bash commands only when you encounter unexpected information that does not match the info here.
 
@@ -29,7 +29,7 @@ make sast    # CodeQL, Semgrep, Trivy, Hadolint, Gitleaks
 
 - There is **no `main` package**, no CLI, and no `make build` or `make run` targets.
 - Changes must be validated by compiling (`go build ./...`) and running tests (`make test`).
-- Any breaking change to exported types or interfaces affects both consumer projects (`autobump` and `autoupdate`).
+- Any breaking change to exported types or interfaces affects every consumer project (`autobump`, `autoupdate`, `code-guru`, `dev-toolkit`).
 
 ## Architecture
 
@@ -282,7 +282,8 @@ ForgeProvider (base)
 - `NewConfig(providers []ProviderConfig) *Config` -- constructs a Config
 - `(c *Config) Validate() error` -- validates all provider entries (type, token, organizations)
 - `(p *ProviderConfig) ResolveToken() string` -- expands `${ENV_VAR}` references and reads from file if path exists
-- `FindConfigFile(appName string) (string, error)` -- searches standard locations for `.{appName}.yaml` config files
+- `FindConfigFile(appName string) (string, error)` -- searches standard locations (working dir first, then home) for `.{appName}.yaml` config files
+- `FindGlobalConfigFile(appName string) (string, error)` -- searches only the user's home directory, for operator-level config that must not be shadowed by a repository's own `.{appName}.yaml`; callers fall back to `FindConfigFile` on `ErrConfigFileNotFound`
 - `ResolveTokenFromEnv(serviceType ServiceType) string` -- resolves provider token from the standard env var for that service type
 - `TokenEnvHint(serviceType ServiceType) string` -- returns the expected env var name for a service type (e.g. `GITHUB_TOKEN`)
 
@@ -309,22 +310,24 @@ ForgeProvider (base)
 
 ## Consumer Projects
 
-This library is imported by two projects:
+This library is imported by several projects:
 
 | Project        | What it uses                                                                                                                          |
 |----------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | **autobump**   | Changelog processing, git operations, GPG/SSH signing, push with transport detection, provider adapters (via `LocalGitAuthProvider`), config loading |
 | **autoupdate** | Provider implementations (via `FileAccessProvider`), config loading, changelog insertion, registry, push with transport detection, signing, `ReviewProvider` (via autoreview) |
+| **code-guru**  | Provider review operations (via `ReviewProvider`): `ListPullRequestComments`, threaded replies (`ReplyToThread`), merge with policy bypass (`MergePullRequest` + `WithBypassPolicy`); registry and config loading |
+| **dev-toolkit** | Provider adapters and shared entities (re-exported as type aliases)                                                                  |
 
 ### Adding New Shared Functionality
 
 When adding features to gitforge:
 
-1. Consider whether the feature is truly shared (needed by both consumers) or project-specific.
+1. Consider whether the feature is truly shared (needed by more than one consumer) or project-specific.
 2. Place domain concepts in the appropriate `pkg/<context>/domain/entities/` package.
 3. Place implementations in the corresponding `pkg/<context>/infrastructure/` package.
 4. Ensure backward compatibility — exported type changes break consumers.
-5. After changes, verify both consumer projects still compile: run `go build ./...` in each.
+5. After changes, verify the consumer projects still compile: run `go build ./...` in each.
 
 ## Testing
 
@@ -390,9 +393,10 @@ go test ./...         # Quick compile + test check during development (acceptabl
 2. `make lint` -- must report 0 issues
 3. `make test` -- all tests must pass
 4. `make sast` -- should report no new findings
-5. Verify consumer projects still compile:
+5. Verify consumer projects still compile (any checked out as siblings):
    - `cd ../autobump && go build ./...`
    - `cd ../autoupdate && go build ./...`
+   - `cd ../code-guru && go build ./...`
 
 ### Pre-commit
 
@@ -421,11 +425,11 @@ go test ./...
 # Full security + quality gate
 make lint && make test && make sast
 
-# Verify consumer compatibility after interface changes
+# Verify consumer compatibility after interface changes (repeat for each sibling consumer)
 cd ../autobump && go build ./... && cd ../autoupdate && go build ./...
 ```
 
-Always validate that changes do not break the consumer projects (`autobump` and `autoupdate`).
+Always validate that changes do not break the consumer projects (`autobump`, `autoupdate`, `code-guru`, `dev-toolkit`).
 
 <!-- chlog:start -->
 ## Changelog (chlog) — MANDATORY

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-gitforge is a shared Go library (no `main.go`, no CLI) providing unified abstractions for GitHub, GitLab, Azure DevOps, and Codeberg (Forgejo). Consumed by [autobump](https://github.com/rios0rios0/autobump) and [autoupdate](https://github.com/rios0rios0/autoupdate). Breaking changes to exported types affect both consumers.
+gitforge is a shared Go library (no `main.go`, no CLI) providing unified abstractions for GitHub, GitLab, Azure DevOps, and Codeberg (Forgejo). Consumed by [autobump](https://github.com/rios0rios0/autobump), [autoupdate](https://github.com/rios0rios0/autoupdate), [code-guru](https://github.com/rios0rios0/code-guru), and dev-toolkit. Breaking changes to exported types affect all consumers.
 
 ## Commands
 
@@ -60,7 +60,7 @@ All tests use BDD structure (`// given` / `// when` / `// then`), `t.Parallel()`
 1. `go build ./...` — zero errors
 2. `make lint` — zero issues
 3. `make test` — all pass
-4. When changing exported types: verify `autobump` and `autoupdate` still compile
+4. When changing exported types: verify the consumer projects still compile
 
 <!-- chlog:start -->
 ## Changelog (chlog) — MANDATORY

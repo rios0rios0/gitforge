@@ -22,6 +22,12 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.2.2] - 2026-09-01
+
+### Changed
+
+- refreshed `CLAUDE.md` and `.github/copilot-instructions.md` to list `code-guru` and `dev-toolkit` as consumers and to document the `FindGlobalConfigFile` helper
+
 ## [4.2.1] - 2026-08-29
 
 ### Changed

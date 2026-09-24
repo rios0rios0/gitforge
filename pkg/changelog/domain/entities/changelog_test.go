@@ -116,6 +116,74 @@ func TestIsChangelogUnreleasedEmpty(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, empty)
 	})
+
+	t.Run("should return false when unreleased has content and headings use four-segment versions", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		cl := domain.NewChangelog([]string{
+			"# Changelog",
+			"## [Unreleased]",
+			"### Fixed",
+			"- fixed the retry backoff",
+			"## [1.4.2.3] - 2026-01-10",
+			"### Fixed",
+			"- fixed the login redirect",
+		})
+
+		// when
+		empty, err := cl.IsUnreleasedEmpty()
+
+		// then
+		require.NoError(t, err)
+		assert.False(t, empty)
+	})
+
+	t.Run("should return true when unreleased is empty and headings use four-segment versions", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		cl := domain.NewChangelog([]string{
+			"# Changelog",
+			"## [Unreleased]",
+			"",
+			"## [1.4.2.3] - 2026-01-10",
+			"### Fixed",
+			"- fixed the login redirect",
+			"",
+			"## [1.4.2.2] - 2026-01-02",
+			"### Added",
+			"- added the audit log",
+		})
+
+		// when
+		empty, err := cl.IsUnreleasedEmpty()
+
+		// then
+		require.NoError(t, err)
+		assert.True(t, empty)
+	})
+
+	t.Run("should return true when unreleased is empty and headings carry a v prefix", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		cl := domain.NewChangelog([]string{
+			"# Changelog",
+			"## [Unreleased]",
+			"",
+			"## [v1.2.0] - 2026-01-10",
+			"### Added",
+			"- added the audit log",
+		})
+
+		// when
+		empty, err := cl.IsUnreleasedEmpty()
+
+		// then
+		require.NoError(t, err)
+		assert.True(t, empty)
+	})
 }
 
 func TestDeduplicateEntries(t *testing.T) {

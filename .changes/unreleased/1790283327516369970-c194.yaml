@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed `Changelog.IsUnreleasedEmpty` failing with `error parsing version` on changelogs whose release headings are not SemVer, such as the four-segment `X.Y.Z.N` versions of autobump''s `fork-dot` mode, where it stopped every release before the fork-aware version calculation ran. It parsed every heading only to find where `[Unreleased]` ends; it now ends the section at the next `## [x]` heading without parsing it, which also stops entries under a `v`-prefixed heading such as `## [v1.2.0]` from counting as unreleased'
+time: '2026-09-24T20:55:27.516270598Z'

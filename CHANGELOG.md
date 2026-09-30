@@ -22,6 +22,16 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.2.8] - 2026-09-30
+
+### Changed
+
+- changed the Go module dependencies to their latest versions
+
+### Fixed
+
+- fixed `Changelog.IsUnreleasedEmpty` failing with `error parsing version` on changelogs whose release headings are not SemVer, such as the four-segment `X.Y.Z.N` versions of autobump's `fork-dot` mode, where it stopped every release before the fork-aware version calculation ran. It parsed every heading only to find where `[Unreleased]` ends; it now ends the section at the next `## [x]` heading without parsing it, which also stops entries under a `v`-prefixed heading such as `## [v1.2.0]` from counting as unreleased
+
 ## [4.2.7] - 2026-09-09
 
 ### Changed
@@ -171,13 +181,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Fixed
 
-- fixed the Azure DevOps provider reporting a rejected personal access token as
-  `invalid character '<' looking for beginning of value`. Azure DevOps does not answer an
-  unauthenticated REST call with `401`: it redirects to a sign-in page, and that page is served
-  as `203 Non-Authoritative Information`, which sits inside the 2xx success window. The HTML body
-  therefore passed the status check and reached the JSON parser, turning every credential problem
-  into a parse error. The provider no longer follows those redirects, recognizes the sign-in page,
-  and returns `ErrAuthentication` so callers can match it with `errors.Is`
+- fixed the Azure DevOps provider reporting a rejected personal access token as `invalid character '<' looking for beginning of value`. Azure DevOps does not answer an unauthenticated REST call with `401`: it redirects to a sign-in page, and that page is served as `203 Non-Authoritative Information`, which sits inside the 2xx success window. The HTML body therefore passed the status check and reached the JSON parser, turning every credential problem into a parse error. The provider no longer follows those redirects, recognizes the sign-in page, and returns `ErrAuthentication` so callers can match it with `errors.Is`
 
 ## [4.0.1] - 2026-07-30
 
@@ -189,47 +193,23 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Added
 
-- added a `WithDeleteSourceBranch` merge option so callers can ask `MergePullRequest` to remove a pull
-  request's source branch after a successful merge; on Azure DevOps it drives the
-  `completionOptions.deleteSourceBranch` flag on the completion call, and on GitHub — whose merge endpoint
-  never deletes the head branch — the provider reads the head ref before merging and issues a follow-up
-  ref deletion afterwards. Branch deletion is best-effort cleanup: it never fails an otherwise-successful
-  merge, and a head branch that lives in a fork the token cannot write to is left untouched
-- added `ClosePullRequest` to the `ForgeProvider` contract so callers can close (or, on Azure DevOps,
-  abandon) the open pull request belonging to a source branch. It reports whether a pull request was
-  actually closed, so "no open pull request for this branch" is a no-op rather than an error, and it
-  never deletes the source branch. Implemented for GitHub, GitLab, Azure DevOps, and Codeberg
-- added the `ListRemoteBranches`, `DeleteRemoteBranch`, and `DeleteLocalBranch` git helpers.
-  `ListRemoteBranches` queries the origin remote directly, so it reflects server state even when the
-  local clone is stale, and `DeleteRemoteBranch` removes a branch by pushing an empty source to its
-  ref. `DeleteLocalBranch` is the companion the remote delete needs: deleting a branch on the remote
-  leaves the local branch in place, and because `CheckBranchExists` reports a branch as existing when
-  it finds either one, a caller that deleted a branch remotely would still be told it exists and would
-  never recreate it. It leaves a missing branch and the checked-out branch alone
-- added support for remotes living on the local filesystem (`file://` URLs and absolute paths) to
-  `PushWithTransportDetection`, which previously rejected them as an unsupported scheme. Local remotes
-  need no transport authentication, and supporting them lets the branch helpers be tested against a
-  real bare repository instead of only asserting on error messages. Malformed remote URLs still fail
-  with the unsupported-scheme error
+- added `ClosePullRequest` to the `ForgeProvider` contract so callers can close (or, on Azure DevOps, abandon) the open pull request belonging to a source branch. It reports whether a pull request was actually closed, so "no open pull request for this branch" is a no-op rather than an error, and it never deletes the source branch. Implemented for GitHub, GitLab, Azure DevOps, and Codeberg
+- added a `WithDeleteSourceBranch` merge option so callers can ask `MergePullRequest` to remove a pull request's source branch after a successful merge; on Azure DevOps it drives the `completionOptions.deleteSourceBranch` flag on the completion call, and on GitHub — whose merge endpoint never deletes the head branch — the provider reads the head ref before merging and issues a follow-up ref deletion afterwards. Branch deletion is best-effort cleanup: it never fails an otherwise-successful merge, and a head branch that lives in a fork the token cannot write to is left untouched
+- added support for remotes living on the local filesystem (`file://` URLs and absolute paths) to `PushWithTransportDetection`, which previously rejected them as an unsupported scheme. Local remotes need no transport authentication, and supporting them lets the branch helpers be tested against a real bare repository instead of only asserting on error messages. Malformed remote URLs still fail with the unsupported-scheme error
+- added the `ListRemoteBranches`, `DeleteRemoteBranch`, and `DeleteLocalBranch` git helpers. `ListRemoteBranches` queries the origin remote directly, so it reflects server state even when the local clone is stale, and `DeleteRemoteBranch` removes a branch by pushing an empty source to its ref. `DeleteLocalBranch` is the companion the remote delete needs: deleting a branch on the remote leaves the local branch in place, and because `CheckBranchExists` reports a branch as existing when it finds either one, a caller that deleted a branch remotely would still be told it exists and would never recreate it. It leaves a missing branch and the checked-out branch alone
 
 ### Changed
 
+- **BREAKING CHANGE:** added `ClosePullRequest` to the `ForgeProvider` interface. Consumers that only call providers (autobump, autoupdate) are unaffected, but any code implementing `ForgeProvider` outside this repository must add the new method
 - changed the Azure DevOps `MergePullRequest` completion call to send `deleteSourceBranch` from the resolved
-- changed the Go module dependencies to their latest versions
-  merge options instead of a hardcoded `false`, so the new `WithDeleteSourceBranch` option is honoured
-- **BREAKING CHANGE:** added `ClosePullRequest` to the `ForgeProvider` interface. Consumers that only call
-  providers (autobump, autoupdate) are unaffected, but any code implementing `ForgeProvider` outside this
-  repository must add the new method
-- refreshed `.github/copilot-instructions.md` to document the new `ForgeProvider.ClosePullRequest` method,
-  the `ListRemoteBranches`/`DeleteRemoteBranch`/`DeleteLocalBranch`/`CheckBranchExists` git helpers,
-  `file://` remote support in `PushWithTransportDetection`, and the presence of Codeberg tests
+- changed the Go module dependencies to their latest versions merge options instead of a hardcoded `false`, so the new `WithDeleteSourceBranch` option is honoured
+- refreshed `.github/copilot-instructions.md` to document the new `ForgeProvider.ClosePullRequest` method, the `ListRemoteBranches`/`DeleteRemoteBranch`/`DeleteLocalBranch`/`CheckBranchExists` git helpers, `file://` remote support in `PushWithTransportDetection`, and the presence of Codeberg tests
 
 ## [3.0.8] - 2026-07-22
 
 ### Changed
 
-- refreshed `.github/copilot-instructions.md` to drop a stale `pkg/git/infrastructure/helpers/ssh.go`
-  entry from the repository-structure tree; that file no longer exists (only `gitconfig.go` remains)
+- refreshed `.github/copilot-instructions.md` to drop a stale `pkg/git/infrastructure/helpers/ssh.go` entry from the repository-structure tree; that file no longer exists (only `gitconfig.go` remains)
 
 ## [3.0.7] - 2026-07-14
 
@@ -239,9 +219,7 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ### Fixed
 
-- fixed the `sast:gitleaks` pipeline job failing on every `main` build by allowlisting six false positives
-  in a new `.gitleaksignore`: the provider builds an authenticated clone URL from the token it holds at
-  runtime, and the tests assert on that builder with a placeholder, so no credential is committed
+- fixed the `sast:gitleaks` pipeline job failing on every `main` build by allowlisting six false positives in a new `.gitleaksignore`: the provider builds an authenticated clone URL from the token it holds at runtime, and the tests assert on that builder with a placeholder, so no credential is committed
 
 ## [3.0.6] - 2026-07-13
 

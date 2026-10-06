@@ -22,6 +22,12 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.2.10] - 2026-10-06
+
+### Fixed
+
+- fixed the module path to `github.com/rios0rios0/gitforge/v4`: Go requires a module released at v2 or later to carry its major version in its path, so it rejected every v2, v3 and v4 tag and `go get` resolved the library no further than `v1.0.0`, leaving every consumer on a pseudo-version; import the packages from `github.com/rios0rios0/gitforge/v4/...` from this release on
+
 ## [4.2.9] - 2026-10-06
 
 ### Changed

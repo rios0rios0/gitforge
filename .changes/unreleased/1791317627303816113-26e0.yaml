@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed the module path to `github.com/rios0rios0/gitforge/v4`: Go requires a module released at v2 or later to carry its major version in its path, so it rejected every v2, v3 and v4 tag and `go get` resolved the library no further than `v1.0.0`, leaving every consumer on a pseudo-version; import the packages from `github.com/rios0rios0/gitforge/v4/...` from this release on'
-time: '2026-10-06T20:13:47.303737762Z'

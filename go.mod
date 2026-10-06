@@ -1,4 +1,4 @@
-module github.com/rios0rios0/gitforge
+module github.com/rios0rios0/gitforge/v4
 
 go 1.27.1
 

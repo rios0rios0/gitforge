@@ -4,8 +4,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	testkit "github.com/rios0rios0/testkit/pkg/test"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
-	"github.com/rios0rios0/gitforge/test/doubles"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/test/doubles"
 )
 
 // ForgeProviderStubBuilder builds ForgeProviderStub instances using the builder pattern.

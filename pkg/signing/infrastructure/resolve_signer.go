@@ -7,8 +7,8 @@ import (
 
 	logger "github.com/sirupsen/logrus"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
-	"github.com/rios0rios0/gitforge/pkg/signing/infrastructure/helpers"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/signing/infrastructure/helpers"
 )
 
 // ResolveSignerFromGitConfig determines if and how commits should be signed

@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rios0rios0/gitforge/pkg/git/infrastructure"
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/git/infrastructure"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 func TestParseRemoteURL(t *testing.T) {

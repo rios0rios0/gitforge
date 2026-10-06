@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 type adoProject struct {

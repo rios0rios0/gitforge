@@ -1,7 +1,7 @@
 package builders
 
 import (
-	entities "github.com/rios0rios0/gitforge/pkg/config/domain/entities"
+	entities "github.com/rios0rios0/gitforge/v4/pkg/config/domain/entities"
 	testkit "github.com/rios0rios0/testkit/pkg/test"
 )
 

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 // RemoteURLInfo holds the parsed components of a Git remote URL.

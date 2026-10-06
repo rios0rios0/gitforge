@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 // ForgeProviderStub implements ForgeProvider + LocalGitAuthProvider for testing.

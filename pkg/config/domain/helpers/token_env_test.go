@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/rios0rios0/gitforge/pkg/config/domain/helpers"
-	"github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/config/domain/helpers"
+	"github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 func TestResolveTokenFromEnv(t *testing.T) {

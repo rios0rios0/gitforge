@@ -5,8 +5,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	configEntities "github.com/rios0rios0/gitforge/pkg/config/domain/entities"
-	"github.com/rios0rios0/gitforge/pkg/config/infrastructure/helpers"
+	configEntities "github.com/rios0rios0/gitforge/v4/pkg/config/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/config/infrastructure/helpers"
 )
 
 // rawConfig is an intermediary struct used to unmarshal the YAML config file.

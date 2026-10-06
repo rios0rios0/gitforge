@@ -3,7 +3,7 @@ package helpers
 import (
 	"os"
 
-	"github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 // tokenEnvVars maps each ServiceType to the environment variable names

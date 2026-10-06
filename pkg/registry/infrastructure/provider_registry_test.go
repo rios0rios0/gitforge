@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
-	registryInfra "github.com/rios0rios0/gitforge/pkg/registry/infrastructure"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	registryInfra "github.com/rios0rios0/gitforge/v4/pkg/registry/infrastructure"
 )
 
 func TestServiceTypeToProviderName(t *testing.T) {

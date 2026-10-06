@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
-	"github.com/rios0rios0/gitforge/pkg/providers/infrastructure/gitlab"
-	"github.com/rios0rios0/gitforge/test/builders"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/gitlab"
+	"github.com/rios0rios0/gitforge/v4/test/builders"
 )
 
 func TestNewProvider(t *testing.T) {

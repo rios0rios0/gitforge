@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	gl "gitlab.com/gitlab-org/api/client-go"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 // newTestProvider creates a Provider backed by the given test server.

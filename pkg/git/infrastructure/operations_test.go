@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	gitops "github.com/rios0rios0/gitforge/pkg/git/infrastructure"
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
-	signingInfra "github.com/rios0rios0/gitforge/pkg/signing/infrastructure"
-	"github.com/rios0rios0/gitforge/test/builders"
-	"github.com/rios0rios0/gitforge/test/doubles"
+	gitops "github.com/rios0rios0/gitforge/v4/pkg/git/infrastructure"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	signingInfra "github.com/rios0rios0/gitforge/v4/pkg/signing/infrastructure"
+	"github.com/rios0rios0/gitforge/v4/test/builders"
+	"github.com/rios0rios0/gitforge/v4/test/doubles"
 )
 
 func TestNewGitOperations(t *testing.T) {

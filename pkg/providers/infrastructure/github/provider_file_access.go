@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	gh "github.com/google/go-github/v66/github"
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
-	globalHelpers "github.com/rios0rios0/gitforge/pkg/global/domain/helpers"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 )
 
 func (p *Provider) GetFileContent(

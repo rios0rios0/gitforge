@@ -1,7 +1,7 @@
 package entities
 
 import (
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 // AdapterFinder provides adapter lookup capabilities without circular dependencies.

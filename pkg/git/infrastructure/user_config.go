@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 
-	gitHelpers "github.com/rios0rios0/gitforge/pkg/git/infrastructure/helpers"
+	gitHelpers "github.com/rios0rios0/gitforge/v4/pkg/git/infrastructure/helpers"
 )
 
 // UserConfig holds user-specific git configuration values read from local and global git config.

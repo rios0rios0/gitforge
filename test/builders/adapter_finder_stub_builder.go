@@ -1,8 +1,8 @@
 package builders
 
 import (
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
-	"github.com/rios0rios0/gitforge/test/doubles"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/test/doubles"
 	testkit "github.com/rios0rios0/testkit/pkg/test"
 )
 

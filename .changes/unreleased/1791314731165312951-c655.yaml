@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed `DeduplicateEntries` dropping a statement whose words a longer statement about other libraries happened to contain, such as a one-library dependency bump next to a line naming that library and another: two entries are now compared word by word only when they name the same backticked identifiers, versions aside'
-time: '2026-10-06T19:25:31.165235373Z'

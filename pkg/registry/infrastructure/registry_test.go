@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
-	infrastructure "github.com/rios0rios0/gitforge/pkg/registry/infrastructure"
-	"github.com/rios0rios0/gitforge/test/builders"
-	"github.com/rios0rios0/gitforge/test/doubles"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	infrastructure "github.com/rios0rios0/gitforge/v4/pkg/registry/infrastructure"
+	"github.com/rios0rios0/gitforge/v4/test/builders"
+	"github.com/rios0rios0/gitforge/v4/test/doubles"
 )
 
 func TestNewProviderRegistry(t *testing.T) {

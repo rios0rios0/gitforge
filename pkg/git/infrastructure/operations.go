@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-git/go-git/v5"
-	gitEntities "github.com/rios0rios0/gitforge/pkg/git/domain/entities"
+	gitEntities "github.com/rios0rios0/gitforge/v4/pkg/git/domain/entities"
 	log "github.com/sirupsen/logrus"
 )
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	gh "github.com/google/go-github/v66/github"
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 func (p *Provider) CreatePullRequest(

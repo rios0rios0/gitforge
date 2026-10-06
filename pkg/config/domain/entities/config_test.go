@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rios0rios0/gitforge/pkg/config/domain/entities"
-	"github.com/rios0rios0/gitforge/test/builders"
+	"github.com/rios0rios0/gitforge/v4/pkg/config/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/test/builders"
 )
 
 func TestConfigValidate(t *testing.T) {

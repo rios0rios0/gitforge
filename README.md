@@ -31,8 +31,10 @@ A shared Go library providing common abstractions for working with Git hosting p
 ## Installation
 
 ```bash
-go get github.com/rios0rios0/gitforge
+go get github.com/rios0rios0/gitforge/v4
 ```
+
+Import the packages from `github.com/rios0rios0/gitforge/v4/...`. Go requires a module released at v2 or later to carry its major version in the module path, so the path changes with every major release.
 
 ## Architecture
 

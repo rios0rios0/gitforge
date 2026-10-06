@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	gitops "github.com/rios0rios0/gitforge/pkg/git/infrastructure"
+	gitops "github.com/rios0rios0/gitforge/v4/pkg/git/infrastructure"
 )
 
 // newRepoWithBareRemote builds a working repository whose origin is a real bare

@@ -1,7 +1,7 @@
 package infrastructure
 
 import (
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 // DiscovererFactory is a constructor that creates a RepositoryDiscoverer given an auth token.

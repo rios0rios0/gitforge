@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	globalEntities "github.com/rios0rios0/gitforge/pkg/global/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
 type forgejoPR struct {

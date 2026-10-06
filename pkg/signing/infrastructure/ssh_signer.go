@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rios0rios0/gitforge/pkg/signing/infrastructure/helpers"
+	"github.com/rios0rios0/gitforge/v4/pkg/signing/infrastructure/helpers"
 )
 
 // SSHSigner signs commits using an SSH key.

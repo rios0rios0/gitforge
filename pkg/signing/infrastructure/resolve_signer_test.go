@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	signingInfra "github.com/rios0rios0/gitforge/pkg/signing/infrastructure"
+	signingInfra "github.com/rios0rios0/gitforge/v4/pkg/signing/infrastructure"
 )
 
 func TestResolveSignerFromGitConfig(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rios0rios0/gitforge/pkg/config/domain/helpers"
+	"github.com/rios0rios0/gitforge/v4/pkg/config/domain/helpers"
 )
 
 const appName = "testapp"

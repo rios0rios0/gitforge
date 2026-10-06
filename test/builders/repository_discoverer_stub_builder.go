@@ -1,7 +1,7 @@
 package builders
 
 import (
-	"github.com/rios0rios0/gitforge/test/doubles"
+	"github.com/rios0rios0/gitforge/v4/test/doubles"
 	testkit "github.com/rios0rios0/testkit/pkg/test"
 )
 

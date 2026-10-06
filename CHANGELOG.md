@@ -22,6 +22,17 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.2.9] - 2026-10-06
+
+### Changed
+
+- changed the Go module dependencies to their latest versions
+
+### Fixed
+
+- fixed `DeduplicateEntries` dropping a statement whose words a longer statement about other libraries happened to contain, such as a one-library dependency bump next to a line naming that library and another: two entries are now compared word by word only when they name the same backticked identifiers, versions aside
+- fixed `InsertChangelogEntry` inserting a new entry between a wrapped bullet and its continuation line, which glued the tail of the bullet above onto the new entry: the bullet list now runs to the last line of its last bullet, continuation lines indented or not and `* ` bullets included
+
 ## [4.2.8] - 2026-09-30
 
 ### Changed

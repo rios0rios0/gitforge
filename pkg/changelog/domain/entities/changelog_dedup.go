@@ -2,6 +2,7 @@ package entities
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -28,6 +29,10 @@ var backtickPattern = regexp.MustCompile("`[^`]*`")
 // changelogVersionPattern matches semver-like version numbers (e.g., 1.26.0, v2.3.1).
 var changelogVersionPattern = regexp.MustCompile(`v?\d+\.\d+(?:\.\d+)?`)
 
+// codeVersionPattern matches a code span that is a version rather than an
+// identifier: "1.2.3", "v0.21.0", "3.13-slim", "2024.2.2".
+var codeVersionPattern = regexp.MustCompile(`^v?\d`)
+
 // normalizeEntry strips a changelog entry down to its semantic core for comparison.
 func normalizeEntry(entry string) string {
 	s := strings.TrimSpace(entry)
@@ -50,6 +55,29 @@ func tokenize(normalized string) []string {
 		}
 	}
 	return tokens
+}
+
+// codeIdentifiers returns the code spans an entry names, leaving out the ones
+// that are versions, as one comparable key: lower-cased, sorted and joined.
+//
+// Two entries naming different identifiers state different facts however many
+// words they share. The token overlap below is measured against the shorter
+// entry, so a one-library statement whose words all appear in a longer
+// statement about several libraries scored as its duplicate, and whichever lost
+// took a library out of the release notes. Requiring the same identifiers
+// before the words are even compared keeps the overlap rule for what it is good
+// at -- the same statement reworded, or restated with a newer version.
+func codeIdentifiers(entry string) string {
+	var identifiers []string
+	for _, span := range backtickPattern.FindAllString(entry, -1) {
+		content := strings.ToLower(strings.TrimSpace(span[1 : len(span)-1]))
+		if content == "" || codeVersionPattern.MatchString(content) {
+			continue
+		}
+		identifiers = append(identifiers, content)
+	}
+	sort.Strings(identifiers)
+	return strings.Join(identifiers, "\x00")
 }
 
 // extractMaxVersion finds the highest semver version mentioned in an entry's raw text.
@@ -91,7 +119,17 @@ func overlapRatio(a, b []string) float64 {
 	return float64(intersection) / float64(minLen)
 }
 
-// DeduplicateEntries removes duplicate and semantically overlapping changelog entries.
+// dedupEntry is one entry as DeduplicateEntries compares it.
+type dedupEntry struct {
+	raw         string
+	tokens      []string
+	ver         *semver.Version
+	identifiers string
+}
+
+// DeduplicateEntries removes duplicate and semantically overlapping changelog
+// entries. Two entries are compared word by word only when they name the same
+// code identifiers -- see [codeIdentifiers].
 func DeduplicateEntries(entries []string) []string {
 	if len(entries) <= 1 {
 		return entries
@@ -112,41 +150,17 @@ func DeduplicateEntries(entries []string) []string {
 		return unique
 	}
 
-	type entryInfo struct {
-		raw    string
-		tokens []string
-		ver    *semver.Version
-	}
-
-	infos := make([]entryInfo, len(unique))
+	infos := make([]dedupEntry, len(unique))
 	for i, e := range unique {
-		infos[i] = entryInfo{
-			raw:    e,
-			tokens: tokenize(normalizeEntry(e)),
-			ver:    extractMaxVersion(e),
+		infos[i] = dedupEntry{
+			raw:         e,
+			tokens:      tokenize(normalizeEntry(e)),
+			ver:         extractMaxVersion(e),
+			identifiers: codeIdentifiers(e),
 		}
 	}
 
-	removed := make(map[int]bool)
-
-	for i := range infos {
-		if removed[i] {
-			continue
-		}
-		for j := i + 1; j < len(infos); j++ {
-			if removed[j] {
-				continue
-			}
-
-			ratio := overlapRatio(infos[i].tokens, infos[j].tokens)
-			if ratio < deduplicationOverlapThreshold {
-				continue
-			}
-
-			loser := pickLoser(infos[i], infos[j], i, j)
-			removed[loser] = true
-		}
-	}
+	removed := restatedEntries(infos)
 
 	var result []string
 	for i, info := range infos {
@@ -157,13 +171,32 @@ func DeduplicateEntries(entries []string) []string {
 	return result
 }
 
+// restatedEntries returns the indexes of the entries another entry restates,
+// keeping of each pair the one pickLoser prefers.
+func restatedEntries(infos []dedupEntry) map[int]bool {
+	removed := make(map[int]bool)
+	for i := range infos {
+		if removed[i] {
+			continue
+		}
+		for j := i + 1; j < len(infos); j++ {
+			if !removed[j] && isRestatement(infos[i], infos[j]) {
+				removed[pickLoser(infos[i], infos[j], i, j)] = true
+			}
+		}
+	}
+	return removed
+}
+
+// isRestatement reports whether two entries make the same statement: they name
+// the same code identifiers and their words overlap past the threshold.
+func isRestatement(a, b dedupEntry) bool {
+	return a.identifiers == b.identifiers &&
+		overlapRatio(a.tokens, b.tokens) >= deduplicationOverlapThreshold
+}
+
 // pickLoser decides which of two overlapping entries to remove.
-func pickLoser(a, b struct {
-	raw    string
-	tokens []string
-	ver    *semver.Version
-}, idxA, idxB int,
-) int {
+func pickLoser(a, b dedupEntry, idxA, idxB int) int {
 	switch {
 	case a.ver != nil && b.ver != nil:
 		if a.ver.GreaterThan(b.ver) {

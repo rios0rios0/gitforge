@@ -293,6 +293,68 @@ func TestInsertChangelogEntry(t *testing.T) {
 		// then
 		assert.Equal(t, content, result)
 	})
+
+	t.Run("should insert after the continuation line of a wrapped last bullet", func(t *testing.T) {
+		t.Parallel()
+
+		// given: the shape that had the new entry glued onto the tail of the
+		// bullet above it
+		content := "## [Unreleased]\n\n### Changed\n\n" +
+			"- changed cleanup to run only after the same-day pull request check has passed, so a pull request is\n" +
+			"  never closed without a replacement being opened for it\n\n## [1.0.0] - 2024-01-01\n"
+
+		// when
+		result := domain.InsertChangelogEntry(content, []string{"- new entry"})
+
+		// then
+		assert.Equal(t, "## [Unreleased]\n\n### Changed\n\n"+
+			"- changed cleanup to run only after the same-day pull request check has passed, so a pull request is\n"+
+			"  never closed without a replacement being opened for it\n"+
+			"- new entry\n\n## [1.0.0] - 2024-01-01\n", result)
+	})
+
+	t.Run("should treat an unindented line as the continuation of the bullet above", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		content := "## [Unreleased]\n\n### Changed\n\n- first half\nsecond half\n\n### Fixed\n\n- fixed it\n"
+
+		// when
+		result := domain.InsertChangelogEntry(content, []string{"- new entry"})
+
+		// then
+		assert.Equal(t,
+			"## [Unreleased]\n\n### Changed\n\n- first half\nsecond half\n- new entry\n\n### Fixed\n\n- fixed it\n",
+			result)
+	})
+
+	t.Run("should insert after an indented paragraph of the last bullet", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		content := "## [Unreleased]\n\n### Changed\n\n- an entry\n\n  with a second paragraph\n\n## [1.0.0]\n"
+
+		// when
+		result := domain.InsertChangelogEntry(content, []string{"- new entry"})
+
+		// then
+		assert.Equal(t,
+			"## [Unreleased]\n\n### Changed\n\n- an entry\n\n  with a second paragraph\n- new entry\n\n## [1.0.0]\n",
+			result)
+	})
+
+	t.Run("should insert after a bullet written with an asterisk", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		content := "## [Unreleased]\n\n### Changed\n\n* existing entry\n\n## [1.0.0]\n"
+
+		// when
+		result := domain.InsertChangelogEntry(content, []string{"- new entry"})
+
+		// then
+		assert.Equal(t, "## [Unreleased]\n\n### Changed\n\n* existing entry\n- new entry\n\n## [1.0.0]\n", result)
+	})
 }
 
 func TestProcessChangelog(t *testing.T) {
@@ -952,6 +1014,39 @@ func TestDeduplicateEntriesSemanticOverlap(t *testing.T) {
 
 		// then
 		assert.Len(t, result, 2)
+	})
+
+	t.Run("should keep a statement whose words a statement about more identifiers contains", func(t *testing.T) {
+		t.Parallel()
+
+		// given: every word of the second appears in the first, but they name
+		// different libraries
+		entries := []string{
+			"- changed the Go modules `alpha` from `v1.0.0` to `v1.1.0` and `beta` from `v2.0.0` to `v2.1.0`",
+			"- changed the Go modules `alpha` from `v1.1.0` to `v1.2.0`",
+		}
+
+		// when
+		result := domain.DeduplicateEntries(entries)
+
+		// then
+		assert.Equal(t, entries, result)
+	})
+
+	t.Run("should still merge a statement restated with a newer version", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		entries := []string{
+			"- changed the Docker base image `python` from `3.12` to `3.13`",
+			"- changed the Docker base image `python` from `3.12` to `3.14`",
+		}
+
+		// when
+		result := domain.DeduplicateEntries(entries)
+
+		// then
+		assert.Equal(t, []string{"- changed the Docker base image `python` from `3.12` to `3.14`"}, result)
 	})
 
 	t.Run("should keep entries with similar structure but different subjects", func(t *testing.T) {

@@ -43,8 +43,8 @@ gitforge/
 │   ├── changelog/
 │   │   └── domain/entities/
 │   │       ├── changelog.go           # Changelog struct: NewChangelog, Lines, IsUnreleasedEmpty, FindLatestVersion
-│   │       ├── changelog_dedup.go     # DeduplicateEntries: token-overlap semantic deduplication
-│   │       ├── changelog_insert.go    # InsertChangelogEntry: inserts bullets under Unreleased/Changed
+│   │       ├── changelog_dedup.go     # DeduplicateEntries: token-overlap deduplication, gated on equal code identifiers
+│   │       ├── changelog_insert.go    # InsertChangelogEntry: inserts bullets under Unreleased/Changed, after continuation lines
 │   │       ├── changelog_processor.go # Changelog.Process, Changelog.ProcessNew
 │   │       ├── changelog_section.go   # UpdateSection, MakeNewSections, ParseUnreleasedIntoSections, FixSectionHeadings
 │   │       └── changelog_test.go      # BDD tests for changelog processing
@@ -274,8 +274,8 @@ ForgeProvider (base)
 - `(c *Changelog) ProcessNew() (*semver.Version, []string, error)` -- handles changelogs with no previous release version (releases as 0.1.0)
 - `(c *Changelog) FindLatestVersion() (*semver.Version, error)` -- finds the highest released version
 - `(c *Changelog) IsUnreleasedEmpty() (bool, error)` -- checks if the [Unreleased] section has any entries
-- `InsertChangelogEntry(content string, entries []string) string` -- inserts bullet entries under Unreleased/Changed
-- `DeduplicateEntries(entries []string) []string` -- removes exact duplicates and semantically overlapping entries
+- `InsertChangelogEntry(content string, entries []string) string` -- inserts bullet entries under Unreleased/Changed, after the last line of the last bullet (continuation lines and `* ` bullets included), so a wrapped entry is never split
+- `DeduplicateEntries(entries []string) []string` -- removes exact duplicates and semantically overlapping entries; two entries are compared word by word only when they name the same backticked identifiers (version spans ignored), so statements about different libraries are never merged
 - `UpdateSection(unreleased []string, version semver.Version) ([]string, *semver.Version, error)` -- deduplicates, sorts, and calculates version bump
 
 **Config** (`pkg/config/domain/entities` and `pkg/config/domain/helpers`):

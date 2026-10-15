@@ -7,7 +7,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/google/go-github/v66 v66.0.0
-	github.com/rios0rios0/testkit v0.3.5
+	github.com/rios0rios0/testkit v0.3.6
 	github.com/sergi/go-diff v1.4.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cobra v1.10.2
@@ -20,7 +20,7 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/Microsoft/go-winio v0.6.3 // indirect
+	github.com/Microsoft/go-winio v0.6.4 // indirect
 	github.com/cloudflare/circl v1.6.5 // indirect
 	github.com/cyphar/filepath-securejoin v0.7.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect

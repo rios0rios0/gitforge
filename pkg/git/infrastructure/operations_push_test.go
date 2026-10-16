@@ -160,8 +160,11 @@ func TestPushChangesSSHErrorUnmasking(t *testing.T) {
 		// given
 		repo := newRepoWithDeadSSHRemote(t)
 		failing := &gitssh.PublicKeysCallback{
-			User:            "git",
-			Callback:        func() ([]ssh.Signer, error) { return nil, errors.New("no usable key") },
+			User:     "git",
+			Callback: func() ([]ssh.Signer, error) { return nil, errors.New("no usable key") },
+			// Error-unmasking fixture: the method fails before any host key check is
+			// reached, and the remote it is attempted against is a closed localhost port.
+			// nosemgrep: go.lang.security.audit.crypto.insecure_ssh.avoid-ssh-insecure-ignore-host-key
 			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		}
 

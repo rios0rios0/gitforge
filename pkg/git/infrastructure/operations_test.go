@@ -24,7 +24,11 @@ import (
 )
 
 func TestNewGitOperations(t *testing.T) {
+	t.Parallel()
+
 	t.Run("should create GitOperations without panic", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		finder := builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub)
 
@@ -36,7 +40,11 @@ func TestNewGitOperations(t *testing.T) {
 }
 
 func TestGetServiceTypeByURL(t *testing.T) {
+	t.Parallel()
+
 	t.Run("should return BITBUCKET for bitbucket.org URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		rawURL := "https://bitbucket.org/org/repo.git"
@@ -49,6 +57,8 @@ func TestGetServiceTypeByURL(t *testing.T) {
 	})
 
 	t.Run("should return CODECOMMIT for git-codecommit URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		rawURL := "https://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-repo"
@@ -61,6 +71,8 @@ func TestGetServiceTypeByURL(t *testing.T) {
 	})
 
 	t.Run("should return UNKNOWN for unrecognized URL", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		rawURL := "https://custom-git.example.com/repo.git"
@@ -73,6 +85,8 @@ func TestGetServiceTypeByURL(t *testing.T) {
 	})
 
 	t.Run("should return adapter service type when adapter matches", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
 		ops := gitops.NewGitOperations(
@@ -89,7 +103,11 @@ func TestGetServiceTypeByURL(t *testing.T) {
 }
 
 func TestGetAuthMethods(t *testing.T) {
+	t.Parallel()
+
 	t.Run("should return error when no adapter found", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 
@@ -101,6 +119,8 @@ func TestGetAuthMethods(t *testing.T) {
 	})
 
 	t.Run("should return error when adapter returns no auth methods", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
 		ops := gitops.NewGitOperations(
@@ -115,6 +135,8 @@ func TestGetAuthMethods(t *testing.T) {
 	})
 
 	t.Run("should return auth methods when adapter provides them", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		adapter := builders.NewForgeProviderStubBuilder().
 			WithServiceType(globalEntities.GITHUB).
@@ -515,7 +537,11 @@ func TestCommitChanges(t *testing.T) {
 }
 
 func TestGetRemoteServiceType(t *testing.T) {
+	t.Parallel()
+
 	t.Run("should return service type for repo with remote", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		adapter := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
 		ops := gitops.NewGitOperations(
@@ -538,6 +564,8 @@ func TestGetRemoteServiceType(t *testing.T) {
 	})
 
 	t.Run("should return error when no remote URLs configured", func(t *testing.T) {
+		t.Parallel()
+
 		// given
 		ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
 		repo := createInMemoryRepoWithCommit(t)

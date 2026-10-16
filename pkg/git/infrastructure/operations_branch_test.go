@@ -3,6 +3,7 @@
 package infrastructure_test
 
 import (
+	"net"
 	"testing"
 
 	"github.com/go-git/go-git/v5"
@@ -10,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 
 	gitops "github.com/rios0rios0/gitforge/v4/pkg/git/infrastructure"
 )
@@ -209,4 +211,22 @@ func TestDeleteLocalBranch(t *testing.T) {
 		_, err = repo.Reference(head.Name(), false)
 		assert.NoError(t, err)
 	})
+}
+
+// TestListRemoteBranchesWithFallbackCallback is deliberately not parallel: it mutates
+// the package-level fallback host key hook.
+func TestListRemoteBranchesWithFallbackCallback(t *testing.T) {
+	defer gitops.SetDefaultSSHHostKeyCallback(nil)
+
+	// given -- an installed callback must not disturb listing over a non-SSH remote
+	gitops.SetDefaultSSHHostKeyCallback(func(string, net.Addr, ssh.PublicKey) error { return nil })
+	repo := newRepoWithBareRemote(t)
+	pushBranch(t, repo, "chore/bump-1.0.0")
+
+	// when
+	branches, err := gitops.ListRemoteBranches(repo, nil)
+
+	// then
+	require.NoError(t, err)
+	assert.Contains(t, branches, "chore/bump-1.0.0")
 }

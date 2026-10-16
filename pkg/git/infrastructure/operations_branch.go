@@ -68,8 +68,10 @@ func ListRemoteBranches(repo *git.Repository, authMethods []transport.AuthMethod
 }
 
 // listRemoteRefs lists the remote references, trying each authentication method in
-// order and falling back to an unauthenticated listing (which covers SSH agent and
-// public repositories) when every explicit method fails.
+// order and falling back to the default SSH agent (which covers public repositories
+// over HTTPS too) when every explicit method fails. The fallback carries the host key
+// callback installed via SetDefaultSSHHostKeyCallback, so a consumer that discovered
+// known_hosts its own way gets the same verification here as in the explicit methods.
 func listRemoteRefs(
 	remote *git.Remote,
 	authMethods []transport.AuthMethod,
@@ -84,7 +86,7 @@ func listRemoteRefs(
 		log.Debugf("Remote listing failed with auth method %T: %v", method, err)
 	}
 
-	refs, err := remote.List(&git.ListOptions{})
+	refs, err := remote.List(&git.ListOptions{Auth: defaultSSHAuthForRemote(remote)})
 	if err == nil {
 		return refs, nil
 	}

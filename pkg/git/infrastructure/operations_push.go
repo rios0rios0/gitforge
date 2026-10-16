@@ -15,29 +15,43 @@ import (
 // PushChangesSSH pushes the changes to the remote repository over SSH.
 // If authMethods is non-empty, each method is tried in order until one succeeds.
 // If all explicit methods fail or authMethods is empty, it falls back to
-// go-git's default SSH agent behaviour (SSH_AUTH_SOCK).
+// go-git's default SSH agent behaviour (SSH_AUTH_SOCK), carrying the host key callback
+// installed via SetDefaultSSHHostKeyCallback so the fallback verifies hosts against the
+// consumer's own known_hosts discovery rather than go-git's.
+//
+// When both an explicit method and the fallback fail, the returned error names the
+// explicit failure too: the fallback's own error (often "unable to find any valid
+// known_hosts file", or an agent that answered nothing) otherwise masks the credential
+// problem the operator actually has to fix.
 func PushChangesSSH(repo *git.Repository, refSpec config.RefSpec, authMethods []transport.AuthMethod) error {
 	log.Info("Pushing local changes to remote repository through SSH")
 
-	if len(authMethods) > 0 {
-		var lastErr error
-		for _, method := range authMethods {
-			lastErr = repo.Push(&git.PushOptions{
-				RefSpecs: []config.RefSpec{refSpec},
-				Auth:     method,
-			})
-			if lastErr == nil {
-				return nil
-			}
-			log.Debugf("SSH push attempt failed with auth method %T: %v", method, lastErr)
+	var lastErr error
+	for _, method := range authMethods {
+		lastErr = repo.Push(&git.PushOptions{
+			RefSpecs: []config.RefSpec{refSpec},
+			Auth:     method,
+		})
+		if lastErr == nil {
+			return nil
 		}
+		log.Debugf("SSH push attempt failed with auth method %T: %v", method, lastErr)
+	}
+	if len(authMethods) > 0 {
 		log.Debug("All explicit SSH auth methods failed, falling back to default SSH agent")
 	}
 
 	err := repo.Push(&git.PushOptions{
 		RefSpecs: []config.RefSpec{refSpec},
+		Auth:     defaultSSHAuthForRepo(repo),
 	})
 	if err != nil {
+		if lastErr != nil {
+			return fmt.Errorf(
+				"could not push changes to remote repository: %w (explicit SSH auth also failed: %w)",
+				err, lastErr,
+			)
+		}
 		return fmt.Errorf("could not push changes to remote repository: %w", err)
 	}
 	return nil

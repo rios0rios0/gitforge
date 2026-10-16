@@ -43,6 +43,7 @@ Clean Architecture with DDD bounded contexts under `pkg/`. Each context owns `do
 - **Factory + Registry**: `ProviderRegistry` creates providers by name/token and resolves adapters by URL or `ServiceType`
 - **Adapter**: `GitOperations` receives `AdapterFinder` (implemented by `ProviderRegistry`) to decouple auth resolution
 - **Constructor injection**: No DI framework; dependencies passed via constructors
+- **Default SSH host key hook**: `SetDefaultSSHHostKeyCallback` (`pkg/git/infrastructure/operations_ssh.go`) lets consumers hand their own known_hosts discovery — autobump reads the Windows profiles' `known_hosts` under WSL — to the default SSH agent fallback behind `PushChangesSSH` and remote reference listing, which otherwise verifies hosts with go-git's own `SSH_KNOWN_HOSTS`/`~/.ssh/known_hosts` lookup alone
 
 ## Testing
 

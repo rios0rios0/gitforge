@@ -43,6 +43,8 @@ Clean Architecture with DDD bounded contexts under `pkg/`. Each context owns `do
 - **Factory + Registry**: `ProviderRegistry` creates providers by name/token and resolves adapters by URL or `ServiceType`
 - **Adapter**: `GitOperations` receives `AdapterFinder` (implemented by `ProviderRegistry`) to decouple auth resolution
 - **Constructor injection**: No DI framework; dependencies passed via constructors
+- **Never force a go-git checkout**: `Force: true` resets the working tree hard, which discards local changes and deletes every untracked *and ignored* file (`.env`, build output, editor settings), even when the target commit is HEAD's and `Status` reports the tree clean. The consumers run on operators' own checkouts (`autobump .`, `autoupdate .`), so `CreateAndSwitchBranch` switches to a branch at HEAD's commit by pointing HEAD at it, as `git switch -c` does, and anything else goes through the plain `CheckoutBranch`, which refuses rather than discards
+- **Latest tag means highest version**: `GetLatestTag` returns the highest tag that parses as a semantic version, ignoring the rest, and peels annotated tags for the commit date. Tag listing order is not version order (`1.10.0` sorts before `1.9.0`), and a non-version tag used to come back with a nil version that callers printed as `<nil>`
 - **Default SSH host key hook**: `SetDefaultSSHHostKeyCallback` (`pkg/git/infrastructure/operations_ssh.go`) lets consumers hand their own known_hosts discovery — autobump reads the Windows profiles' `known_hosts` under WSL — to the default SSH agent fallback behind `PushChangesSSH` and remote reference listing, which otherwise verifies hosts with go-git's own `SSH_KNOWN_HOSTS`/`~/.ssh/known_hosts` lookup alone
 
 ## Testing

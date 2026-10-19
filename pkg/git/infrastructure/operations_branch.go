@@ -169,6 +169,9 @@ func DeleteLocalBranch(repo *git.Repository, branchName string) error {
 //
 // A hash HEAD does not point to needs the working tree to change, so it gets a regular
 // checkout, which refuses when local changes are in the way instead of discarding them.
+// HEAD is compared before the branch is written: when branchName is the current branch,
+// writing it first makes HEAD resolve to hash, which passes a move to another commit off
+// as a switch with no file to change.
 func CreateAndSwitchBranch(
 	repo *git.Repository,
 	workTree *git.Worktree,
@@ -177,12 +180,12 @@ func CreateAndSwitchBranch(
 ) error {
 	log.Infof("Creating and switching to new branch '%s'", branchName)
 	branch := plumbing.NewBranchReferenceName(branchName)
-	if err := repo.Storer.SetReference(plumbing.NewHashReference(branch, hash)); err != nil {
-		return fmt.Errorf("could not create branch: %w", err)
+	if head, err := repo.Head(); err != nil || head.Hash() != hash {
+		return checkoutNewBranch(repo, workTree, branch, hash)
 	}
 
-	if head, err := repo.Head(); err != nil || head.Hash() != hash {
-		return CheckoutBranch(workTree, branchName)
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(branch, hash)); err != nil {
+		return fmt.Errorf("could not create branch: %w", err)
 	}
 
 	log.Infof("Switching to branch '%s'", branchName)
@@ -190,6 +193,46 @@ func CreateAndSwitchBranch(
 		return fmt.Errorf("could not checkout branch: %w", err)
 	}
 	return nil
+}
+
+// checkoutNewBranch points branch at hash and checks it out. go-git moves HEAD to the
+// branch before it refuses a checkout over local changes, so a refusal puts HEAD and the
+// branch back as they were. Left moved, they would name a commit that the index and the
+// working tree are not at, and the next commit would quietly undo every change between.
+func checkoutNewBranch(
+	repo *git.Repository,
+	workTree *git.Worktree,
+	branch plumbing.ReferenceName,
+	hash plumbing.Hash,
+) error {
+	previousHead, err := repo.Storer.Reference(plumbing.HEAD)
+	if err != nil {
+		return fmt.Errorf("could not read HEAD: %w", err)
+	}
+	previousBranch, err := repo.Storer.Reference(branch)
+	if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return fmt.Errorf("could not read branch %q: %w", branch.Short(), err)
+	}
+
+	if err = repo.Storer.SetReference(plumbing.NewHashReference(branch, hash)); err != nil {
+		return fmt.Errorf("could not create branch: %w", err)
+	}
+
+	checkoutErr := CheckoutBranch(workTree, branch.Short())
+	if checkoutErr == nil {
+		return nil
+	}
+
+	restoreErr := repo.Storer.SetReference(previousHead)
+	if previousBranch != nil {
+		restoreErr = errors.Join(restoreErr, repo.Storer.SetReference(previousBranch))
+	} else {
+		restoreErr = errors.Join(restoreErr, repo.Storer.RemoveReference(branch))
+	}
+	if restoreErr != nil {
+		return errors.Join(checkoutErr, fmt.Errorf("could not put HEAD and %q back: %w", branch.Short(), restoreErr))
+	}
+	return checkoutErr
 }
 
 // CheckoutBranch switches to the given branch. It never forces the checkout: a forced

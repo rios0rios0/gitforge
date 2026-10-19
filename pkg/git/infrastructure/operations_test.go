@@ -391,7 +391,7 @@ func TestCreateAndSwitchBranch(t *testing.T) {
 
 		// given an operator's checkout holding work no commit knows about
 		repoPath := t.TempDir()
-		repo, wt := createFilesystemRepoWithIgnoredPattern(t, repoPath, "local.env")
+		repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
 		headRef, err := repo.Head()
 		require.NoError(t, err)
 		files := writeUncommittedWork(t, repoPath, wt)
@@ -414,13 +414,13 @@ func TestCreateAndSwitchBranch(t *testing.T) {
 
 			// given a branch to create at an older commit, and a local edit in the way
 			repoPath := t.TempDir()
-			repo, wt := createFilesystemRepoWithIgnoredPattern(t, repoPath, "local.env")
+			repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
 			older, err := repo.Head()
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("# Second\n"), 0o600))
 			_, err = wt.Add("README.md")
 			require.NoError(t, err)
-			_, err = wt.Commit("second commit", &git.CommitOptions{
+			newer, err := wt.Commit("second commit", &git.CommitOptions{
 				Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
 			})
 			require.NoError(t, err)
@@ -429,8 +429,74 @@ func TestCreateAndSwitchBranch(t *testing.T) {
 			// when
 			err = gitops.CreateAndSwitchBranch(repo, wt, "older-branch", older.Hash())
 
+			// then the edit is kept, and HEAD and the branches are as they were before
+			require.Error(t, err)
+			content, readErr := os.ReadFile(filepath.Join(repoPath, "README.md"))
+			require.NoError(t, readErr)
+			assert.Equal(t, "# local edit\n", string(content))
+			head, headErr := repo.Head()
+			require.NoError(t, headErr)
+			assert.Equal(t, older.Name(), head.Name(), "the refused switch still moved HEAD")
+			assert.Equal(t, newer, head.Hash())
+			exists, existsErr := gitops.CheckBranchExists(repo, "older-branch")
+			require.NoError(t, existsErr)
+			assert.False(t, exists, "the refused switch still created the branch")
+		},
+	)
+
+	t.Run(
+		"should move the index and the files along when the current branch is moved to another commit",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given the current branch, to be moved back to the commit before .gitignore
+			repoPath := t.TempDir()
+			repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
+			current, err := repo.Head()
+			require.NoError(t, err)
+			commit, err := repo.CommitObject(current.Hash())
+			require.NoError(t, err)
+			parent := commit.ParentHashes[0]
+
+			// when
+			err = gitops.CreateAndSwitchBranch(repo, wt, current.Name().Short(), parent)
+
+			// then
+			require.NoError(t, err)
+			head, err := repo.Head()
+			require.NoError(t, err)
+			assert.Equal(t, current.Name(), head.Name())
+			assert.Equal(t, parent, head.Hash())
+			assert.NoFileExists(t, filepath.Join(repoPath, ".gitignore"), "a file of the old commit was left behind")
+			status, err := wt.Status()
+			require.NoError(t, err)
+			assert.True(t, status.IsClean(), "the index or the files are not at the branch's commit:\n%s", status)
+		},
+	)
+
+	t.Run(
+		"should leave the current branch at its commit when local changes refuse moving it",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given the current branch, to be moved back a commit, and a local edit in the way
+			repoPath := t.TempDir()
+			repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
+			current, err := repo.Head()
+			require.NoError(t, err)
+			commit, err := repo.CommitObject(current.Hash())
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("# local edit\n"), 0o600))
+
+			// when
+			err = gitops.CreateAndSwitchBranch(repo, wt, current.Name().Short(), commit.ParentHashes[0])
+
 			// then
 			require.Error(t, err)
+			head, headErr := repo.Head()
+			require.NoError(t, headErr)
+			assert.Equal(t, current.Name(), head.Name())
+			assert.Equal(t, current.Hash(), head.Hash(), "the refused move still moved the branch")
 			content, readErr := os.ReadFile(filepath.Join(repoPath, "README.md"))
 			require.NoError(t, readErr)
 			assert.Equal(t, "# local edit\n", string(content))
@@ -462,12 +528,12 @@ func TestCheckoutBranch(t *testing.T) {
 
 		// given an operator who switched to a new branch with work lying around
 		repoPath := t.TempDir()
-		repo, wt := createFilesystemRepoWithIgnoredPattern(t, repoPath, "local.env")
+		repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
 		headRef, err := repo.Head()
 		require.NoError(t, err)
 		require.NoError(t, gitops.CreateAndSwitchBranch(repo, wt, "feature-branch", headRef.Hash()))
 		untracked := filepath.Join(repoPath, "notes.txt")
-		ignored := filepath.Join(repoPath, "local.env")
+		ignored := filepath.Join(repoPath, ignoredFileName)
 		require.NoError(t, os.WriteFile(untracked, []byte("notes\n"), 0o600))
 		require.NoError(t, os.WriteFile(ignored, []byte("SETTING=fixture-value-placeholder\n"), 0o600))
 
@@ -997,20 +1063,21 @@ func addTagToRepo(t *testing.T, repo *git.Repository, tagName string) {
 	require.NoError(t, err)
 }
 
-// createFilesystemRepoWithIgnoredPattern creates a git repo on disk whose committed
-// .gitignore ignores pattern, and returns it with its worktree.
-func createFilesystemRepoWithIgnoredPattern(
-	t *testing.T, path, pattern string,
-) (*git.Repository, *git.Worktree) {
+// ignoredFileName is the file the .gitignore of createFilesystemRepoWithIgnoredFile ignores.
+const ignoredFileName = "local.env"
+
+// createFilesystemRepoWithIgnoredFile creates a git repo on disk with two commits, the
+// second adding a .gitignore that ignores ignoredFileName, and returns it with its worktree.
+func createFilesystemRepoWithIgnoredFile(t *testing.T, path string) (*git.Repository, *git.Worktree) {
 	t.Helper()
 
 	repo := createFilesystemRepoWithCommit(t, path)
 	wt, err := repo.Worktree()
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(path, ".gitignore"), []byte(pattern+"\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(path, ".gitignore"), []byte(ignoredFileName+"\n"), 0o600))
 	_, err = wt.Add(".gitignore")
 	require.NoError(t, err)
-	_, err = wt.Commit("ignored "+pattern, &git.CommitOptions{
+	_, err = wt.Commit("ignored "+ignoredFileName, &git.CommitOptions{
 		Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
 	})
 	require.NoError(t, err)
@@ -1031,7 +1098,7 @@ func writeUncommittedWork(t *testing.T, path string, wt *git.Worktree) uncommitt
 		edited:    filepath.Join(path, "README.md"),
 		staged:    filepath.Join(path, "staged.txt"),
 		untracked: filepath.Join(path, "notes.txt"),
-		ignored:   filepath.Join(path, "local.env"),
+		ignored:   filepath.Join(path, ignoredFileName),
 	}
 	require.NoError(t, os.WriteFile(files.edited, []byte("# local edit\n"), 0o600))
 	require.NoError(t, os.WriteFile(files.staged, []byte("staged\n"), 0o600))

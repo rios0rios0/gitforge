@@ -47,8 +47,16 @@ func GetAmountCommits(repo *git.Repository) (int, error) {
 	return amountCommits, nil
 }
 
-// GetLatestTag finds the latest tag in the Git history.
+// GetLatestTag finds the latest release tag in the Git history: the highest tag that
+// reads as a semantic version, together with the date of the commit it points to.
 // Exported for use by autobump (github.com/rios0rios0/autobump).
+//
+// The highest version, not the tag the repository lists last. Tags are listed in no
+// particular version order -- `1.10.0` sorts before `1.9.0` as text -- and a tag that is
+// not a version, such as the four-part tags a fork carries from its upstream, used to
+// come back with a nil version that callers printed as `<nil>`. Tags that are not
+// versions are ignored, so a repository holding nothing else is treated like one
+// without tags.
 func GetLatestTag(repo *git.Repository) (*globalEntities.LatestTag, error) {
 	tags, err := repo.Tags()
 	if err != nil {
@@ -56,8 +64,14 @@ func GetLatestTag(repo *git.Repository) (*globalEntities.LatestTag, error) {
 	}
 
 	var latestTag *plumbing.Reference
+	var latestVersion *semver.Version
 	_ = tags.ForEach(func(tag *plumbing.Reference) error {
-		latestTag = tag
+		// A tag that does not parse as a version is skipped, not reported: it says
+		// nothing about which release is the latest.
+		version, parseErr := semver.NewVersion(tag.Name().Short())
+		if parseErr == nil && (latestVersion == nil || version.GreaterThan(latestVersion)) {
+			latestTag, latestVersion = tag, version
+		}
 		return nil
 	})
 
@@ -67,7 +81,7 @@ func GetLatestTag(repo *git.Repository) (*globalEntities.LatestTag, error) {
 	}
 	if latestTag == nil {
 		if numCommits >= MaxAcceptableInitialCommits {
-			log.Warnf("No tags found in Git history, falling back to '%s'", DefaultGitTag)
+			log.Warnf("No version tags found in Git history, falling back to '%s'", DefaultGitTag)
 			version, _ := semver.NewVersion(DefaultGitTag)
 			return &globalEntities.LatestTag{
 				Tag:  version,
@@ -75,19 +89,35 @@ func GetLatestTag(repo *git.Repository) (*globalEntities.LatestTag, error) {
 			}, nil
 		}
 
-		log.Warn("This project seems be a new project, the CHANGELOG should be committed by itself.")
+		log.Warn("This project seems to be a new project; the CHANGELOG should be committed by itself.")
 		return nil, ErrNoTagsFound
 	}
 
-	commit, err := repo.CommitObject(latestTag.Hash())
+	latestTagDate, err := tagCommitDate(repo, latestTag)
 	if err != nil {
-		return nil, fmt.Errorf("could not get commit for tag: %w", err)
+		return nil, err
 	}
-	latestTagDate := commit.Committer.When
 
-	version, _ := semver.NewVersion(latestTag.Name().Short())
 	return &globalEntities.LatestTag{
-		Tag:  version,
+		Tag:  latestVersion,
 		Date: latestTagDate,
 	}, nil
+}
+
+// tagCommitDate returns the committer date of the commit a tag points to. An
+// annotated tag points to a tag object rather than a commit, so it is peeled first.
+func tagCommitDate(repo *git.Repository, tag *plumbing.Reference) (time.Time, error) {
+	if annotated, err := repo.TagObject(tag.Hash()); err == nil {
+		commit, commitErr := annotated.Commit()
+		if commitErr != nil {
+			return time.Time{}, fmt.Errorf("could not get commit for tag: %w", commitErr)
+		}
+		return commit.Committer.When, nil
+	}
+
+	commit, err := repo.CommitObject(tag.Hash())
+	if err != nil {
+		return time.Time{}, fmt.Errorf("could not get commit for tag: %w", err)
+	}
+	return commit.Committer.When, nil
 }

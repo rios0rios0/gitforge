@@ -284,6 +284,81 @@ func TestGetLatestTag(t *testing.T) {
 		require.NotNil(t, latestTag)
 		assert.Equal(t, "0.1.0", latestTag.Tag.String())
 	})
+
+	t.Run("should return the highest version rather than the tag listed last", func(t *testing.T) {
+		t.Parallel()
+
+		// given two versions whose names sort the other way round as text, on disk, where
+		// tags are listed in the order of their names
+		repo := createFilesystemRepoWithCommit(t, t.TempDir())
+		addTagToRepo(t, repo, "1.9.0")
+		addTagToRepo(t, repo, "1.10.0")
+
+		// when
+		latestTag, err := gitops.GetLatestTag(repo)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "1.10.0", latestTag.Tag.String())
+	})
+
+	t.Run("should ignore tags that are not semantic versions", func(t *testing.T) {
+		t.Parallel()
+
+		// given a fork carrying its upstream's four-part tags beside its own, on disk, where
+		// the four-part one is listed last
+		repo := createFilesystemRepoWithCommit(t, t.TempDir())
+		addTagToRepo(t, repo, "3.8.0.0")
+		addTagToRepo(t, repo, "nightly")
+		addTagToRepo(t, repo, "3.8.0-1")
+
+		// when
+		latestTag, err := gitops.GetLatestTag(repo)
+
+		// then the version is never nil, which callers used to print as `<nil>`
+		require.NoError(t, err)
+		require.NotNil(t, latestTag.Tag)
+		assert.Equal(t, "3.8.0-1", latestTag.Tag.String())
+	})
+
+	t.Run("should treat a repository whose tags are not versions like one without tags", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := createInMemoryRepoWithCommit(t)
+		addTagToRepo(t, repo, "3.8.0.0")
+
+		// when
+		latestTag, err := gitops.GetLatestTag(repo)
+
+		// then
+		require.ErrorIs(t, err, gitops.ErrNoTagsFound)
+		assert.Nil(t, latestTag)
+	})
+
+	t.Run("should read the date of the commit an annotated tag points to", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := createInMemoryRepoWithCommit(t)
+		head, err := repo.Head()
+		require.NoError(t, err)
+		commit, err := repo.CommitObject(head.Hash())
+		require.NoError(t, err)
+		_, err = repo.CreateTag("v2.0.0", head.Hash(), &git.CreateTagOptions{
+			Tagger:  &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now().Add(time.Hour)},
+			Message: "release 2.0.0",
+		})
+		require.NoError(t, err)
+
+		// when
+		latestTag, err := gitops.GetLatestTag(repo)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "2.0.0", latestTag.Tag.String())
+		assert.True(t, commit.Committer.When.Equal(latestTag.Date), "the date is the commit's, not the tagger's")
+	})
 }
 
 func TestCreateAndSwitchBranch(t *testing.T) {
@@ -310,6 +385,123 @@ func TestCreateAndSwitchBranch(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, exists)
 	})
+
+	t.Run("should leave every local change and every untracked and ignored file in place", func(t *testing.T) {
+		t.Parallel()
+
+		// given an operator's checkout holding work no commit knows about
+		repoPath := t.TempDir()
+		repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
+		headRef, err := repo.Head()
+		require.NoError(t, err)
+		files := writeUncommittedWork(t, repoPath, wt)
+
+		// when
+		err = gitops.CreateAndSwitchBranch(repo, wt, "feature-branch", headRef.Hash())
+
+		// then the branch is current, and nothing in the working tree or the index moved
+		require.NoError(t, err)
+		head, err := repo.Head()
+		require.NoError(t, err)
+		assert.Equal(t, plumbing.NewBranchReferenceName("feature-branch"), head.Name())
+		assertUncommittedWorkKept(t, wt, files)
+	})
+
+	t.Run(
+		"should refuse to switch to another commit over local changes instead of discarding them",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given a branch to create at an older commit, and a local edit in the way
+			repoPath := t.TempDir()
+			repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
+			older, err := repo.Head()
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("# Second\n"), 0o600))
+			_, err = wt.Add("README.md")
+			require.NoError(t, err)
+			newer, err := wt.Commit("second commit", &git.CommitOptions{
+				Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
+			})
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("# local edit\n"), 0o600))
+
+			// when
+			err = gitops.CreateAndSwitchBranch(repo, wt, "older-branch", older.Hash())
+
+			// then the edit is kept, and HEAD and the branches are as they were before
+			require.Error(t, err)
+			content, readErr := os.ReadFile(filepath.Join(repoPath, "README.md"))
+			require.NoError(t, readErr)
+			assert.Equal(t, "# local edit\n", string(content))
+			head, headErr := repo.Head()
+			require.NoError(t, headErr)
+			assert.Equal(t, older.Name(), head.Name(), "the refused switch still moved HEAD")
+			assert.Equal(t, newer, head.Hash())
+			exists, existsErr := gitops.CheckBranchExists(repo, "older-branch")
+			require.NoError(t, existsErr)
+			assert.False(t, exists, "the refused switch still created the branch")
+		},
+	)
+
+	t.Run(
+		"should move the index and the files along when the current branch is moved to another commit",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given the current branch, to be moved back to the commit before .gitignore
+			repoPath := t.TempDir()
+			repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
+			current, err := repo.Head()
+			require.NoError(t, err)
+			commit, err := repo.CommitObject(current.Hash())
+			require.NoError(t, err)
+			parent := commit.ParentHashes[0]
+
+			// when
+			err = gitops.CreateAndSwitchBranch(repo, wt, current.Name().Short(), parent)
+
+			// then
+			require.NoError(t, err)
+			head, err := repo.Head()
+			require.NoError(t, err)
+			assert.Equal(t, current.Name(), head.Name())
+			assert.Equal(t, parent, head.Hash())
+			assert.NoFileExists(t, filepath.Join(repoPath, ".gitignore"), "a file of the old commit was left behind")
+			status, err := wt.Status()
+			require.NoError(t, err)
+			assert.True(t, status.IsClean(), "the index or the files are not at the branch's commit:\n%s", status)
+		},
+	)
+
+	t.Run(
+		"should leave the current branch at its commit when local changes refuse moving it",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given the current branch, to be moved back a commit, and a local edit in the way
+			repoPath := t.TempDir()
+			repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
+			current, err := repo.Head()
+			require.NoError(t, err)
+			commit, err := repo.CommitObject(current.Hash())
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("# local edit\n"), 0o600))
+
+			// when
+			err = gitops.CreateAndSwitchBranch(repo, wt, current.Name().Short(), commit.ParentHashes[0])
+
+			// then
+			require.Error(t, err)
+			head, headErr := repo.Head()
+			require.NoError(t, headErr)
+			assert.Equal(t, current.Name(), head.Name())
+			assert.Equal(t, current.Hash(), head.Hash(), "the refused move still moved the branch")
+			content, readErr := os.ReadFile(filepath.Join(repoPath, "README.md"))
+			require.NoError(t, readErr)
+			assert.Equal(t, "# local edit\n", string(content))
+		},
+	)
 }
 
 func TestCheckoutBranch(t *testing.T) {
@@ -329,6 +521,29 @@ func TestCheckoutBranch(t *testing.T) {
 
 		// then
 		require.NoError(t, err)
+	})
+
+	t.Run("should keep untracked and ignored files when switching back", func(t *testing.T) {
+		t.Parallel()
+
+		// given an operator who switched to a new branch with work lying around
+		repoPath := t.TempDir()
+		repo, wt := createFilesystemRepoWithIgnoredFile(t, repoPath)
+		headRef, err := repo.Head()
+		require.NoError(t, err)
+		require.NoError(t, gitops.CreateAndSwitchBranch(repo, wt, "feature-branch", headRef.Hash()))
+		untracked := filepath.Join(repoPath, "notes.txt")
+		ignored := filepath.Join(repoPath, ignoredFileName)
+		require.NoError(t, os.WriteFile(untracked, []byte("notes\n"), 0o600))
+		require.NoError(t, os.WriteFile(ignored, []byte("SETTING=fixture-value-placeholder\n"), 0o600))
+
+		// when
+		err = gitops.CheckoutBranch(wt, headRef.Name().Short())
+
+		// then
+		require.NoError(t, err)
+		assert.FileExists(t, untracked)
+		assert.FileExists(t, ignored)
 	})
 
 	t.Run("should return error for non-existent branch", func(t *testing.T) {
@@ -846,6 +1061,69 @@ func addTagToRepo(t *testing.T, repo *git.Repository, tagName string) {
 	)
 	err = repo.Storer.SetReference(tagRef)
 	require.NoError(t, err)
+}
+
+// ignoredFileName is the file the .gitignore of createFilesystemRepoWithIgnoredFile ignores.
+const ignoredFileName = "local.env"
+
+// createFilesystemRepoWithIgnoredFile creates a git repo on disk with two commits, the
+// second adding a .gitignore that ignores ignoredFileName, and returns it with its worktree.
+func createFilesystemRepoWithIgnoredFile(t *testing.T, path string) (*git.Repository, *git.Worktree) {
+	t.Helper()
+
+	repo := createFilesystemRepoWithCommit(t, path)
+	wt, err := repo.Worktree()
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(path, ".gitignore"), []byte(ignoredFileName+"\n"), 0o600))
+	_, err = wt.Add(".gitignore")
+	require.NoError(t, err)
+	_, err = wt.Commit("ignored "+ignoredFileName, &git.CommitOptions{
+		Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
+	})
+	require.NoError(t, err)
+	return repo, wt
+}
+
+// uncommittedWork names the files writeUncommittedWork leaves in a checkout.
+type uncommittedWork struct {
+	edited, staged, untracked, ignored string
+}
+
+// writeUncommittedWork leaves one of each kind of work a commit does not hold: an edit
+// to a tracked file, a staged new file, an untracked file and an ignored one.
+func writeUncommittedWork(t *testing.T, path string, wt *git.Worktree) uncommittedWork {
+	t.Helper()
+
+	files := uncommittedWork{
+		edited:    filepath.Join(path, "README.md"),
+		staged:    filepath.Join(path, "staged.txt"),
+		untracked: filepath.Join(path, "notes.txt"),
+		ignored:   filepath.Join(path, ignoredFileName),
+	}
+	require.NoError(t, os.WriteFile(files.edited, []byte("# local edit\n"), 0o600))
+	require.NoError(t, os.WriteFile(files.staged, []byte("staged\n"), 0o600))
+	_, err := wt.Add("staged.txt")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(files.untracked, []byte("notes\n"), 0o600))
+	require.NoError(t, os.WriteFile(files.ignored, []byte("SETTING=fixture-value-placeholder\n"), 0o600))
+	return files
+}
+
+// assertUncommittedWorkKept asserts every file writeUncommittedWork left is still
+// there, the edit unreverted and the staged file still staged.
+func assertUncommittedWorkKept(t *testing.T, wt *git.Worktree, files uncommittedWork) {
+	t.Helper()
+
+	content, err := os.ReadFile(files.edited)
+	require.NoError(t, err)
+	assert.Equal(t, "# local edit\n", string(content), "the edit to a tracked file was reverted")
+	assert.FileExists(t, files.staged)
+	assert.FileExists(t, files.untracked)
+	assert.FileExists(t, files.ignored)
+
+	status, err := wt.Status()
+	require.NoError(t, err)
+	assert.Equal(t, git.Added, status.File("staged.txt").Staging, "the staged file should still be staged")
 }
 
 // createFilesystemRepoWithCommit creates a git repo on disk with one commit.

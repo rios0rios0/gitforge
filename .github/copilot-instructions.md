@@ -69,7 +69,7 @@ gitforge/
 │   │   └── infrastructure/
 │   │       ├── operations.go          # GitOperations struct: NewGitOperations, OpenRepo; error sentinels
 │   │       ├── operations_auth.go     # Authentication method resolution
-│   │       ├── operations_branch.go   # Branch create/switch/checkout; remote branch list + remote/local delete helpers
+│   │       ├── operations_branch.go   # Branch create/switch (never a forced checkout)/checkout; remote branch list + remote/local delete helpers
 │   │       ├── operations_clone.go    # Repository cloning
 │   │       ├── operations_commit.go   # Commit creation (GPG/SSH signing)
 │   │       ├── operations_push.go     # Push (SSH/HTTPS)

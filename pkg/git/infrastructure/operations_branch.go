@@ -154,8 +154,24 @@ func DeleteLocalBranch(repo *git.Repository, branchName string) error {
 	return nil
 }
 
-// CreateAndSwitchBranch creates a new branch and switches to it.
+// CreateAndSwitchBranch creates a new branch at hash and makes it the current branch.
 // Exported for use by autobump (github.com/rios0rios0/autobump).
+//
+// When hash is the commit HEAD already points to -- what every caller passes -- the
+// switch needs nothing but HEAD itself: the branch is created and HEAD is pointed at
+// it, leaving the index and the working tree exactly as they are, as `git switch -c`
+// does. A go-git checkout is not used for that, in either of its forms. The plain one
+// rejects the switch when the index differs from the working tree for reasons that
+// would not stop git, such as line-ending normalisation after a native clone; and the
+// forced one resets the working tree hard, which discards local changes and deletes
+// every untracked and ignored file -- in an operator's own checkout, their `.env`,
+// build output and editor settings -- even though no file needs to change.
+//
+// A hash HEAD does not point to needs the working tree to change, so it gets a regular
+// checkout, which refuses when local changes are in the way instead of discarding them.
+// HEAD is compared before the branch is written: when branchName is the current branch,
+// writing it first makes HEAD resolve to hash, which passes a move to another commit off
+// as a switch with no file to change.
 func CreateAndSwitchBranch(
 	repo *git.Repository,
 	workTree *git.Worktree,
@@ -163,34 +179,69 @@ func CreateAndSwitchBranch(
 	hash plumbing.Hash,
 ) error {
 	log.Infof("Creating and switching to new branch '%s'", branchName)
-	ref := plumbing.NewHashReference(plumbing.ReferenceName("refs/heads/"+branchName), hash)
-	err := repo.Storer.SetReference(ref)
-	if err != nil {
+	branch := plumbing.NewBranchReferenceName(branchName)
+	if head, err := repo.Head(); err != nil || head.Hash() != hash {
+		return checkoutNewBranch(repo, workTree, branch, hash)
+	}
+
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(branch, hash)); err != nil {
 		return fmt.Errorf("could not create branch: %w", err)
 	}
 
-	// Force checkout is safe here because the new branch points to the same
-	// commit as HEAD — no files need to change. This avoids go-git rejecting
-	// the checkout due to index discrepancies (e.g. line-ending normalisation
-	// after a native git clone) that would not block a real branch switch.
-	return checkoutBranchWithForce(workTree, branchName, true)
+	log.Infof("Switching to branch '%s'", branchName)
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, branch)); err != nil {
+		return fmt.Errorf("could not checkout branch: %w", err)
+	}
+	return nil
 }
 
-// CheckoutBranch switches to the given branch.
+// checkoutNewBranch points branch at hash and checks it out. go-git moves HEAD to the
+// branch before it refuses a checkout over local changes, so a refusal puts HEAD and the
+// branch back as they were. Left moved, they would name a commit that the index and the
+// working tree are not at, and the next commit would quietly undo every change between.
+func checkoutNewBranch(
+	repo *git.Repository,
+	workTree *git.Worktree,
+	branch plumbing.ReferenceName,
+	hash plumbing.Hash,
+) error {
+	previousHead, err := repo.Storer.Reference(plumbing.HEAD)
+	if err != nil {
+		return fmt.Errorf("could not read HEAD: %w", err)
+	}
+	previousBranch, err := repo.Storer.Reference(branch)
+	if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return fmt.Errorf("could not read branch %q: %w", branch.Short(), err)
+	}
+
+	if err = repo.Storer.SetReference(plumbing.NewHashReference(branch, hash)); err != nil {
+		return fmt.Errorf("could not create branch: %w", err)
+	}
+
+	checkoutErr := CheckoutBranch(workTree, branch.Short())
+	if checkoutErr == nil {
+		return nil
+	}
+
+	restoreErr := repo.Storer.SetReference(previousHead)
+	if previousBranch != nil {
+		restoreErr = errors.Join(restoreErr, repo.Storer.SetReference(previousBranch))
+	} else {
+		restoreErr = errors.Join(restoreErr, repo.Storer.RemoveReference(branch))
+	}
+	if restoreErr != nil {
+		return errors.Join(checkoutErr, fmt.Errorf("could not put HEAD and %q back: %w", branch.Short(), restoreErr))
+	}
+	return checkoutErr
+}
+
+// CheckoutBranch switches to the given branch. It never forces the checkout: a forced
+// go-git checkout resets the working tree hard, deleting untracked and ignored files.
 // Exported for use by autobump (github.com/rios0rios0/autobump).
 func CheckoutBranch(w *git.Worktree, branchName string) error {
-	return checkoutBranchWithForce(w, branchName, false)
-}
-
-// checkoutBranchWithForce switches to the given branch, optionally forcing the
-// checkout even when the worktree has unstaged changes. Force is safe when
-// switching to a branch that points to the same commit (e.g. a newly created
-// branch from HEAD), because no files need to change.
-func checkoutBranchWithForce(w *git.Worktree, branchName string, force bool) error {
 	log.Infof("Switching to branch '%s'", branchName)
 	err := w.Checkout(&git.CheckoutOptions{
-		Branch: plumbing.ReferenceName("refs/heads/" + branchName),
-		Force:  force,
+		Branch: plumbing.NewBranchReferenceName(branchName),
 	})
 	if err != nil {
 		return fmt.Errorf("could not checkout branch: %w", err)

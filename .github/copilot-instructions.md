@@ -12,7 +12,7 @@ Always reference these instructions first and fall back to search or bash comman
 - Build (compile check): `go build ./...`
 - Run tests: `make test` (preferred) or `go test ./...` (acceptable shortcut during development).
 - Run linting: `make lint` -- NEVER run `golangci-lint` directly.
-- Run security analysis: `make sast` -- NEVER run `gitleaks`, `semgrep`, `trivy`, `hadolint`, or `codeql` directly.
+- Run security analysis: `make sast` -- NEVER run `gitleaks`, `semgrep`, `hadolint`, `shellcheck`, or `codeql` directly.
 - Tidy dependencies: `go mod tidy`
 
 ### Linting, Testing, and SAST with Makefile
@@ -22,7 +22,7 @@ This project uses the [rios0rios0/pipelines](https://github.com/rios0rios0/pipel
 ```bash
 make lint    # golangci-lint via pipeline scripts
 make test    # unit + integration tests via pipeline scripts
-make sast    # CodeQL, Semgrep, Trivy, Hadolint, Gitleaks
+make sast    # CodeQL, Semgrep, Hadolint, ShellCheck, Gitleaks
 ```
 
 ### Important: This Is a Library

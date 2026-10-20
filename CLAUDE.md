@@ -12,7 +12,7 @@ gitforge is a shared Go library (no `main.go`, no CLI) providing unified abstrac
 go build ./...          # Compile check (~2s)
 make lint               # golangci-lint via pipeline scripts (~3-5s)
 make test               # Full test suite (~3s clean, <1s cached)
-make sast               # CodeQL, Semgrep, Trivy, Hadolint, Gitleaks (~1-3min)
+make sast               # CodeQL, Semgrep, Hadolint, ShellCheck, Gitleaks (~1-3min)
 go test ./...           # Quick test during development (acceptable shortcut)
 ```
 

@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed the Codeberg repository discovery, `GetTags` and the open pull request lookup behind `PullRequestExists` and `ClosePullRequest` paging forever on a server that ignores `page`: they now share one walk that ends, with a warning, at the first full page that brings nothing not already read, the same guard the Azure DevOps listings carry'
-time: '2026-10-20T15:22:48.38217354Z'

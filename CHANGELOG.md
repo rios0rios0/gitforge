@@ -22,6 +22,19 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.3.1] - 2026-10-20
+
+### Changed
+
+- changed `CLAUDE.md`, the Copilot instructions and the code-review skill to list the SAST suite `make sast` runs today (CodeQL, Semgrep, Hadolint, ShellCheck, Gitleaks) and its suppression files, dropping Trivy, which the pipelines no longer run
+
+### Fixed
+
+- fixed the Codeberg `ListFiles` reading only the first page of the Forgejo tree listing, which pages at 1000 entries by default: it now reads every page, the later ones from the commit the first page reported, until it holds `total_count` entries or `truncated` comes back unset, and fails with an error instead of a partial list when a page brings no entry not already read
+- fixed the Codeberg repository discovery, `GetTags` and the open pull request lookup behind `PullRequestExists` and `ClosePullRequest` paging forever on a server that ignores `page`: they now share one walk that ends, with a warning, at the first full page that brings nothing not already read, the same guard the Azure DevOps listings carry
+- fixed the GitHub `GetPullRequestCheckStatus` judging a commit on the first page of its check suites only, 30 by default, so a failing suite past that page let the commit pass: it now reads every page, 100 suites at a time, and fails with an error instead of a verdict when a page brings no suite not already read
+- fixed the GitHub `ListFiles` returning a silently partial list for a repository whose recursive tree GitHub truncates past 100,000 entries or 7 MB: a truncated listing is now replaced by a walk of the tree one level at a time from the root tree it reported, and a level that is itself truncated, a tree that contains one of its own ancestors or a level that cannot be read is an error instead of a partial list
+
 ## [4.3.0] - 2026-10-20
 
 ### Added

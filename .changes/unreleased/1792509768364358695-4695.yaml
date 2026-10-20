@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed the GitHub `GetPullRequestCheckStatus` judging a commit on the first page of its check suites only, 30 by default, so a failing suite past that page let the commit pass: it now reads every page, 100 suites at a time, and fails with an error instead of a verdict when a page brings no suite not already read'
-time: '2026-10-20T15:22:48.364246968Z'

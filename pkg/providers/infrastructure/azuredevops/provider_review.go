@@ -406,32 +406,13 @@ func (p *Provider) GetPullRequestFiles(
 
 	latestIter := iterResult.Value[len(iterResult.Value)-1].ID
 
-	// get changes for the latest iteration
-	changesEndpoint := fmt.Sprintf(
-		"/%s/_apis/git/repositories/%s/pullrequests/%d/iterations/%d/changes?api-version=%s",
-		repo.Project, resolveRepoIdentifier(repo), prID, latestIter, apiVersion,
-	)
-
-	changesResp, err := p.doRequest(ctx, baseURL, http.MethodGet, changesEndpoint, nil)
+	changes, err := p.listPullRequestIterationChanges(ctx, repo, prID, latestIter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pull request changes: %w", err)
-	}
-
-	var changesResult struct {
-		ChangeEntries []struct {
-			ChangeType string `json:"changeType"`
-			Item       struct {
-				Path string `json:"path"`
-			} `json:"item"`
-			OriginalPath string `json:"originalPath"`
-		} `json:"changeEntries"`
-	}
-	if unmarshalErr := json.Unmarshal(changesResp, &changesResult); unmarshalErr != nil {
-		return nil, fmt.Errorf("failed to parse changes response: %w", unmarshalErr)
+		return nil, err
 	}
 
 	var files []globalEntities.PullRequestFile
-	for _, change := range changesResult.ChangeEntries {
+	for _, change := range changes {
 		status := mapADOChangeType(change.ChangeType)
 		files = append(files, globalEntities.PullRequestFile{
 			Path:    change.Item.Path,
@@ -441,6 +422,128 @@ func (p *Provider) GetPullRequestFiles(
 	}
 
 	return files, nil
+}
+
+// pullRequestChangesPageSize is the `$top` asked for on the first page of a pull
+// request iteration's changes: the most the endpoint accepts. It serves 100
+// changes when `$top` is omitted and at most 2000 — see
+// https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-iteration-changes/get
+// — and every later page is read with the `$top` its cursor names.
+const pullRequestChangesPageSize = 2000
+
+// adoIterationChange is one entry of a pull request iteration's changes listing.
+type adoIterationChange struct {
+	ChangeTrackingID json.RawMessage `json:"changeTrackingId"`
+	ChangeType       string          `json:"changeType"`
+	Item             struct {
+		Path string `json:"path"`
+	} `json:"item"`
+	OriginalPath string `json:"originalPath"`
+}
+
+// adoIterationChangesPage is one page of a pull request iteration's changes
+// listing, with the cursor to the next page: the `$skip` and `$top` to read it
+// with, both zero once there are no more changes.
+type adoIterationChangesPage struct {
+	ChangeEntries []adoIterationChange `json:"changeEntries"`
+	NextSkip      int                  `json:"nextSkip"`
+	NextTop       int                  `json:"nextTop"`
+}
+
+// listPullRequestIterationChanges returns every change in one iteration of a
+// pull request. It is the single reader of that listing: GetPullRequestFiles,
+// and through it GetPullRequestDiff, and getChangeTrackingID all go through it.
+//
+// The listing is paged, and a request without `$top` stops at the first 100
+// changes, so without the walk a pull request with more changed files would lose
+// the rest from its file list and diff, and a comment on one of them would go out
+// without its changeTrackingId. The walk reads the first page with
+// pullRequestChangesPageSize and then follows the `nextSkip`/`nextTop` cursor
+// each page returns until it comes back zero.
+//
+// Entries are de-duplicated by path. Every entry carries one, a diff lists each
+// path once, and both callers identify files by it; changeTrackingId would not
+// do, because an entry can arrive without one, and keying on it would fold every
+// such entry into a single file. A page that adds no new path ends the walk, so
+// a server that ignores `$skip`, or a cursor that points back at a page already
+// read, cannot make it spin. The cursor is still an offset: were the listing to
+// change between two requests, an entry could shift past a page boundary and be
+// missed. An iteration records a single push, so its changes are not expected to
+// move.
+func (p *Provider) listPullRequestIterationChanges(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID, iterationID int,
+) ([]adoIterationChange, error) {
+	baseURL := buildBaseURL(repo.Organization)
+	repoIdentifier := resolveRepoIdentifier(repo)
+	basePath := fmt.Sprintf(
+		"/%s/_apis/git/repositories/%s/pullrequests/%d/iterations/%d/changes?api-version=%s",
+		repo.Project, repoIdentifier, prID, iterationID, apiVersion,
+	)
+
+	var changes []adoIterationChange
+	listed := make(map[string]struct{})
+	skip, top := 0, pullRequestChangesPageSize
+	for {
+		endpoint := fmt.Sprintf("%s&$top=%d&$skip=%d", basePath, top, skip)
+
+		page, err := p.fetchIterationChangesPage(ctx, baseURL, endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		added := 0
+		for _, change := range page.ChangeEntries {
+			if _, seen := listed[change.Item.Path]; seen {
+				continue
+			}
+			listed[change.Item.Path] = struct{}{}
+			changes = append(changes, change)
+			added++
+		}
+
+		if page.NextSkip <= 0 || page.NextTop <= 0 {
+			break
+		}
+		if added == 0 {
+			log.WithFields(log.Fields{
+				"project":    repo.Project,
+				"repository": repoIdentifier,
+				logFieldPRID: prID,
+				"iteration":  iterationID,
+				"skip":       skip,
+			}).Warn(
+				"Azure DevOps served a page of pull request changes that were all listed already; " +
+					"stopped paging, so the changed files returned may be incomplete",
+			)
+			break
+		}
+		skip, top = page.NextSkip, page.NextTop
+	}
+
+	return changes, nil
+}
+
+// fetchIterationChangesPage performs a single GET against a pull request
+// iteration's changes listing and returns the page it serves.
+func (p *Provider) fetchIterationChangesPage(
+	ctx context.Context,
+	baseURL, endpoint string,
+) (adoIterationChangesPage, error) {
+	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return adoIterationChangesPage{}, fmt.Errorf("failed to get pull request iteration changes: %w", err)
+	}
+
+	var page adoIterationChangesPage
+	if unmarshalErr := json.Unmarshal(resp, &page); unmarshalErr != nil {
+		return adoIterationChangesPage{}, fmt.Errorf(
+			"failed to parse iteration changes response: %w", unmarshalErr,
+		)
+	}
+
+	return page, nil
 }
 
 // ListPullRequestComments returns every comment on the PR by paginating
@@ -847,7 +950,8 @@ func (p *Provider) getLatestPullRequestIterationID(
 // `changeTrackingId` — the caller is expected to check the returned value's length
 // before embedding it in the thread payload. ADO's API returns paths with a leading
 // slash (e.g. "/README.md") while callers may pass paths without one — both forms are
-// normalised before comparison.
+// normalised before comparison. Every page of the iteration's changes is read through
+// listPullRequestIterationChanges, so a file past the first page is found too.
 //
 // The value is returned as `json.RawMessage` so the original JSON shape (int / string /
 // other) round-trips byte-for-byte into the thread create payload that gets sent back
@@ -862,31 +966,13 @@ func (p *Provider) getChangeTrackingID(
 	iterationID int,
 	filePath string,
 ) (json.RawMessage, bool, error) {
-	baseURL := buildBaseURL(repo.Organization)
-	endpoint := fmt.Sprintf(
-		"/%s/_apis/git/repositories/%s/pullrequests/%d/iterations/%d/changes?api-version=%s",
-		repo.Project, resolveRepoIdentifier(repo), prID, iterationID, apiVersion,
-	)
-
-	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
+	changes, err := p.listPullRequestIterationChanges(ctx, repo, prID, iterationID)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to get pull request iteration changes: %w", err)
-	}
-
-	var result struct {
-		ChangeEntries []struct {
-			ChangeTrackingID json.RawMessage `json:"changeTrackingId"`
-			Item             struct {
-				Path string `json:"path"`
-			} `json:"item"`
-		} `json:"changeEntries"`
-	}
-	if unmarshalErr := json.Unmarshal(resp, &result); unmarshalErr != nil {
-		return nil, false, fmt.Errorf("failed to parse iteration changes response: %w", unmarshalErr)
+		return nil, false, err
 	}
 
 	target := strings.TrimPrefix(filePath, "/")
-	for _, entry := range result.ChangeEntries {
+	for _, entry := range changes {
 		if strings.TrimPrefix(entry.Item.Path, "/") != target {
 			continue
 		}

@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed the Azure DevOps `GetPullRequestFiles`, and the `GetPullRequestDiff` built on it, returning only the first 100 changed files of a pull request, the page Azure DevOps serves when no `$top` is sent, which also posted an inline comment on any later file without its `changeTrackingId`: the changes of an iteration are now read through one walk that follows the `nextSkip`/`nextTop` cursor the endpoint returns, lists a file served on two pages once, and stops at a page that adds nothing new, while the `changeTrackingId` lookup stops at the page that holds its file'
+time: '2026-10-20T13:54:19.673146871Z'

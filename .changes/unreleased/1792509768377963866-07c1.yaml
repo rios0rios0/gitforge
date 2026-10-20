@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed the GitHub `ListFiles` returning a silently partial list for a repository whose recursive tree GitHub truncates past 100,000 entries or 7 MB: a truncated listing is now replaced by a walk of the tree one level at a time from the root tree it reported, and a level that is itself truncated, a tree that contains one of its own ancestors or a level that cannot be read is an error instead of a partial list'
+time: '2026-10-20T15:22:48.377899893Z'

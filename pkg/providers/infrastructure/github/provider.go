@@ -1,6 +1,7 @@
 package github
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -28,6 +29,12 @@ const (
 	prStateClosed = "closed"
 	prStateMerged = "merged"
 )
+
+// errIncompleteListing reports a listing that could not be read to its end: a
+// page or tree level the API marked as cut short, or a walk that stopped making
+// progress. Returning what was read so far would hand callers a partial listing
+// they could not tell apart from a complete one.
+var errIncompleteListing = errors.New("listing could not be read completely")
 
 // Provider implements ForgeProvider, FileAccessProvider, and LocalGitAuthProvider for GitHub.
 type Provider struct {

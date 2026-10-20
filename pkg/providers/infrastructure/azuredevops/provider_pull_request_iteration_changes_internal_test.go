@@ -223,6 +223,71 @@ func TestGetChangeTrackingIDReadsEveryPage(t *testing.T) {
 	})
 }
 
+func TestGetChangeTrackingIDStopsAtTheRequestedFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should not read the pages after the one that holds the requested file", func(t *testing.T) {
+		t.Parallel()
+
+		// given: three pages, and a file on the first.
+		listing := newIterationChangesListing(2*fakeChangesPageCap + fakeChangesPageCap/2)
+		mux := http.NewServeMux()
+		mux.HandleFunc(iterationChangesRoute, func(w http.ResponseWriter, r *http.Request) {
+			listing.answer(r.URL.Query())
+			writeIterationChangesPage(w, listing.pageFor(r.URL.Query()))
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		changeTrackingID, found, err := p.getChangeTrackingID(
+			context.Background(), repo, changesPullRequestID, changesIterationID,
+			strings.TrimPrefix(changedFilePath(0), "/"),
+		)
+
+		// then
+		require.NoError(t, err)
+		assert.True(t, found)
+		assert.JSONEq(t, "1", string(changeTrackingID))
+		assert.Equal(t, 1, listing.requests(), "a file on the first page needs only the first page")
+	})
+
+	t.Run("should find the requested file even when a page after it would have failed", func(t *testing.T) {
+		t.Parallel()
+
+		// given: the file is on the first page and the second page fails.
+		listing := newIterationChangesListing(2*fakeChangesPageCap + fakeChangesPageCap/2)
+		mux := http.NewServeMux()
+		mux.HandleFunc(iterationChangesRoute, func(w http.ResponseWriter, r *http.Request) {
+			if listing.answer(r.URL.Query()) == 2 {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			writeIterationChangesPage(w, listing.pageFor(r.URL.Query()))
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+		middleOfFirstPage := fakeChangesPageCap / 2
+
+		// when
+		changeTrackingID, found, err := p.getChangeTrackingID(
+			context.Background(), repo, changesPullRequestID, changesIterationID,
+			strings.TrimPrefix(changedFilePath(middleOfFirstPage), "/"),
+		)
+
+		// then
+		require.NoError(t, err, "the page that failed was never needed")
+		assert.True(t, found)
+		assert.JSONEq(t, strconv.Itoa(middleOfFirstPage+1), string(changeTrackingID))
+	})
+}
+
 func TestGetPullRequestFilesDeduplicatesAcrossPages(t *testing.T) {
 	t.Parallel()
 

@@ -451,8 +451,30 @@ type adoIterationChangesPage struct {
 }
 
 // listPullRequestIterationChanges returns every change in one iteration of a
-// pull request. It is the single reader of that listing: GetPullRequestFiles,
-// and through it GetPullRequestDiff, and getChangeTrackingID all go through it.
+// pull request, read through walkPullRequestIterationChanges: GetPullRequestFiles,
+// and through it GetPullRequestDiff, need the whole listing.
+func (p *Provider) listPullRequestIterationChanges(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	prID, iterationID int,
+) ([]adoIterationChange, error) {
+	var changes []adoIterationChange
+	err := p.walkPullRequestIterationChanges(ctx, repo, prID, iterationID, func(change adoIterationChange) bool {
+		changes = append(changes, change)
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return changes, nil
+}
+
+// walkPullRequestIterationChanges hands every change in one iteration of a pull
+// request to visit, once each and in listing order, until the listing ends or
+// visit returns false. It is the single reader of that listing:
+// listPullRequestIterationChanges walks it whole, while getChangeTrackingID stops
+// at the file it is looking for, so a comment on a file near the start of a long
+// listing does not wait for the pages after it.
 //
 // The listing is paged, and a request without `$top` stops at the first 100
 // changes, so without the walk a pull request with more changed files would lose
@@ -470,11 +492,12 @@ type adoIterationChangesPage struct {
 // change between two requests, an entry could shift past a page boundary and be
 // missed. An iteration records a single push, so its changes are not expected to
 // move.
-func (p *Provider) listPullRequestIterationChanges(
+func (p *Provider) walkPullRequestIterationChanges(
 	ctx context.Context,
 	repo globalEntities.Repository,
 	prID, iterationID int,
-) ([]adoIterationChange, error) {
+	visit func(adoIterationChange) bool,
+) error {
 	baseURL := buildBaseURL(repo.Organization)
 	repoIdentifier := resolveRepoIdentifier(repo)
 	basePath := fmt.Sprintf(
@@ -482,7 +505,6 @@ func (p *Provider) listPullRequestIterationChanges(
 		repo.Project, repoIdentifier, prID, iterationID, apiVersion,
 	)
 
-	var changes []adoIterationChange
 	listed := make(map[string]struct{})
 	skip, top := 0, pullRequestChangesPageSize
 	for {
@@ -490,7 +512,7 @@ func (p *Provider) listPullRequestIterationChanges(
 
 		page, err := p.fetchIterationChangesPage(ctx, baseURL, endpoint)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		added := 0
@@ -499,12 +521,14 @@ func (p *Provider) listPullRequestIterationChanges(
 				continue
 			}
 			listed[change.Item.Path] = struct{}{}
-			changes = append(changes, change)
 			added++
+			if !visit(change) {
+				return nil
+			}
 		}
 
 		if page.NextSkip <= 0 || page.NextTop <= 0 {
-			break
+			return nil
 		}
 		if added == 0 {
 			log.WithFields(log.Fields{
@@ -517,12 +541,10 @@ func (p *Provider) listPullRequestIterationChanges(
 				"Azure DevOps served a page of pull request changes that were all listed already; " +
 					"stopped paging, so the changed files returned may be incomplete",
 			)
-			break
+			return nil
 		}
 		skip, top = page.NextSkip, page.NextTop
 	}
-
-	return changes, nil
 }
 
 // fetchIterationChangesPage performs a single GET against a pull request
@@ -950,8 +972,10 @@ func (p *Provider) getLatestPullRequestIterationID(
 // `changeTrackingId` — the caller is expected to check the returned value's length
 // before embedding it in the thread payload. ADO's API returns paths with a leading
 // slash (e.g. "/README.md") while callers may pass paths without one — both forms are
-// normalised before comparison. Every page of the iteration's changes is read through
-// listPullRequestIterationChanges, so a file past the first page is found too.
+// normalised before comparison. The changes are read through
+// walkPullRequestIterationChanges, which stops at the page that holds the file: a file
+// past the first page is found too, and a file near the start of a long listing does
+// not wait for the pages after it, nor fail on an error one of them would have hit.
 //
 // The value is returned as `json.RawMessage` so the original JSON shape (int / string /
 // other) round-trips byte-for-byte into the thread create payload that gets sent back
@@ -966,25 +990,28 @@ func (p *Provider) getChangeTrackingID(
 	iterationID int,
 	filePath string,
 ) (json.RawMessage, bool, error) {
-	changes, err := p.listPullRequestIterationChanges(ctx, repo, prID, iterationID)
-	if err != nil {
-		return nil, false, err
-	}
-
 	target := strings.TrimPrefix(filePath, "/")
-	for _, entry := range changes {
+	var (
+		changeTrackingID json.RawMessage
+		found            bool
+	)
+	err := p.walkPullRequestIterationChanges(ctx, repo, prID, iterationID, func(entry adoIterationChange) bool {
 		if strings.TrimPrefix(entry.Item.Path, "/") != target {
-			continue
+			return true
 		}
 		// Path matched. The raw bytes are returned even if empty — the
 		// caller distinguishes "matched without ID" from "matched with
 		// ID" by checking `len(returned) > 0` so the warning shape on
 		// the caller side stays accurate (Copilot thread
 		// `PRRT_kwDORQWb3M5-6QRd`).
-		return entry.ChangeTrackingID, true, nil
+		changeTrackingID, found = entry.ChangeTrackingID, true
+		return false
+	})
+	if err != nil {
+		return nil, false, err
 	}
 
-	return nil, false, nil
+	return changeTrackingID, found, nil
 }
 
 func (p *Provider) GetPullRequestCheckStatus(

@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed the CI style check failing on golangci-lint paralleltest findings by adding t.Parallel() to the GitOperations tests and their subtests in pkg/git/infrastructure/operations_test.go, which were written without it'
-time: '2026-10-16T23:33:14.195379506Z'

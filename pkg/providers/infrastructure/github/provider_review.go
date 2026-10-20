@@ -291,17 +291,14 @@ func (p *Provider) GetPullRequestCheckStatus(
 	}
 
 	// also check check suites (GitHub Actions uses check runs, not commit statuses)
-	checkSuites, _, err := p.client.Checks.ListCheckSuitesForRef(
-		ctx, repo.Organization, repo.Name, headSHA,
-		&gh.ListCheckSuiteOptions{},
-	)
+	checkSuites, err := p.listCheckSuites(ctx, repo, headSHA)
 	if err != nil {
-		return false, fmt.Errorf("failed to list check suites: %w", err)
+		return false, err
 	}
 
 	// if there are no statuses and no check suites, consider it as passed (no CI configured)
 	hasStatuses := combinedStatus.GetTotalCount() > 0
-	hasCheckSuites := checkSuites.GetTotal() > 0
+	hasCheckSuites := len(checkSuites) > 0
 
 	if !hasStatuses && !hasCheckSuites {
 		return true, nil
@@ -313,7 +310,7 @@ func (p *Provider) GetPullRequestCheckStatus(
 	}
 
 	// check all check suites (GitHub Actions)
-	for _, suite := range checkSuites.CheckSuites {
+	for _, suite := range checkSuites {
 		if suite.GetStatus() != "completed" {
 			return false, nil
 		}
@@ -323,6 +320,56 @@ func (p *Provider) GetPullRequestCheckStatus(
 	}
 
 	return true, nil
+}
+
+// listCheckSuites returns every check suite of the commit ref.
+//
+// The listing is paged: 30 suites a page unless `per_page` asks for more, at
+// most 100 — see
+// https://docs.github.com/en/rest/checks/suites#list-check-suites-for-a-git-reference
+// — so reading only the first page judged a commit with more suites on a subset
+// of them, and a failing suite past that page let the commit pass. The walk asks
+// for perPage suites at a time and follows the next-page link until there is
+// none. A page that brings no suite not already read while another page is
+// announced means the listing cannot be completed, and is an error: the verdict
+// this feeds must not rest on suites the walk never saw.
+func (p *Provider) listCheckSuites(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	ref string,
+) ([]*gh.CheckSuite, error) {
+	opts := &gh.ListCheckSuiteOptions{PerPage: perPage}
+	var suites []*gh.CheckSuite
+	listed := make(map[int64]struct{})
+	for {
+		page, resp, err := p.client.Checks.ListCheckSuitesForRef(
+			ctx, repo.Organization, repo.Name, ref, opts,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list check suites: %w", err)
+		}
+
+		added := 0
+		for _, suite := range page.CheckSuites {
+			if _, seen := listed[suite.GetID()]; seen {
+				continue
+			}
+			listed[suite.GetID()] = struct{}{}
+			suites = append(suites, suite)
+			added++
+		}
+
+		if resp.NextPage == 0 {
+			return suites, nil
+		}
+		if added == 0 {
+			return nil, fmt.Errorf(
+				"%w: check suites page %d brought no suite not already read",
+				errIncompleteListing, max(opts.Page, 1),
+			)
+		}
+		opts.Page = resp.NextPage
+	}
 }
 
 func (p *Provider) MergePullRequest(

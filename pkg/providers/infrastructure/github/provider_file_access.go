@@ -8,6 +8,7 @@ import (
 	gh "github.com/google/go-github/v66/github"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
+	log "github.com/sirupsen/logrus"
 )
 
 func (p *Provider) GetFileContent(
@@ -39,17 +40,13 @@ func (p *Provider) ListFiles(
 	repo globalEntities.Repository,
 	pattern string,
 ) ([]globalEntities.File, error) {
-	tree, _, err := p.client.Git.GetTree(
-		ctx, repo.Organization, repo.Name,
-		strings.TrimPrefix(repo.DefaultBranch, "refs/heads/"),
-		true,
-	)
+	entries, err := p.listTreeEntries(ctx, repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get repo tree: %w", err)
+		return nil, err
 	}
 
 	var files []globalEntities.File
-	for _, entry := range tree.Entries {
+	for _, entry := range entries {
 		if pattern != "" && !strings.HasSuffix(entry.GetPath(), pattern) {
 			continue
 		}
@@ -61,6 +58,89 @@ func (p *Provider) ListFiles(
 	}
 
 	return files, nil
+}
+
+// listTreeEntries returns every entry of the tree on the repository's default
+// branch, each with its path from the root.
+//
+// A recursive request lists the whole tree in one response unless it is too
+// large: GitHub caps that listing at 100,000 entries and 7 MB and marks a
+// response it cut short as `truncated` — see
+// https://docs.github.com/en/rest/git/trees#get-a-tree — so a large repository
+// came back with entries silently missing. A truncated listing is replaced by a
+// walk of the tree one level at a time, the method the documentation gives for
+// this case, starting from the root tree the truncated response reported so a
+// push to the branch in the middle cannot mix two trees.
+func (p *Provider) listTreeEntries(
+	ctx context.Context,
+	repo globalEntities.Repository,
+) ([]*gh.TreeEntry, error) {
+	tree, _, err := p.client.Git.GetTree(
+		ctx, repo.Organization, repo.Name,
+		strings.TrimPrefix(repo.DefaultBranch, "refs/heads/"),
+		true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repo tree: %w", err)
+	}
+	if !tree.GetTruncated() {
+		return tree.Entries, nil
+	}
+
+	log.WithField("repository", repo.Organization+"/"+repo.Name).
+		Info("GitHub truncated the recursive tree listing; listing the tree one level at a time")
+	return p.walkTree(ctx, repo, tree.GetSHA(), "", make(map[string]struct{}))
+}
+
+// walkTree lists the tree sha one level at a time and returns its entries, and
+// those of every tree below it, with prefix, the tree's own path from the root,
+// in front of each path. onPath holds the trees from the root down to this one.
+// A tree that names one of them cannot occur in a real repository and would make
+// the walk endless, and a level that GitHub truncates even without recursion
+// cannot be listed completely at all; both are errors rather than a partial list.
+func (p *Provider) walkTree(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sha, prefix string,
+	onPath map[string]struct{},
+) ([]*gh.TreeEntry, error) {
+	if _, cycle := onPath[sha]; cycle {
+		return nil, fmt.Errorf("%w: tree %s at /%s contains itself", errIncompleteListing, sha, prefix)
+	}
+
+	tree, _, err := p.client.Git.GetTree(ctx, repo.Organization, repo.Name, sha, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repo tree %s at /%s: %w", sha, prefix, err)
+	}
+	if tree.GetTruncated() {
+		return nil, fmt.Errorf(
+			"%w: tree %s at /%s is truncated even without recursion", errIncompleteListing, sha, prefix,
+		)
+	}
+
+	onPath[sha] = struct{}{}
+	defer delete(onPath, sha)
+
+	var entries []*gh.TreeEntry
+	for _, entry := range tree.Entries {
+		path := entry.GetPath()
+		if prefix != "" {
+			path = prefix + "/" + path
+		}
+		entry.Path = &path
+		entries = append(entries, entry)
+
+		if entry.GetType() != treeType {
+			continue
+		}
+		subtree, walkErr := p.walkTree(ctx, repo, entry.GetSHA(), path, onPath)
+		if walkErr != nil {
+			return nil, walkErr
+		}
+		entries = append(entries, subtree...)
+	}
+
+	return entries, nil
 }
 
 func (p *Provider) GetTags(

@@ -68,41 +68,39 @@ func (p *Provider) findOpenPullRequestNumber(
 ) (int, bool, error) {
 	branch := strings.TrimPrefix(sourceBranch, "refs/heads/")
 
-	page := 1
-	const limit = 50
-
-	for {
-		endpoint := fmt.Sprintf(
-			"/api/v1/repos/%s/%s/pulls?state=open&page=%d&limit=%d",
-			repo.Organization, repo.Name, page, limit,
-		)
-
-		resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return 0, false, fmt.Errorf("failed to list pull requests: %w", err)
-		}
-
-		var prs []forgejoPR
-		if unmarshalErr := json.Unmarshal(resp, &prs); unmarshalErr != nil {
-			return 0, false, fmt.Errorf("failed to parse pull requests response: %w", unmarshalErr)
-		}
-
-		if len(prs) == 0 {
-			return 0, false, nil
-		}
-
-		for _, pr := range prs {
-			if pr.Head.Ref == branch {
-				return pr.Number, true, nil
+	number, found := 0, false
+	walkErr := walkPages(
+		"open pull requests of "+repo.Organization+"/"+repo.Name,
+		func(page int) ([]forgejoPR, error) {
+			endpoint := fmt.Sprintf(
+				"/api/v1/repos/%s/%s/pulls?state=open&page=%d&limit=%d",
+				repo.Organization, repo.Name, page, perPage,
+			)
+			resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
+			if err != nil {
+				return nil, err
 			}
-		}
 
-		if len(prs) < limit {
-			return 0, false, nil
-		}
-
-		page++
+			var prs []forgejoPR
+			if unmarshalErr := json.Unmarshal(resp, &prs); unmarshalErr != nil {
+				return nil, fmt.Errorf("failed to parse pull requests response: %w", unmarshalErr)
+			}
+			return prs, nil
+		},
+		func(pr forgejoPR) int { return pr.Number },
+		func(pr forgejoPR) bool {
+			if pr.Head.Ref != branch {
+				return false
+			}
+			number, found = pr.Number, true
+			return true
+		},
+	)
+	if walkErr != nil {
+		return 0, false, fmt.Errorf("failed to list pull requests: %w", walkErr)
 	}
+
+	return number, found, nil
 }
 
 func (p *Provider) PullRequestExists(

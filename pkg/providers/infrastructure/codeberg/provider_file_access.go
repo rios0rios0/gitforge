@@ -68,26 +68,13 @@ func (p *Provider) ListFiles(
 	repo globalEntities.Repository,
 	pattern string,
 ) ([]globalEntities.File, error) {
-	branch := strings.TrimPrefix(repo.DefaultBranch, "refs/heads/")
-	endpoint := fmt.Sprintf(
-		"/api/v1/repos/%s/%s/git/trees/%s?recursive=true",
-		repo.Organization, repo.Name, branch,
-	)
-
-	resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
+	entries, err := p.listTreeEntries(ctx, repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get repo tree: %w", err)
-	}
-
-	var result struct {
-		Tree []forgejoTreeEntry `json:"tree"`
-	}
-	if unmarshalErr := json.Unmarshal(resp, &result); unmarshalErr != nil {
-		return nil, fmt.Errorf("failed to parse tree response: %w", unmarshalErr)
+		return nil, err
 	}
 
 	var files []globalEntities.File
-	for _, entry := range result.Tree {
+	for _, entry := range entries {
 		if pattern != "" && !strings.HasSuffix(entry.Path, pattern) {
 			continue
 		}
@@ -101,41 +88,127 @@ func (p *Provider) ListFiles(
 	return files, nil
 }
 
+// treesPerPage is the `per_page` asked for on every page of a Git trees listing:
+// Forgejo's DEFAULT_GIT_TREES_PER_PAGE, documented as both the default and the
+// most it serves, 1000 unless an instance lowers it — see
+// https://forgejo.org/docs/latest/admin/config-cheat-sheet/. listTreeEntries does
+// not rely on the server serving that many.
+const treesPerPage = 1000
+
+// forgejoTreePage is one page of a Git trees listing.
+type forgejoTreePage struct {
+	SHA        string             `json:"sha"`
+	Tree       []forgejoTreeEntry `json:"tree"`
+	Truncated  bool               `json:"truncated"`
+	TotalCount int                `json:"total_count"`
+}
+
+// listTreeEntries returns every entry of the tree on the repository's default
+// branch, read page by page.
+//
+// Forgejo pages its Git trees listing by `page` and `per_page` and reports in
+// `total_count` how many entries the whole listing holds, so reading only the
+// first page returned at most one page of a larger repository. The walk reads
+// every page in turn, the first by branch and the rest from the SHA the first
+// page reported, so a push in the middle cannot mix two trees. It ends once it
+// holds `total_count` entries or a page comes back with `truncated` unset:
+// Forgejo sets that flag on every page of a listing longer than one page, the
+// last included, so the flag alone cannot mark the end. A page that brings no
+// new path before then means the listing cannot be completed — a server that
+// ignores `page`, for one — and is an error rather than a partial list.
+func (p *Provider) listTreeEntries(
+	ctx context.Context,
+	repo globalEntities.Repository,
+) ([]forgejoTreeEntry, error) {
+	ref := strings.TrimPrefix(repo.DefaultBranch, "refs/heads/")
+	var entries []forgejoTreeEntry
+	listed := make(map[string]struct{})
+	for page := 1; ; page++ {
+		tree, err := p.fetchTreePage(ctx, repo, ref, page)
+		if err != nil {
+			return nil, err
+		}
+
+		added := 0
+		for _, entry := range tree.Tree {
+			if _, seen := listed[entry.Path]; seen {
+				continue
+			}
+			listed[entry.Path] = struct{}{}
+			entries = append(entries, entry)
+			added++
+		}
+
+		if !tree.Truncated || (tree.TotalCount > 0 && len(entries) >= tree.TotalCount) {
+			return entries, nil
+		}
+		if added == 0 {
+			return nil, fmt.Errorf(
+				"%w: tree page %d brought no entry not already read", errIncompleteListing, page,
+			)
+		}
+		if tree.SHA != "" {
+			ref = tree.SHA
+		}
+	}
+}
+
+// fetchTreePage reads one page of the recursive tree listing of ref.
+func (p *Provider) fetchTreePage(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	ref string,
+	page int,
+) (forgejoTreePage, error) {
+	endpoint := fmt.Sprintf(
+		"/api/v1/repos/%s/%s/git/trees/%s?recursive=true&page=%d&per_page=%d",
+		repo.Organization, repo.Name, ref, page, treesPerPage,
+	)
+
+	resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return forgejoTreePage{}, fmt.Errorf("failed to get repo tree: %w", err)
+	}
+
+	var tree forgejoTreePage
+	if unmarshalErr := json.Unmarshal(resp, &tree); unmarshalErr != nil {
+		return forgejoTreePage{}, fmt.Errorf("failed to parse tree response: %w", unmarshalErr)
+	}
+
+	return tree, nil
+}
+
 func (p *Provider) GetTags(
 	ctx context.Context,
 	repo globalEntities.Repository,
 ) ([]string, error) {
 	var allTags []string
-	page := 1
+	walkErr := walkPages(
+		"tags of "+repo.Organization+"/"+repo.Name,
+		func(page int) ([]forgejoTag, error) {
+			endpoint := fmt.Sprintf(
+				"/api/v1/repos/%s/%s/tags?page=%d&limit=%d",
+				repo.Organization, repo.Name, page, perPage,
+			)
+			resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
+			if err != nil {
+				return nil, err
+			}
 
-	for {
-		endpoint := fmt.Sprintf(
-			"/api/v1/repos/%s/%s/tags?page=%d&limit=%d",
-			repo.Organization, repo.Name, page, perPage,
-		)
-
-		resp, err := p.doRequest(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list tags: %w", err)
-		}
-
-		var tags []forgejoTag
-		if unmarshalErr := json.Unmarshal(resp, &tags); unmarshalErr != nil {
-			return nil, fmt.Errorf("failed to parse tags response: %w", unmarshalErr)
-		}
-
-		if len(tags) == 0 {
-			break
-		}
-
-		for _, tag := range tags {
+			var tags []forgejoTag
+			if unmarshalErr := json.Unmarshal(resp, &tags); unmarshalErr != nil {
+				return nil, fmt.Errorf("failed to parse tags response: %w", unmarshalErr)
+			}
+			return tags, nil
+		},
+		func(tag forgejoTag) string { return tag.Name },
+		func(tag forgejoTag) bool {
 			allTags = append(allTags, tag.Name)
-		}
-
-		if len(tags) < perPage {
-			break
-		}
-		page++
+			return false
+		},
+	)
+	if walkErr != nil {
+		return nil, fmt.Errorf("failed to list tags: %w", walkErr)
 	}
 
 	globalHelpers.SortVersionsDescending(allTags)

@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed `GetLatestTag` returning whichever tag the repository listed last rather than the highest version, returning a nil version for a tag that is not a semantic version, which callers printed as `<nil>`, and failing on annotated tags: it now returns the highest semantic version tag, ignores the others, and reads the commit date of an annotated tag; the new-project warning also reads correctly now'
-time: '2026-10-19T19:47:28.916173491Z'

@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added `SetDefaultSSHHostKeyCallback`, which lets a consumer hand its own known_hosts discovery — autobump reading the Windows profiles'' known_hosts under WSL, for example — to the default SSH agent fallback that `PushChangesSSH` and the remote reference listing use, so the fallback no longer fails with "unable to find any valid known_hosts file" on hosts whose known_hosts go-git cannot find on its own'
-time: '2026-10-16T19:45:33.815113479Z'

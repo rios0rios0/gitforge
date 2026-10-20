@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed the Azure DevOps `ListOpenPullRequests` returning only the single page Azure DevOps serves when no `$top` is sent, so a repository with more active pull requests silently lost the rest and any pull request past that page looked closed to a caller looking it up by ID: it now pages through every active pull request with an explicit `$top` and `$skip`, lists a pull request that a mid-walk change shifts onto two pages only once, and stops at a page that adds nothing new instead of requesting it forever'
-time: '2026-10-20T13:36:47.866974857Z'

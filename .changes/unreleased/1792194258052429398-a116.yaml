@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'silenced the `avoid-ssh-insecure-ignore-host-key` semgrep finding on the error-unmasking test fixture, which disables host key verification for an auth method that fails before any key exchange is attempted, against a closed localhost port'
-time: '2026-10-16T23:44:18.052322046Z'

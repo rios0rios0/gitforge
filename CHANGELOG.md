@@ -22,6 +22,27 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-10-20
+
+### Added
+
+- added `SetDefaultSSHHostKeyCallback`, which lets a consumer hand its own known_hosts discovery — autobump reading the Windows profiles' known_hosts under WSL, for example — to the default SSH agent fallback that `PushChangesSSH` and the remote reference listing use, so the fallback no longer fails with "unable to find any valid known_hosts file" on hosts whose known_hosts go-git cannot find on its own
+
+### Changed
+
+- changed the Go modules `github.com/Microsoft/go-winio` from `v0.6.3` to `v0.6.4` and `github.com/rios0rios0/testkit` from `v0.3.5` to `v0.3.6`
+- changed the Go version from `1.27.2` to `1.27.3`
+
+### Fixed
+
+- fixed `CreateAndSwitchBranch` discarding the local changes of the working tree and deleting every untracked and ignored file in it, such as an operator's `.env` or build output: it forced a go-git checkout, which resets the working tree hard even when the new branch points at the commit HEAD is on; it now points HEAD at the new branch and leaves the index and the working tree as they are, as `git switch -c` does, and checks any other commit out without forcing, so local changes in the way stop the switch, with HEAD and the branches left as they were, instead of being lost
+- fixed `GetLatestTag` returning whichever tag the repository listed last rather than the highest version, returning a nil version for a tag that is not a semantic version, which callers printed as `<nil>`, and failing on annotated tags: it now returns the highest semantic version tag, ignores the others, and reads the commit date of an annotated tag; the new-project warning also reads correctly now
+- fixed `PushChangesSSH` reporting only the default SSH agent fallback's failure when every explicitly provided auth method had already failed, which masked the credential error the operator actually had to fix
+- fixed the Azure DevOps `GetPullRequestFiles`, and the `GetPullRequestDiff` built on it, returning only the first 100 changed files of a pull request, the page Azure DevOps serves when no `$top` is sent, which also posted an inline comment on any later file without its `changeTrackingId`: the changes of an iteration are now read through one walk that follows the `nextSkip`/`nextTop` cursor the endpoint returns, lists a file served on two pages once, and stops at a page that adds nothing new, while the `changeTrackingId` lookup stops at the page that holds its file
+- fixed the Azure DevOps `ListOpenPullRequests` returning only the single page Azure DevOps serves when no `$top` is sent, so a repository with more active pull requests silently lost the rest and any pull request past that page looked closed to a caller looking it up by ID: it now pages through every active pull request with an explicit `$top` and `$skip`, lists a pull request that a mid-walk change shifts onto two pages only once, and stops at a page that adds nothing new instead of requesting it forever
+- fixed the CI style check failing on golangci-lint paralleltest findings by adding t.Parallel() to the GitOperations tests and their subtests in pkg/git/infrastructure/operations_test.go, which were written without it
+- silenced the `avoid-ssh-insecure-ignore-host-key` semgrep finding on the error-unmasking test fixture, which disables host key verification for an auth method that fails before any key exchange is attempted, against a closed localhost port
+
 ## [4.2.11] - 2026-10-14
 
 ### Changed

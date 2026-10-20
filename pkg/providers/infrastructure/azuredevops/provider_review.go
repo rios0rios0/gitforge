@@ -18,16 +18,85 @@ import (
 
 // --- ReviewProvider ---
 
+// pullRequestsPageSize is the `$top` requested for every page of the pull
+// request listing. The walk in ListOpenPullRequests ends at the first page
+// shorter than this, which is only sound while Azure DevOps serves as many pull
+// requests as `$top` asks for. The endpoint documents no maximum, so the size
+// stays at the 100 the GitHub provider pages with rather than a larger page the
+// server might cap — see
+// https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests.
+const pullRequestsPageSize = 100
+
+// ListOpenPullRequests returns every active pull request in the repository.
+//
+// Azure DevOps pages this listing by offset: `$top` is the page size and `$skip`
+// the number of pull requests to pass over. A request without `$top` is answered
+// with a single page and the rest are dropped without a word, so without the walk
+// a pull request past that page would look closed to any caller looking it up by
+// ID in this list.
+//
+// Offset paging over a list that changes while it is read has two hazards, and
+// the walk guards against both. A pull request opened mid-walk can shift the
+// others one place along, so a page repeats an entry the page before it already
+// returned: entries are de-duplicated by ID. And a server that ignores `$skip`
+// serves the same page every time: a full page that adds no new ID ends the walk
+// instead of asking again forever. A pull request completed or abandoned mid-walk
+// shifts the others back instead, so one can be missed until the next call;
+// offset paging cannot prevent that.
 func (p *Provider) ListOpenPullRequests(
 	ctx context.Context,
 	repo globalEntities.Repository,
 ) ([]globalEntities.PullRequestDetail, error) {
 	baseURL := buildBaseURL(repo.Organization)
-	endpoint := fmt.Sprintf(
+	repoIdentifier := resolveRepoIdentifier(repo)
+	basePath := fmt.Sprintf(
 		"/%s/_apis/git/repositories/%s/pullrequests?searchCriteria.status=active&api-version=%s",
-		repo.Project, resolveRepoIdentifier(repo), apiVersion,
+		repo.Project, repoIdentifier, apiVersion,
 	)
 
+	prs := make([]globalEntities.PullRequestDetail, 0)
+	listed := make(map[int]struct{})
+	skip := 0
+	for {
+		endpoint := fmt.Sprintf("%s&$top=%d&$skip=%d", basePath, pullRequestsPageSize, skip)
+
+		page, err := p.fetchOpenPullRequestsPage(ctx, baseURL, endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		added := 0
+		for _, pr := range page {
+			if _, seen := listed[pr.ID]; seen {
+				continue
+			}
+			listed[pr.ID] = struct{}{}
+			prs = append(prs, pr)
+			added++
+		}
+
+		if len(page) < pullRequestsPageSize {
+			break
+		}
+		if added == 0 {
+			log.WithFields(log.Fields{"project": repo.Project, "repository": repoIdentifier, "skip": skip}).Warn(
+				"Azure DevOps served a full page of pull requests that were all listed already; " +
+					"stopped paging, so the open pull requests returned may be incomplete",
+			)
+			break
+		}
+		skip += len(page)
+	}
+
+	return prs, nil
+}
+
+// fetchOpenPullRequestsPage performs a single GET against the pull request
+// listing and maps the page it returns onto PullRequestDetail entries.
+func (p *Provider) fetchOpenPullRequestsPage(
+	ctx context.Context,
+	baseURL, endpoint string,
+) ([]globalEntities.PullRequestDetail, error) {
 	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list open pull requests: %w", err)

@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
-	gh "github.com/google/go-github/v74/github"
+	gh "github.com/google/go-github/v93/github"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 	log "github.com/sirupsen/logrus"
 )
@@ -42,9 +42,18 @@ type Provider struct {
 	client *gh.Client
 }
 
-// NewProvider creates a new GitHub provider with the given token.
+// NewProvider creates a new GitHub provider with the given token. An empty token
+// gives an unauthenticated client, because go-github's WithAuthToken rejects one.
 func NewProvider(token string) globalEntities.ForgeProvider {
-	client := gh.NewClient(nil).WithAuthToken(token)
+	var options []gh.ClientOptionsFunc
+	if token != "" {
+		options = append(options, gh.WithAuthToken(token))
+	}
+
+	client, err := gh.NewClient(options...)
+	if err != nil {
+		return &Provider{token: token, client: nil}
+	}
 	return &Provider{
 		token:  token,
 		client: client,

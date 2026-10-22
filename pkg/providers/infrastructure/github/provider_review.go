@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	gh "github.com/google/go-github/v74/github"
+	gh "github.com/google/go-github/v93/github"
 	log "github.com/sirupsen/logrus"
 
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
@@ -260,7 +260,7 @@ func (p *Provider) PostPullRequestComment(
 ) error {
 	_, _, err := p.client.Issues.CreateComment(
 		ctx, repo.Organization, repo.Name, prID,
-		&gh.IssueComment{Body: &body},
+		gh.IssueCommentRequest{Body: body},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to post pull request comment: %w", err)

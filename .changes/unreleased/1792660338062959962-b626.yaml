@@ -1,3 +1,3 @@
 kind: 'Changed'
-body: 'changed the imports and the module requirement of `github.com/google/go-github/v66` to `github.com/google/go-github/v74`'
+body: 'changed the GitHub provider from `github.com/google/go-github/v66` to `github.com/google/go-github/v93`, adapting it to the client options constructor and the by-value request bodies for commits, references, pull requests and issue comments'
 time: '2026-10-22T09:12:18.062959962Z'

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	gh "github.com/google/go-github/v66/github"
+	gh "github.com/google/go-github/v74/github"
 	log "github.com/sirupsen/logrus"
 
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"

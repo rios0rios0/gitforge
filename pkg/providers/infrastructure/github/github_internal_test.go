@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	gh "github.com/google/go-github/v66/github"
+	gh "github.com/google/go-github/v74/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

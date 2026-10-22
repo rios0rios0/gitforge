@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	gl "gitlab.com/gitlab-org/api/client-go"
+	gl "gitlab.com/gitlab-org/api/client-go/v3"
 
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )

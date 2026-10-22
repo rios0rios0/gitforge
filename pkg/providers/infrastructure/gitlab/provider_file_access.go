@@ -7,7 +7,7 @@ import (
 
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
-	gl "gitlab.com/gitlab-org/api/client-go"
+	gl "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
 func (p *Provider) GetFileContent(

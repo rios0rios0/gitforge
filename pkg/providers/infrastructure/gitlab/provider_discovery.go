@@ -7,7 +7,7 @@ import (
 
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 	log "github.com/sirupsen/logrus"
-	gl "gitlab.com/gitlab-org/api/client-go"
+	gl "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
 func (p *Provider) DiscoverRepositories(

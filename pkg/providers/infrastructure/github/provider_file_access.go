@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	gh "github.com/google/go-github/v66/github"
+	gh "github.com/google/go-github/v93/github"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 	log "github.com/sirupsen/logrus"
@@ -228,7 +228,7 @@ func (p *Provider) CreateBranchWithChanges(
 
 	newCommit, _, err := p.client.Git.CreateCommit(
 		ctx, owner, repoName,
-		&gh.Commit{
+		gh.Commit{
 			Message: &input.CommitMessage,
 			Tree:    newTree,
 			Parents: []*gh.Commit{{SHA: &baseSHA}},
@@ -242,9 +242,9 @@ func (p *Provider) CreateBranchWithChanges(
 	branchRef := "refs/heads/" + input.BranchName
 	_, _, err = p.client.Git.CreateRef(
 		ctx, owner, repoName,
-		&gh.Reference{
-			Ref:    &branchRef,
-			Object: &gh.GitObject{SHA: newCommit.SHA},
+		gh.CreateRef{
+			Ref: branchRef,
+			SHA: newCommit.GetSHA(),
 		},
 	)
 	if err != nil {

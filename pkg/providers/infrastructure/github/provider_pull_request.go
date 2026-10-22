@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	gh "github.com/google/go-github/v66/github"
+	gh "github.com/google/go-github/v93/github"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
@@ -20,10 +20,10 @@ func (p *Provider) CreatePullRequest(
 
 	pr, _, err := p.client.PullRequests.Create(
 		ctx, repo.Organization, repo.Name,
-		&gh.NewPullRequest{
+		gh.CreatePullRequest{
 			Title:               &input.Title,
-			Head:                &sourceBranch,
-			Base:                &targetBranch,
+			Head:                sourceBranch,
+			Base:                targetBranch,
 			Body:                &input.Description,
 			MaintainerCanModify: &maintainerCanModify,
 		},

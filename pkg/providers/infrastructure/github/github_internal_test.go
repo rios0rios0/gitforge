@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	gh "github.com/google/go-github/v66/github"
+	gh "github.com/google/go-github/v93/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,13 +18,31 @@ import (
 // newTestProvider creates a Provider backed by the given test server.
 func newTestProvider(t *testing.T, server *httptest.Server) *Provider {
 	t.Helper()
-	client := gh.NewClient(server.Client()).WithAuthToken("test-token")
 	baseURL := server.URL + "/"
-	client.BaseURL, _ = client.BaseURL.Parse(baseURL)
+	client, err := gh.NewClient(
+		gh.WithHTTPClient(server.Client()),
+		gh.WithAuthToken("test-token"),
+		gh.WithURLs(&baseURL, &baseURL),
+	)
+	require.NoError(t, err)
 	return &Provider{
 		token:  "test-token",
 		client: client,
 	}
+}
+
+func TestNewProviderBuildsAClientWithoutAToken(t *testing.T) {
+	t.Parallel()
+
+	// given
+	token := ""
+
+	// when
+	p, ok := NewProvider(token).(*Provider)
+
+	// then
+	require.True(t, ok)
+	assert.NotNil(t, p.client, "an empty token must still yield an unauthenticated client")
 }
 
 func TestConfigureTransport(t *testing.T) {
@@ -145,8 +163,15 @@ func TestCreatePullRequestInternal(t *testing.T) {
 		t.Parallel()
 
 		// given
+		var (
+			capturedBody map[string]any
+			capturedAuth string
+		)
 		mux := http.NewServeMux()
-		mux.HandleFunc("POST /repos/my-org/my-repo/pulls", func(w http.ResponseWriter, _ *http.Request) {
+		mux.HandleFunc("POST /repos/my-org/my-repo/pulls", func(w http.ResponseWriter, r *http.Request) {
+			capturedAuth = r.Header.Get("Authorization")
+			defer r.Body.Close()
+			_ = json.NewDecoder(r.Body).Decode(&capturedBody)
 			pr := map[string]any{
 				"number":   42,
 				"title":    "Test PR",
@@ -180,6 +205,12 @@ func TestCreatePullRequestInternal(t *testing.T) {
 		assert.Equal(t, 42, pr.ID)
 		assert.Equal(t, "Test PR", pr.Title)
 		assert.Equal(t, "open", pr.Status)
+		assert.Equal(t, "Bearer test-token", capturedAuth)
+		assert.Equal(t, "feature", capturedBody["head"])
+		assert.Equal(t, "main", capturedBody["base"])
+		assert.Equal(t, "Test PR", capturedBody["title"])
+		assert.Equal(t, "Test description", capturedBody["body"])
+		assert.Equal(t, true, capturedBody["maintainer_can_modify"])
 	})
 }
 
@@ -489,14 +520,19 @@ func TestCreateBranchWithChangesInternal(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 		})
-		mux.HandleFunc("POST /repos/my-org/my-repo/git/commits", func(w http.ResponseWriter, _ *http.Request) {
+		var commitBody, refBody map[string]any
+		mux.HandleFunc("POST /repos/my-org/my-repo/git/commits", func(w http.ResponseWriter, r *http.Request) {
+			defer r.Body.Close()
+			_ = json.NewDecoder(r.Body).Decode(&commitBody)
 			resp := map[string]any{
 				"sha": commitSHA,
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 		})
-		mux.HandleFunc("POST /repos/my-org/my-repo/git/refs", func(w http.ResponseWriter, _ *http.Request) {
+		mux.HandleFunc("POST /repos/my-org/my-repo/git/refs", func(w http.ResponseWriter, r *http.Request) {
+			defer r.Body.Close()
+			_ = json.NewDecoder(r.Body).Decode(&refBody)
 			resp := map[string]any{
 				"ref":    "refs/heads/feature",
 				"object": map[string]string{"sha": commitSHA},
@@ -528,6 +564,10 @@ func TestCreateBranchWithChangesInternal(t *testing.T) {
 
 		// then
 		require.NoError(t, err)
+		assert.Equal(t, "Add new files", commitBody["message"])
+		assert.Equal(t, "newtree123", commitBody["tree"])
+		assert.Equal(t, []any{baseSHA}, commitBody["parents"])
+		assert.Equal(t, map[string]any{"ref": "refs/heads/feature", "sha": commitSHA}, refBody)
 	})
 }
 

@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents (Claude Code, Codex, Cursor, GitHub Copilot) when working with code in this repository.
 
 ## What This Is
 
@@ -13,7 +13,7 @@ go build ./...          # Compile check (~2s)
 make lint               # golangci-lint via pipeline scripts (~3-5s)
 make test               # Full test suite (~3s clean, <1s cached)
 make sast               # CodeQL, Semgrep, Hadolint, ShellCheck, Gitleaks (~1-3min)
-go test ./...           # Quick test during development (acceptable shortcut)
+go test ./...           # Quick check during development; skips //go:build unit files
 ```
 
 Never run `golangci-lint`, `semgrep`, `gitleaks`, etc. directly — always use `make` targets. There is no `make build` or `make run`.
@@ -56,7 +56,7 @@ All tests use BDD structure (`// given` / `// when` / `// then`), `t.Parallel()`
 - Azure DevOps: `redirectTransport` rewrites `dev.azure.com` URLs → `httptest.Server`
 - Provider internal tests use the internal package (not `_test` suffix) to access unexported fields
 
-**Parallelism exceptions:** tests using `t.Setenv`, `t.Chdir`, or mutating global state must NOT call `t.Parallel()`.
+**Parallelism exceptions:** tests using `t.Setenv`, `t.Chdir`, or mutating process-wide state (e.g., `SetDefaultSSHHostKeyCallback`) must NOT call `t.Parallel()`.
 
 ## Validation After Changes
 

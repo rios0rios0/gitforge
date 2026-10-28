@@ -10,7 +10,7 @@ Always reference these instructions first and fall back to search or bash comman
 
 - Install dependencies: `go mod download`
 - Build (compile check): `go build ./...`
-- Run tests: `make test` (preferred) or `go test ./...` (acceptable shortcut during development).
+- Run tests: `make test`. A bare `go test ./...` is a quick check during development but skips files tagged `//go:build unit`.
 - Run linting: `make lint` -- NEVER run `golangci-lint` directly.
 - Run security analysis: `make sast` -- NEVER run `gitleaks`, `semgrep`, `hadolint`, `shellcheck`, or `codeql` directly.
 - Tidy dependencies: `go mod tidy`
@@ -75,6 +75,7 @@ gitforge/
 │   │       ├── operations_push.go     # Push (SSH/HTTPS)
 │   │       ├── operations_push_test.go # BDD tests for push / transport detection
 │   │       ├── operations_repo.go     # Repository-level helpers
+│   │       ├── operations_ssh.go      # SetDefaultSSHHostKeyCallback: consumer host key hook for the default SSH agent fallback
 │   │       ├── operations_test.go     # BDD tests for git operations
 │   │       ├── operations_worktree.go # Worktree management
 │   │       ├── url_parser.go          # ParseRemoteURL: detects ServiceType from remote URL
@@ -98,7 +99,7 @@ gitforge/
 │   │       │   ├── local_git_auth_provider.go # LocalGitAuthProvider interface (extends ForgeProvider)
 │   │       │   ├── mirror_provider.go       # MirrorProvider interface (extends ForgeProvider) + MirrorInput struct
 │   │       │   ├── pull_request.go          # PullRequest struct: ID, Title, URL, Status
-│   │       │   ├── pull_request_detail.go   # PullRequestDetail struct (embeds PullRequest + SourceBranch, TargetBranch, Author)
+│   │       │   ├── pull_request_detail.go   # PullRequestDetail struct (embeds PullRequest + SourceBranch, TargetBranch, Author, IsDraft)
 │   │       │   ├── pull_request_file.go     # PullRequestFile struct: Path, OldPath, Status, Additions, Deletions, Patch
 │   │       │   ├── pull_request_comment.go   # PullRequestComment struct: ID, ThreadID, Body, Author, FilePath, Line, InReplyToID
 │   │       │   ├── pull_request_input.go    # PullRequestInput struct
@@ -142,6 +143,7 @@ gitforge/
 │   │           ├── provider_file_access.go  # File access operations
 │   │           ├── provider_http.go         # HTTP helpers
 │   │           ├── provider_mirror.go       # MigrateRepository (mirror support)
+│           ├── provider_paging.go       # walkPages: Forgejo page/limit listing walker
 │   │           └── provider_pull_request.go # PR creation / existence check
 │   ├── registry/
 │   │   └── infrastructure/
@@ -174,7 +176,7 @@ gitforge/
 │       ├── repository_builder.go                   # Builder for Repository
 │       └── repository_discoverer_stub_builder.go   # Builder for RepositoryDiscovererStub
 ├── Makefile                      # Imports pipeline scripts (lint, test, sast)
-├── go.mod                        # Module: github.com/rios0rios0/gitforge/v4 (Go 1.27.1)
+├── go.mod                        # Module: github.com/rios0rios0/gitforge/v4
 └── .github/
     └── workflows/default.yaml    # CI/CD pipeline (delegates to rios0rios0/pipelines go-library workflow)
 ```
@@ -184,7 +186,7 @@ gitforge/
 | Layer                              | Directory                                    | Responsibility                                                                                                                        |
 |------------------------------------|----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | **Changelog / Domain**             | `pkg/changelog/domain/entities/`             | `Changelog` struct with processing, insertion, deduplication, and section management. No infrastructure dependencies.                |
-| **Config / Domain**                | `pkg/config/domain/entities/`                | `Config` and `ProviderConfig` structs; `FindConfigFile` helper. No infrastructure dependencies.                                       |
+| **Config / Domain**                | `pkg/config/domain/{entities,helpers}/`      | `Config` and `ProviderConfig` structs (`entities/`); `FindConfigFile`, `FindGlobalConfigFile`, token-env helpers (`helpers/`). No infrastructure dependencies. |
 | **Config / Infrastructure**        | `pkg/config/infrastructure/`                 | `LoadConfig`: reads YAML from file or URL and validates it.                                                                           |
 | **Git / Domain**                   | `pkg/git/domain/entities/`                   | `AdapterFinder` interface. No infrastructure dependencies.                                                                            |
 | **Git / Infrastructure**           | `pkg/git/infrastructure/`                    | `GitOperations` struct (go-git): branch, commit, push, tag, remote detection, URL parsing. Injected with `AdapterFinder`.             |
@@ -337,7 +339,7 @@ When adding features to gitforge:
 - Test descriptions use `"should ... when ..."` format via `t.Run()` subtests.
 - Unit tests use `t.Parallel()` at both parent and subtest level.
 - Tests that use `t.Setenv` or `t.Chdir` must NOT call `t.Parallel()` on that subtest (Go restriction).
-- Tests that mutate global state (e.g., `SetAdapterFinder`) must NOT call `t.Parallel()`.
+- Tests that mutate process-wide state (e.g., `SetDefaultSSHHostKeyCallback`) must NOT call `t.Parallel()`.
 - All tests use `testify` (`assert`/`require`) — never bare `t.Error`/`t.Fatal`.
 
 ### Test Infrastructure
@@ -376,13 +378,13 @@ When adding features to gitforge:
 - **GitHub / GitLab**: Override the SDK `BaseURL` to point to an `httptest.Server`.
 - **Azure DevOps**: Use a `redirectTransport` that rewrites hardcoded `dev.azure.com` URLs to an `httptest.Server`.
 - **Codeberg**: Internal tests inject an HTTP client via `NewProviderWithClient`.
-- All provider tests use the **internal** package (`package github`, not `github_test`) so they can access unexported fields.
+- Provider `*_internal_test.go` files use the **internal** package (`package github`, not `github_test`) so they can access unexported fields; `github_test.go`, `gitlab_test.go`, and `azuredevops_test.go` are external `_test`-package tests.
 
 ### Running Tests
 
 ```bash
 make test             # Full test suite via pipeline scripts (ALWAYS use this)
-go test ./...         # Quick compile + test check during development (acceptable)
+go test ./...         # Quick check during development; skips //go:build unit files
 ```
 
 ## Validation
@@ -419,7 +421,7 @@ go test ./...         # Quick compile + test check during development (acceptabl
 # Full validation cycle
 go build ./... && make lint && make test
 
-# Quick test cycle during development
+# Quick test cycle during development (skips //go:build unit files)
 go test ./...
 
 # Full security + quality gate

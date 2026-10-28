@@ -18,12 +18,12 @@ A shared Go library providing common abstractions for working with Git hosting p
 
 ## Features
 
-- **Multi-Provider Support**: GitHub, GitLab, and Azure DevOps with a unified interface
+- **Multi-Provider Support**: GitHub, GitLab, Azure DevOps, and Codeberg (Forgejo) with a unified interface
 - **Repository Discovery**: Automatically list repositories from organizations/groups
 - **Pull Request Management**: Create PRs/MRs and check for existing ones
 - **File Operations**: Read files, list trees, check file existence via API
 - **Local Git Operations**: Branch, commit, push (SSH/HTTPS) via go-git
-- **Commit Signing**: GPG signing with keyring export and passphrase support
+- **Commit Signing**: GPG signing with keyring export and passphrase support, and SSH signing via `ssh-keygen`
 - **Changelog Processing**: Full Keep-a-Changelog toolkit (version calculation, deduplication, entry insertion)
 - **Configuration**: Token resolution (inline, `${ENV_VAR}`, file path), config file discovery
 - **Registry Pattern**: Factory-based provider and discoverer registries
@@ -38,18 +38,19 @@ Import the packages from `github.com/rios0rios0/gitforge/v4/...`. Go requires a 
 
 ## Architecture
 
+Bounded contexts live under `pkg/`, each owning its own `domain/` and `infrastructure/` packages:
+
 ```
 gitforge/
-├── domain/
-│   ├── entities/         # Core business objects (Repository, PullRequest, etc.)
-│   └── repositories/     # Provider interfaces (ForgeProvider, FileAccessProvider, etc.)
-├── infrastructure/
-│   ├── providers/        # GitHub, GitLab, Azure DevOps implementations
-│   ├── git/              # Local git operations (go-git)
-│   ├── signing/          # GPG and SSH commit signing
-│   ├── config/           # YAML configuration loading
-│   └── registry/         # Provider and discoverer registries
-└── support/              # Utility functions (file I/O, HTTP, URL manipulation)
+├── pkg/
+│   ├── changelog/        # Keep-a-Changelog processing (version calculation, deduplication, insertion)
+│   ├── config/           # YAML configuration loading, token resolution, config file discovery
+│   ├── git/              # Local git operations (go-git), URL parsing, SSH/HTTPS push
+│   ├── global/           # Shared interfaces (ForgeProvider, FileAccessProvider, etc.) and entities
+│   ├── providers/        # GitHub, GitLab, Azure DevOps, Codeberg implementations
+│   ├── registry/         # Provider and discoverer registries
+│   └── signing/          # GPG and SSH commit signing
+└── test/                 # Shared test doubles and builders
 ```
 
 ## Provider Interfaces
@@ -59,8 +60,10 @@ The library uses Go interface composition:
 - **`ForgeProvider`**: Core interface (URL matching, discovery, PR creation, auth)
 - **`FileAccessProvider`**: Extends with API-based file operations (read, list, tags, branch creation)
 - **`LocalGitAuthProvider`**: Extends with local go-git authentication (service type, transport, auth methods)
+- **`ReviewProvider`**: Extends with pull request review operations (diffs, comments, threads, merge, review submission)
+- **`MirrorProvider`**: Extends with repository migration/mirroring
 
-Each concrete provider implements all three interfaces. Consumers type-assert to the level they need.
+Each concrete provider implements the first three interfaces. GitHub and Azure DevOps also implement `ReviewProvider`; Codeberg also implements `MirrorProvider`. Consumers type-assert to the level they need.
 
 ## License
 

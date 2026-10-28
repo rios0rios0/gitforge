@@ -1,3 +1,0 @@
-kind: 'Changed'
-body: 'changed the imports and the module requirement of `gitlab.com/gitlab-org/api/client-go` to `gitlab.com/gitlab-org/api/client-go/v3`'
-time: '2026-10-22T09:12:36.52416079Z'

@@ -22,6 +22,15 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.3.2] - 2026-10-28
+
+### Changed
+
+- changed the GitHub provider from `github.com/google/go-github/v66` to `github.com/google/go-github/v93`, adapting it to the client options constructor and the by-value request bodies for commits, references, pull requests and issue comments
+- changed the Go module `github.com/rios0rios0/testkit` from `v0.3.6` to `v0.3.7`
+- changed the Go module `gitlab.com/gitlab-org/api/client-go/v3` from `v3.30.1` to `v3.34.0`
+- changed the imports and the module requirement of `gitlab.com/gitlab-org/api/client-go` to `gitlab.com/gitlab-org/api/client-go/v3`
+
 ## [4.3.1] - 2026-10-20
 
 ### Changed

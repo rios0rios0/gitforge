@@ -22,6 +22,18 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.3.2] - 2026-11-04
+
+### Changed
+
+- changed the GitHub provider from `github.com/google/go-github/v66` to `github.com/google/go-github/v93`, adapting it to the client options constructor and the by-value request bodies for commits, references, pull requests and issue comments
+- changed the Go module `github.com/rios0rios0/testkit` from `v0.3.6` to `v0.3.7`
+- changed the Go module `gitlab.com/gitlab-org/api/client-go/v3` from `v3.30.1` to `v3.42.0`
+- changed the Go module `go.yaml.in/yaml/v3` from `v3.0.5` to `v3.0.6`
+- changed the Go module `golang.org/x/net` from `v0.61.0` to `v0.62.0`
+- changed the imports and the module requirement of `gitlab.com/gitlab-org/api/client-go` to `gitlab.com/gitlab-org/api/client-go/v3`
+- moved the agent instructions from `CLAUDE.md` to `AGENTS.md`, keeping a `CLAUDE.md` that imports it, and refreshed `AGENTS.md`, `.github/copilot-instructions.md`, the `code-review` skill, `README.md` and `CONTRIBUTING.md` to replace the nonexistent `SetAdapterFinder` with `SetDefaultSSHHostKeyCallback`, note that a bare `go test` skips `//go:build unit` files, and correct the architecture tree, test-package and guide-link drift
+
 ## [4.3.1] - 2026-10-20
 
 ### Changed

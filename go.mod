@@ -7,12 +7,12 @@ require (
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/google/go-github/v93 v93.0.0
-	github.com/rios0rios0/testkit v0.3.7
+	github.com/rios0rios0/testkit v0.3.8
 	github.com/sergi/go-diff v1.4.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
-	gitlab.com/gitlab-org/api/client-go/v3 v3.42.0
+	gitlab.com/gitlab-org/api/client-go/v3 v3.43.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/mod v0.42.0
 	golang.org/x/term v0.47.0

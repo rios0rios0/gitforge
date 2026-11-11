@@ -1,6 +1,6 @@
 module github.com/rios0rios0/gitforge/v4
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
@@ -12,7 +12,7 @@ require (
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
-	gitlab.com/gitlab-org/api/client-go/v3 v3.46.1
+	gitlab.com/gitlab-org/api/client-go/v3 v3.48.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/mod v0.43.0
 	golang.org/x/term v0.48.0

@@ -22,6 +22,12 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.3.4] - 2026-11-16
+
+### Fixed
+
+- fixed `GetPullRequestFiles` listing only the first deleted file of a pull request, with an empty `Path`, when the changes listing names a deleted file only by its original path: every deleted file is now listed under that path, so `GetPullRequestDiff` builds a diff for each of them and an inline comment on one finds its change
+
 ## [4.3.3] - 2026-11-16
 
 ### Changed

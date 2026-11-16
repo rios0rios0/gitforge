@@ -12,4 +12,8 @@ type Repository struct {
 	ProviderName  string
 	IsFork        bool
 	IsArchived    bool
+	// IsDisabled reports a repository that cannot be used at the moment: disabled
+	// on Azure DevOps (or under maintenance there), or disabled on GitHub. Providers
+	// only report it; deciding to skip such a repository is the consumer's policy.
+	IsDisabled bool
 }

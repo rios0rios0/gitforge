@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'reported Azure DevOps forks, and disabled or under-maintenance repositories, in discovery through `IsFork` and the new `IsDisabled` field, so `exclude_forks` now works there; GitHub fills `IsDisabled` too'
+time: '2026-11-16T20:33:07.305746214Z'

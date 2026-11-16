@@ -98,6 +98,8 @@ gitforge/
 │   │       │   ├── latest_tag.go            # LatestTag struct: Tag (*semver.Version), Date
 │   │       │   ├── local_git_auth_provider.go # LocalGitAuthProvider interface (extends ForgeProvider)
 │   │       │   ├── mirror_provider.go       # MirrorProvider interface (extends ForgeProvider) + MirrorInput struct
+│   │       │   ├── open_pull_request_finder.go # OpenPullRequestFinder interface (optional): FindOpenPullRequest()
+│   │       │   ├── organization_repository_lister.go # OrganizationRepositoryLister interface (optional): ListOrganizationRepositories()
 │   │       │   ├── pull_request.go          # PullRequest struct: ID, Title, URL, Status
 │   │       │   ├── pull_request_detail.go   # PullRequestDetail struct (embeds PullRequest + SourceBranch, TargetBranch, Author, IsDraft)
 │   │       │   ├── pull_request_file.go     # PullRequestFile struct: Path, OldPath, Status, Additions, Deletions, Patch
@@ -234,13 +236,17 @@ ForgeProvider (base)
 │
 └── MirrorProvider (extends ForgeProvider)
     └── MigrateRepository()
+
+Optional single-method interfaces (reached by type assertion, never added to ForgeProvider):
+├── OpenPullRequestFinder         // FindOpenPullRequest() (PullRequest, bool, error) — GitHub, Azure DevOps
+└── OrganizationRepositoryLister  // ListOrganizationRepositories() — strict, fails instead of skipping — Azure DevOps
 ```
 
 ### Key Domain Types
 
 | Type                    | Package path                              | Purpose                                                                                                          |
 |-------------------------|-------------------------------------------|------------------------------------------------------------------------------------------------------------------|
-| `Repository`            | `pkg/global/domain/entities`              | Git repository: ID, Name, Organization, Project, DefaultBranch, RemoteURL, SSHURL, ProviderName                 |
+| `Repository`            | `pkg/global/domain/entities`              | Git repository: ID, Name, Organization, Project, DefaultBranch, RemoteURL, SSHURL, ProviderName, IsFork, IsArchived, IsDisabled |
 | `ServiceType`           | `pkg/global/domain/entities`              | Enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT, CODEBERG                                     |
 | `PullRequest`           | `pkg/global/domain/entities`              | PR entity: ID, Title, URL, Status                                                                                |
 | `PullRequestDetail`     | `pkg/global/domain/entities`              | Extends `PullRequest` with SourceBranch, TargetBranch, Author, IsDraft (used by `ReviewProvider`)                        |

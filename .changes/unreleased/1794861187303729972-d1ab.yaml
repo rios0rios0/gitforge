@@ -1,0 +1,3 @@
+kind: 'Added'
+body: 'added the optional `OrganizationRepositoryLister` interface and its Azure DevOps implementation, which lists a whole organization in one organization-level call and fails instead of skipping a project it cannot read'
+time: '2026-11-16T20:33:07.303684941Z'

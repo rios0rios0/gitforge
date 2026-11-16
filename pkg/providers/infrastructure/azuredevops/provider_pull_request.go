@@ -124,6 +124,19 @@ func (p *Provider) PullRequestExists(
 	return result.Count > 0, nil
 }
 
+// Ensure the optional pull request finder is implemented at compile time.
+var _ globalEntities.OpenPullRequestFinder = (*Provider)(nil)
+
+// FindOpenPullRequest returns the active pull request whose source branch is
+// sourceBranch. The boolean reports whether such a pull request was found.
+func (p *Provider) FindOpenPullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (globalEntities.PullRequest, bool, error) {
+	return p.findActivePullRequest(ctx, repo, sourceBranch)
+}
+
 // findActivePullRequestID returns the ID of the active pull request whose source branch
 // is sourceBranch. The boolean reports whether such a pull request was found.
 func (p *Provider) findActivePullRequestID(
@@ -131,28 +144,48 @@ func (p *Provider) findActivePullRequestID(
 	repo globalEntities.Repository,
 	sourceBranch string,
 ) (int, bool, error) {
+	pr, found, err := p.findActivePullRequest(ctx, repo, sourceBranch)
+	return pr.ID, found, err
+}
+
+// findActivePullRequest returns the first active pull request whose source branch is
+// sourceBranch. The boolean reports whether such a pull request was found.
+func (p *Provider) findActivePullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (globalEntities.PullRequest, bool, error) {
 	baseURL := buildBaseURL(repo.Organization)
 	endpoint := activePullRequestsEndpoint(repo, sourceBranch)
 
 	resp, err := p.doRequest(ctx, baseURL, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return 0, false, err
+		return globalEntities.PullRequest{}, false, err
 	}
 
 	var result struct {
 		Value []struct {
-			PullRequestID int `json:"pullRequestId"`
+			PullRequestID int    `json:"pullRequestId"`
+			Title         string `json:"title"`
+			URL           string `json:"url"`
+			Status        string `json:"status"`
 		} `json:"value"`
 	}
 	if unmarshalErr := json.Unmarshal(resp, &result); unmarshalErr != nil {
-		return 0, false, fmt.Errorf("failed to parse PR list response: %w", unmarshalErr)
+		return globalEntities.PullRequest{}, false, fmt.Errorf("failed to parse PR list response: %w", unmarshalErr)
 	}
 
 	if len(result.Value) == 0 {
-		return 0, false, nil
+		return globalEntities.PullRequest{}, false, nil
 	}
 
-	return result.Value[0].PullRequestID, true, nil
+	first := result.Value[0]
+	return globalEntities.PullRequest{
+		ID:     first.PullRequestID,
+		Title:  first.Title,
+		URL:    first.URL,
+		Status: first.Status,
+	}, true, nil
 }
 
 func (p *Provider) ClosePullRequest(

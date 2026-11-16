@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added the optional `OpenPullRequestFinder` interface, implemented by GitHub and Azure DevOps, which returns the open pull request of a source branch where `PullRequestExists` only reports that one exists'
-time: '2026-11-16T20:33:07.301584833Z'

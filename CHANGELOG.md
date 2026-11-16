@@ -22,6 +22,21 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-11-16
+
+### Added
+
+- added the optional `OpenPullRequestFinder` interface, implemented by GitHub and Azure DevOps, which returns the open pull request of a source branch where `PullRequestExists` only reports that one exists
+- added the optional `OrganizationRepositoryLister` interface and its Azure DevOps implementation, which lists a whole organization in one organization-level call and fails instead of skipping a project it cannot read
+
+### Changed
+
+- logged a warning when Azure DevOps discovery skips a project whose repositories cannot be listed, instead of skipping it silently
+
+### Fixed
+
+- reported Azure DevOps forks, and disabled or under-maintenance repositories, in discovery through `IsFork` and the new `IsDisabled` field, so `exclude_forks` now works there; GitHub fills `IsDisabled` too
+
 ## [4.3.4] - 2026-11-16
 
 ### Fixed

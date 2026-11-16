@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed `GetPullRequestFiles` listing only the first deleted file of a pull request, with an empty `Path`, when the changes listing names a deleted file only by its original path: every deleted file is now listed under that path, so `GetPullRequestDiff` builds a diff for each of them and an inline comment on one finds its change'
+time: '2026-11-16T17:41:33.532269217Z'

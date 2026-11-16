@@ -395,3 +395,93 @@ func TestGetPullRequestFilesReturnsLaterPageErrors(t *testing.T) {
 		assert.Equal(t, 2, listing.requests(), "nothing may be asked for after the page that failed")
 	})
 }
+
+// serveDeletingIterationChanges answers the changes listing of the test pull
+// request with two edits around two deleted files, in the shape the listing
+// gives a deletion: no item path, only the path the file had before.
+func serveDeletingIterationChanges(mux *http.ServeMux) {
+	mux.HandleFunc(iterationChangesRoute, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"changeEntries": []map[string]any{
+				{"changeTrackingId": 1, "changeType": "edit", "item": map[string]any{"path": "/CHANGELOG.md"}},
+				{
+					"changeTrackingId": 2,
+					"changeType":       "delete",
+					"item":             map[string]any{"originalObjectId": "a1", "path": nil},
+					"originalPath":     "/.changes/unreleased/1-aaaa.yaml",
+				},
+				{
+					"changeTrackingId": 3,
+					"changeType":       "delete",
+					"item":             map[string]any{"originalObjectId": "b2", "path": nil},
+					"originalPath":     "/.changes/unreleased/2-bbbb.yaml",
+				},
+				{"changeTrackingId": 4, "changeType": "edit", "item": map[string]any{"path": "/cmd/main.go"}},
+			},
+			"nextSkip": 0,
+			"nextTop":  0,
+		})
+	})
+}
+
+func TestGetPullRequestFilesListsEveryDeletedFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should list each deleted file under the path it had before", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		servePullRequestIterations(mux)
+		serveDeletingIterationChanges(mux)
+		server := httptest.NewServer(mux)
+		defer server.Close()
+
+		p := newTestProvider(t, server)
+		repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+		// when
+		files, err := p.GetPullRequestFiles(context.Background(), repo, changesPullRequestID)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, []globalEntities.PullRequestFile{
+			{Path: "/CHANGELOG.md", Status: "modified"},
+			{Path: "/.changes/unreleased/1-aaaa.yaml", OldPath: "/.changes/unreleased/1-aaaa.yaml", Status: "deleted"},
+			{Path: "/.changes/unreleased/2-bbbb.yaml", OldPath: "/.changes/unreleased/2-bbbb.yaml", Status: "deleted"},
+			{Path: "/cmd/main.go", Status: "modified"},
+		}, files, "every deleted file must be listed, under its old path, instead of only the first with an empty one")
+	})
+}
+
+func TestGetChangeTrackingIDFindsDeletedFiles(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"should return the changeTrackingId of a deleted file looked up by the path it had before",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			mux := http.NewServeMux()
+			serveDeletingIterationChanges(mux)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			p := newTestProvider(t, server)
+			repo := globalEntities.Repository{Organization: "my-org", Project: "my-project", ID: "repo-1"}
+
+			// when
+			changeTrackingID, found, err := p.getChangeTrackingID(
+				context.Background(), repo, changesPullRequestID, changesIterationID,
+				".changes/unreleased/2-bbbb.yaml",
+			)
+
+			// then
+			require.NoError(t, err)
+			assert.True(t, found, "a deleted file must be found by the path it had before")
+			assert.JSONEq(t, "3", string(changeTrackingID))
+		},
+	)
+}

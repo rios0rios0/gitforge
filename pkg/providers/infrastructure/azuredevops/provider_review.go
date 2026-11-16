@@ -415,7 +415,7 @@ func (p *Provider) GetPullRequestFiles(
 	for _, change := range changes {
 		status := mapADOChangeType(change.ChangeType)
 		files = append(files, globalEntities.PullRequestFile{
-			Path:    change.Item.Path,
+			Path:    change.path(),
 			OldPath: change.OriginalPath,
 			Status:  status,
 		})
@@ -439,6 +439,18 @@ type adoIterationChange struct {
 		Path string `json:"path"`
 	} `json:"item"`
 	OriginalPath string `json:"originalPath"`
+}
+
+// path returns the path a change is known by. The changes listing sends no item
+// path for a deleted file, only the path it had before (`originalPath`), so that
+// is the one a deletion is listed, de-duplicated and looked up under. Keyed on
+// the item path alone, every deleted file of a pull request shared the empty key
+// and all of them but the first went missing from the list.
+func (c adoIterationChange) path() string {
+	if c.Item.Path != "" {
+		return c.Item.Path
+	}
+	return c.OriginalPath
 }
 
 // adoIterationChangesPage is one page of a pull request iteration's changes
@@ -517,10 +529,10 @@ func (p *Provider) walkPullRequestIterationChanges(
 
 		added := 0
 		for _, change := range page.ChangeEntries {
-			if _, seen := listed[change.Item.Path]; seen {
+			if _, seen := listed[change.path()]; seen {
 				continue
 			}
-			listed[change.Item.Path] = struct{}{}
+			listed[change.path()] = struct{}{}
 			added++
 			if !visit(change) {
 				return nil
@@ -996,7 +1008,7 @@ func (p *Provider) getChangeTrackingID(
 		found            bool
 	)
 	err := p.walkPullRequestIterationChanges(ctx, repo, prID, iterationID, func(entry adoIterationChange) bool {
-		if strings.TrimPrefix(entry.Item.Path, "/") != target {
+		if strings.TrimPrefix(entry.path(), "/") != target {
 			return true
 		}
 		// Path matched. The raw bytes are returned even if empty — the

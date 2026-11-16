@@ -145,5 +145,6 @@ func githubRepoToDomain(r *gh.Repository, org string) globalEntities.Repository 
 		ProviderName:  providerName,
 		IsFork:        r.GetFork(),
 		IsArchived:    r.GetArchived(),
+		IsDisabled:    r.GetDisabled(),
 	}
 }

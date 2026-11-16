@@ -40,6 +40,29 @@ func (p *Provider) CreatePullRequest(
 	}, nil
 }
 
+// Ensure the optional pull request finder is implemented at compile time.
+var _ globalEntities.OpenPullRequestFinder = (*Provider)(nil)
+
+// FindOpenPullRequest returns the open pull request whose head is sourceBranch.
+// The boolean reports whether such a pull request was found.
+func (p *Provider) FindOpenPullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (globalEntities.PullRequest, bool, error) {
+	pr, found, err := p.findOpenPullRequest(ctx, repo, sourceBranch)
+	if err != nil || !found {
+		return globalEntities.PullRequest{}, found, err
+	}
+
+	return globalEntities.PullRequest{
+		ID:     pr.GetNumber(),
+		Title:  pr.GetTitle(),
+		URL:    pr.GetHTMLURL(),
+		Status: pr.GetState(),
+	}, true, nil
+}
+
 // findOpenPullRequestNumber returns the number of the open pull request whose head is
 // sourceBranch. The boolean reports whether such a pull request was found.
 func (p *Provider) findOpenPullRequestNumber(
@@ -47,6 +70,18 @@ func (p *Provider) findOpenPullRequestNumber(
 	repo globalEntities.Repository,
 	sourceBranch string,
 ) (int, bool, error) {
+	pr, found, err := p.findOpenPullRequest(ctx, repo, sourceBranch)
+	return pr.GetNumber(), found, err
+}
+
+// findOpenPullRequest returns the first open pull request whose head is sourceBranch.
+// The boolean reports whether such a pull request was found; when it is false the
+// returned pointer is nil, which every go-github getter reads as the zero value.
+func (p *Provider) findOpenPullRequest(
+	ctx context.Context,
+	repo globalEntities.Repository,
+	sourceBranch string,
+) (*gh.PullRequest, bool, error) {
 	prs, _, err := p.client.PullRequests.List(
 		ctx, repo.Organization, repo.Name,
 		&gh.PullRequestListOptions{
@@ -55,14 +90,14 @@ func (p *Provider) findOpenPullRequestNumber(
 		},
 	)
 	if err != nil {
-		return 0, false, fmt.Errorf("failed to list pull requests: %w", err)
+		return nil, false, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	if len(prs) == 0 {
-		return 0, false, nil
+		return nil, false, nil
 	}
 
-	return prs[0].GetNumber(), true, nil
+	return prs[0], true, nil
 }
 
 func (p *Provider) PullRequestExists(

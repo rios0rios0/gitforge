@@ -65,6 +65,13 @@ The library uses Go interface composition:
 
 Each concrete provider implements the first three interfaces. GitHub and Azure DevOps also implement `ReviewProvider`; Codeberg also implements `MirrorProvider`. Consumers type-assert to the level they need.
 
+Two optional single-method interfaces sit beside that hierarchy, also reached by type assertion:
+
+- **`OpenPullRequestFinder`** (GitHub, Azure DevOps): returns the open pull request of a source branch, where `PullRequestExists` only reports that one exists
+- **`OrganizationRepositoryLister`** (Azure DevOps): lists a whole organization in one strict call and fails instead of skipping a part of it, where `DiscoverRepositories` stays best-effort
+
+Discovered repositories report `IsFork`, `IsArchived` and `IsDisabled` (disabled, or under maintenance on Azure DevOps). Providers never filter on them; skipping such repositories is the consumer's policy.
+
 ## License
 
 See [LICENSE](LICENSE) file for details.

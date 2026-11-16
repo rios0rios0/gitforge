@@ -38,6 +38,8 @@ Clean Architecture with DDD bounded contexts under `pkg/`. Each context owns `do
 
 `ForgeProvider` (base) is extended by `FileAccessProvider`, `ReviewProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. GitHub and Azure DevOps implement `ForgeProvider`, `FileAccessProvider`, `ReviewProvider`, and `LocalGitAuthProvider`. GitLab implements `ForgeProvider`, `FileAccessProvider`, and `LocalGitAuthProvider` — it does **not** implement `ReviewProvider` (no `pkg/providers/infrastructure/gitlab/provider_review.go`). Codeberg implements `ForgeProvider`, `FileAccessProvider`, `LocalGitAuthProvider`, and `MirrorProvider`. Consumers type-assert to the interface level they need.
 
+Two optional single-method interfaces sit beside the hierarchy: `OpenPullRequestFinder` (GitHub, Azure DevOps) and `OrganizationRepositoryLister` (Azure DevOps). New capabilities are added this way, never as a method on `ForgeProvider`, because consumers ship their own implementations of it (autoupdate's provider doubles and its `ProviderRepository` alias) and a new method breaks their build at the next bump. `DiscoverRepositories` on Azure DevOps stays best-effort — it logs and skips a project it cannot list — because autoupdate abandons an organization on any discovery error and autobump skips it; a consumer that must not mistake a partial listing for a complete one uses `ListOrganizationRepositories`.
+
 ### Key Patterns
 
 - **Factory + Registry**: `ProviderRegistry` creates providers by name/token and resolves adapters by URL or `ServiceType`

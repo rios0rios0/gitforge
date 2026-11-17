@@ -3,7 +3,9 @@ package infrastructure_test
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -200,6 +202,27 @@ func TestSSHAgentListingRetries(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, int32(3), dials.Load(), "three listings")
 	})
+
+	t.Run("should not list again when the agent refused and then closed the connection", func(t *testing.T) {
+		t.Parallel()
+
+		// given -- the close comes back with the refusal's last byte, so a read has failed
+		// before the refusal reaches the caller, as when x/crypto's reader goroutine reads on
+		// past an answer and finds the agent gone
+		var dials atomic.Int32
+		dial := func() (net.Conn, error) {
+			dials.Add(1)
+			return newRefusingThenClosingSSHAgentConn(), nil
+		}
+
+		// when
+		_, err := gitops.ListSSHAgentSigners(dial)
+
+		// then -- x/crypto read the whole refusal, which is the agent's answer however the
+		// connection ended after it
+		require.ErrorContains(t, err, "agent: failed to list keys")
+		assert.Equal(t, int32(1), dials.Load(), "one listing")
+	})
 }
 
 // agentSignerCallback returns the signer callback of the agent auth method gitforge builds
@@ -211,4 +234,60 @@ func agentSignerCallback(t *testing.T, socketPath string) func() ([]ssh.Signer, 
 	agentAuth, isAgentAuth := method.(*gitssh.PublicKeysCallback)
 	require.True(t, isAgentAuth, "the agent auth method must be a PublicKeysCallback")
 	return agentAuth.Callback
+}
+
+// refusingThenClosingSSHAgentConn is the client's end of a connection to an agent that
+// answers the request with SSH_AGENT_FAILURE and closes the connection, the close arriving
+// with the answer's last byte: a read may return data and [io.EOF] together, and
+// [io.ReadFull] still counts the answer whole. So a read has failed before the refusal
+// reaches the caller every time; over a socket, that depends on x/crypto's reader goroutine
+// reading on past the answer before the caller looks.
+type refusingThenClosingSSHAgentConn struct {
+	net.Conn // left nil: the agent client only reads, writes and closes
+
+	answer      []byte
+	requested   chan struct{}
+	closed      chan struct{}
+	requestOnce sync.Once
+	closeOnce   sync.Once
+}
+
+// newRefusingThenClosingSSHAgentConn returns a connection whose agent has not been asked
+// anything yet.
+func newRefusingThenClosingSSHAgentConn() *refusingThenClosingSSHAgentConn {
+	return &refusingThenClosingSSHAgentConn{
+		// a message length of 1, big-endian, then the message: SSH_AGENT_FAILURE
+		answer:    []byte{0x00, 0x00, 0x00, 0x01, 0x05},
+		requested: make(chan struct{}),
+		closed:    make(chan struct{}),
+	}
+}
+
+// Read serves the refusal once the request was written, returning [io.EOF] with its last
+// byte, and nothing but [io.EOF] after it.
+func (c *refusingThenClosingSSHAgentConn) Read(buffer []byte) (int, error) {
+	select {
+	case <-c.requested:
+	case <-c.closed:
+		return 0, net.ErrClosed
+	}
+
+	read := copy(buffer, c.answer)
+	c.answer = c.answer[read:]
+	if len(c.answer) == 0 {
+		return read, io.EOF
+	}
+	return read, nil
+}
+
+// Write accepts the request.
+func (c *refusingThenClosingSSHAgentConn) Write(request []byte) (int, error) {
+	c.requestOnce.Do(func() { close(c.requested) })
+	return len(request), nil
+}
+
+// Close closes the connection, releasing a read still waiting for the request.
+func (c *refusingThenClosingSSHAgentConn) Close() error {
+	c.closeOnce.Do(func() { close(c.closed) })
+	return nil
 }

@@ -7,9 +7,11 @@ require (
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/google/go-github/v93 v93.0.0
+	github.com/kevinburke/ssh_config v1.6.0
 	github.com/rios0rios0/testkit v0.3.9
 	github.com/sergi/go-diff v1.4.5
 	github.com/sirupsen/logrus v1.10.2
+	github.com/skeema/knownhosts v1.3.3
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	gitlab.com/gitlab-org/api/client-go/v3 v3.52.0
@@ -33,9 +35,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
-	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/pjbgf/sha1cd v0.7.0 // indirect
-	github.com/skeema/knownhosts v1.3.3 // indirect
 	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.6 // indirect

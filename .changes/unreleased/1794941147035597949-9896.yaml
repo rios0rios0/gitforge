@@ -1,0 +1,3 @@
+kind: 'Added'
+body: 'added `NewSSHAgentAuthFromSocket`, `DetectSSHAgentSockets`, `KnownHostsCallback`, `SSHHostKeyCallback`, `RunningUnderWSL` and `SSHConfigSearchDescription` for consumers that build their own SSH auth methods and error messages; the agent auth method signs over connections of its own and retries a listing a relay dropped'
+time: '2026-11-17T18:45:47.03555581Z'

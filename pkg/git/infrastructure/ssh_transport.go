@@ -31,9 +31,25 @@ type sshTransport struct {
 	config   func() *sshConfigFiles
 	hostKeys func() *knownhosts.HostKeyDB
 
+	// options is what the consumer added to the transport through InstallSSHTransportWith.
+	options SSHTransportOptions
+
 	// warned holds the aliases a connection has already warned about offering no key, so
 	// a run that connects several times says so once.
 	warned sync.Map
+}
+
+// SSHTransportOptions is what a consumer adds to the SSH transport InstallSSHTransportWith
+// installs: what only the consumer knows, such as settings of its own. The zero value adds
+// nothing, and is what InstallSSHTransport installs the transport with.
+type SSHTransportOptions struct {
+	// MissingKeyRemedy is a way the consumer itself offers to provide a key, such as a
+	// setting that names a key file. When IdentitiesOnly leaves a host alias no key to
+	// offer, the transport warns once for that alias, and the warning ends "add that key to
+	// the SSH agent". A non-empty MissingKeyRemedy is appended to it after ", or ", so it
+	// should be an instruction about that key: "configure it as ssh_key_path", for example.
+	// Empty leaves the warning as it is.
+	MissingKeyRemedy string
 }
 
 // InstallSSHTransport makes every SSH connection go-git opens in this process honour the
@@ -51,28 +67,39 @@ type sshTransport struct {
 // them from the files KnownHostsCallback verifies against: an auth method a consumer builds
 // should carry KnownHostsCallback, as a callback verifying against other files may be asked
 // for a key type it does not hold.
+//
+// A consumer with SSHTransportOptions of its own calls InstallSSHTransportWith instead.
 func InstallSSHTransport() {
-	client.InstallProtocol(sshProtocol, NewSSHTransport(gitssh.DefaultClient))
+	InstallSSHTransportWith(SSHTransportOptions{})
+}
+
+// InstallSSHTransportWith does what InstallSSHTransport does, but installs the transport
+// with the options a consumer adds to it (see SSHTransportOptions). With the zero value it
+// is InstallSSHTransport.
+func InstallSSHTransportWith(options SSHTransportOptions) {
+	client.InstallProtocol(sshProtocol, newSSHTransport(gitssh.DefaultClient, sshConfig, knownHostsDB, options))
 	gitssh.DefaultSSHConfig = nil //nolint:reassign // the SSH transport resolves ssh_config instead
 	SetDefaultSSHHostKeyCallback(SSHHostKeyCallback())
 }
 
 // NewSSHTransport wraps go-git's SSH transport (gitssh.DefaultClient) so every connection
 // it opens honours the operator's ssh_config and known_hosts; InstallSSHTransport installs
-// the result for the "ssh" scheme. The files are discovered on the first connection, not
+// the result for the "ssh" scheme, and InstallSSHTransportWith the same transport with a
+// consumer's SSHTransportOptions. The files are discovered on the first connection, not
 // here, so a run that never touches SSH neither pays for the discovery nor sees its warnings.
 func NewSSHTransport(next transport.Transport) transport.Transport {
-	return newSSHTransport(next, sshConfig, knownHostsDB)
+	return newSSHTransport(next, sshConfig, knownHostsDB, SSHTransportOptions{})
 }
 
 // newSSHTransport builds the transport from where it reads ssh_config and known_hosts,
-// which is what a test replaces.
+// which is what a test replaces, and the options the consumer added to it.
 func newSSHTransport(
 	next transport.Transport,
 	config func() *sshConfigFiles,
 	hostKeys func() *knownhosts.HostKeyDB,
+	options SSHTransportOptions,
 ) *sshTransport {
-	return &sshTransport{next: next, config: config, hostKeys: hostKeys}
+	return &sshTransport{next: next, config: config, hostKeys: hostKeys, options: options}
 }
 
 // NewUploadPackSession opens a fetch, clone or remote listing session to the endpoint, with
@@ -147,16 +174,21 @@ func (t *sshTransport) withIdentities(
 // warnNoKeyOffered explains, once per alias, a connection that offers no key at all:
 // IdentitiesOnly narrowed the keys to the ones IdentityFile names, the agent holds none of
 // them, and none is a key file usable without a passphrase. The server's refusal
-// that follows says nothing about why.
+// that follows says nothing about why. The warning asks for the key in the SSH agent, or
+// through the consumer's MissingKeyRemedy when it set one.
 func (t *sshTransport) warnNoKeyOffered(alias string, settings sshHostSettings) {
 	if _, alreadyWarned := t.warned.LoadOrStore(alias, struct{}{}); alreadyWarned {
 		return
 	}
+
+	remedy := "add that key to the SSH agent"
+	if t.options.MissingKeyRemedy != "" {
+		remedy += ", or " + t.options.MissingKeyRemedy
+	}
 	log.Warnf(
 		"The ssh_config entry for %q sets IdentitiesOnly, and none of the keys its IdentityFile names "+
-			"(%s) is held by the SSH agent or readable without a passphrase, so no key is offered: add "+
-			"that key to the SSH agent",
-		alias, strings.Join(settings.IdentityFiles, ", "),
+			"(%s) is held by the SSH agent or readable without a passphrase, so no key is offered: %s",
+		alias, strings.Join(settings.IdentityFiles, ", "), remedy,
 	)
 }
 

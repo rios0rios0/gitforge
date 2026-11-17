@@ -78,7 +78,7 @@ gitforge/
 │   │       ├── operations_ssh.go      # SetDefaultSSHHostKeyCallback: consumer host key hook for the default SSH agent fallback
 │   │       ├── operations_test.go     # BDD tests for git operations
 │   │       ├── operations_worktree.go # Worktree management
-│   │       ├── ssh_transport.go       # InstallSSHTransport, NewSSHTransport: ssh_config, keys and host key types on every go-git SSH connection
+│   │       ├── ssh_transport.go       # InstallSSHTransport, InstallSSHTransportWith (SSHTransportOptions), NewSSHTransport: ssh_config, keys and host key types on every go-git SSH connection
 │   │       ├── ssh_config.go          # ssh_config discovery and host alias resolution (HostName, Port, IdentityFile, IdentitiesOnly)
 │   │       ├── ssh_wsl.go             # RunningUnderWSL; the Windows profile's ssh_config only when git runs ssh.exe
 │   │       ├── ssh_identities.go      # IdentityFile keys and OpenSSH's order for offering them

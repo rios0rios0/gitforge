@@ -254,16 +254,27 @@ func (c *logCapture) Fire(entry *log.Entry) error {
 	return nil
 }
 
-// levelsMentioning returns the levels of the captured entries whose message mentions text.
-func (c *logCapture) levelsMentioning(text string) []log.Level {
+// recordsMentioning returns the captured entries whose message mentions text, in the order
+// they were written.
+func (c *logCapture) recordsMentioning(text string) []logRecord {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var levels []log.Level
+	var records []logRecord
 	for _, record := range c.records {
 		if strings.Contains(record.message, text) {
-			levels = append(levels, record.level)
+			records = append(records, record)
 		}
+	}
+	return records
+}
+
+// levelsMentioning returns the levels of the captured entries whose message mentions text.
+func (c *logCapture) levelsMentioning(text string) []log.Level {
+	records := c.recordsMentioning(text)
+	levels := make([]log.Level, 0, len(records))
+	for _, record := range records {
+		levels = append(levels, record.level)
 	}
 	return levels
 }

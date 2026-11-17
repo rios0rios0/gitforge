@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
@@ -279,6 +280,115 @@ func TestSSHTransportEdgeCases(t *testing.T) {
 	})
 }
 
+// TestSSHTransportReporting is deliberately not parallel: it captures the entries of the
+// global logger, which every other test writes to as well.
+//
+//nolint:paralleltest // test captures the global logger, which parallel tests write to
+func TestSSHTransportReporting(t *testing.T) {
+	//nolint:paralleltest // test captures the global logger, which parallel tests write to
+	t.Run("should warn once that no key is offered when the consumer adds no remedy", func(t *testing.T) {
+		// given -- IdentitiesOnly names a key the agent does not hold
+		captured := captureLogs(t)
+		home := t.TempDir()
+		stranger := newTestSigner(t, newEd25519Key(t)).PublicKey()
+		keyPath := writePublicKeyFixture(t, filepath.Join(home, ".ssh", "stranger.pub"), stranger)
+		config := writeSSHFixture(t, filepath.Join(home, ".ssh", "config"), ""+
+			"Host github.com-mine\n"+
+			"  IdentityFile ~/.ssh/stranger.pub\n"+
+			"  IdentitiesOnly yes\n")
+		next := &recordingTransport{}
+		sshTransport := gitops.NewSSHTransportWith(
+			next,
+			[]gitops.SSHConfigSource{{Path: config, Home: home}},
+			"",
+			nil,
+		)
+		agentKeys := newAgentSigners(t, 2)
+
+		// when -- a release connects more than once
+		first := offerKeysThrough(t, sshTransport, next, "github.com-mine", agentKeys)
+		second := offerKeysThrough(t, sshTransport, next, "github.com-mine", agentKeys)
+
+		// then -- the message the transport logged before consumers could add a remedy
+		assert.Empty(t, first)
+		assert.Empty(t, second)
+		assert.Equal(t, []logRecord{{
+			level: log.WarnLevel,
+			message: `The ssh_config entry for "github.com-mine" sets IdentitiesOnly, and none of the keys its ` +
+				`IdentityFile names (` + keyPath + `) is held by the SSH agent or readable without a passphrase, ` +
+				`so no key is offered: add that key to the SSH agent`,
+		}}, captured.recordsMentioning(`"github.com-mine"`))
+	})
+
+	//nolint:paralleltest // test captures the global logger, which parallel tests write to
+	t.Run("should end the warning with the consumer's remedy when it adds one", func(t *testing.T) {
+		// given -- a consumer that can also take the key as a key file of its own
+		captured := captureLogs(t)
+		home := t.TempDir()
+		stranger := newTestSigner(t, newEd25519Key(t)).PublicKey()
+		keyPath := writePublicKeyFixture(t, filepath.Join(home, ".ssh", "stranger.pub"), stranger)
+		config := writeSSHFixture(t, filepath.Join(home, ".ssh", "config"), ""+
+			"Host github.com-mine\n"+
+			"  IdentityFile ~/.ssh/stranger.pub\n"+
+			"  IdentitiesOnly yes\n")
+		next := &recordingTransport{}
+		sshTransport := gitops.NewSSHTransportWithOptions(
+			next,
+			gitops.SSHTransportOptions{MissingKeyRemedy: "configure it as ssh_key_path"},
+			[]gitops.SSHConfigSource{{Path: config, Home: home}},
+			"",
+			nil,
+		)
+		agentKeys := newAgentSigners(t, 2)
+
+		// when -- a release connects more than once
+		first := offerKeysThrough(t, sshTransport, next, "github.com-mine", agentKeys)
+		second := offerKeysThrough(t, sshTransport, next, "github.com-mine", agentKeys)
+
+		// then
+		assert.Empty(t, first)
+		assert.Empty(t, second)
+		assert.Equal(t, []logRecord{{
+			level: log.WarnLevel,
+			message: `The ssh_config entry for "github.com-mine" sets IdentitiesOnly, and none of the keys its ` +
+				`IdentityFile names (` + keyPath + `) is held by the SSH agent or readable without a passphrase, ` +
+				`so no key is offered: add that key to the SSH agent, or configure it as ssh_key_path`,
+		}}, captured.recordsMentioning(`"github.com-mine"`))
+	})
+
+	//nolint:paralleltest // test captures the global logger, which parallel tests write to
+	t.Run("should warn once for each alias when several aliases offer no key", func(t *testing.T) {
+		// given -- two accounts' aliases, neither of whose keys the agent holds
+		captured := captureLogs(t)
+		home := t.TempDir()
+		stranger := newTestSigner(t, newEd25519Key(t)).PublicKey()
+		writePublicKeyFixture(t, filepath.Join(home, ".ssh", "stranger.pub"), stranger)
+		config := writeSSHFixture(t, filepath.Join(home, ".ssh", "config"), ""+
+			"Host github.com-mine github.com-work\n"+
+			"  IdentityFile ~/.ssh/stranger.pub\n"+
+			"  IdentitiesOnly yes\n")
+		next := &recordingTransport{}
+		sshTransport := gitops.NewSSHTransportWithOptions(
+			next,
+			gitops.SSHTransportOptions{MissingKeyRemedy: "configure it as ssh_key_path"},
+			[]gitops.SSHConfigSource{{Path: config, Home: home}},
+			"",
+			nil,
+		)
+		agentKeys := newAgentSigners(t, 2)
+
+		// when -- each alias connects more than once
+		for range 2 {
+			offerKeysThrough(t, sshTransport, next, "github.com-mine", agentKeys)
+			offerKeysThrough(t, sshTransport, next, "github.com-work", agentKeys)
+		}
+
+		// then
+		assert.Equal(t, []log.Level{log.WarnLevel}, captured.levelsMentioning(`"github.com-mine"`))
+		assert.Equal(t, []log.Level{log.WarnLevel}, captured.levelsMentioning(`"github.com-work"`))
+	})
+}
+
 // TestDiscoverSSHConfigSources is deliberately not parallel: it points HOME somewhere else
 // with t.Setenv, which the runtime forbids in a parallel test.
 func TestDiscoverSSHConfigSources(t *testing.T) {
@@ -422,6 +532,34 @@ func newForgeFixture(t *testing.T) *forgeFixture {
 		authorizedKey:        authorizedKey,
 		authorizedPrivateKey: authorizedPrivateKey,
 	}
+}
+
+// offerKeysThrough opens a push session to alias through sshTransport, which was built over
+// next, and returns the keys the session's agent auth method offers out of agentKeys, as a
+// connection does when it authenticates.
+func offerKeysThrough(
+	t *testing.T,
+	sshTransport transport.Transport,
+	next *recordingTransport,
+	alias string,
+	agentKeys []ssh.Signer,
+) []ssh.Signer {
+	t.Helper()
+
+	endpoint, err := transport.NewEndpoint("git@" + alias + ":owner/repo.git")
+	require.NoError(t, err)
+	auth := &gitssh.PublicKeysCallback{
+		User:     "git",
+		Callback: func() ([]ssh.Signer, error) { return agentKeys, nil },
+	}
+	_, err = sshTransport.NewReceivePackSession(endpoint, auth)
+	require.ErrorIs(t, err, errSessionRecorded)
+
+	narrowed, isAgentAuth := next.auth.(*gitssh.PublicKeysCallback)
+	require.True(t, isAgentAuth)
+	offered, err := narrowed.Callback()
+	require.NoError(t, err)
+	return offered
 }
 
 // agentAuthVerifyingAgainst returns the agent auth method gitforge builds for socketPath,

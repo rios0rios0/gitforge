@@ -1,6 +1,8 @@
 package infrastructure
 
 import (
+	"net"
+
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/skeema/knownhosts"
 	"golang.org/x/crypto/ssh"
@@ -94,6 +96,12 @@ func NewSSHTransportWith(
 		func() *sshConfigFiles { return config },
 		func() *knownhosts.HostKeyDB { return hostKeys },
 	)
+}
+
+// ListSSHAgentSigners exports listSSHAgentSigners for testing, taking the dialer as a plain
+// function so a test can hand it connections that fail on cue.
+func ListSSHAgentSigners(dial func() (net.Conn, error)) ([]ssh.Signer, error) {
+	return listSSHAgentSigners(dial)
 }
 
 // DefaultSSHHostKeyCallback exports getDefaultSSHHostKeyCallback for testing.

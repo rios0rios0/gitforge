@@ -38,16 +38,26 @@ var errUnsupportedAgentAlgorithm = errors.New("the SSH agent protocol cannot req
 type sshAgentDialer func() (net.Conn, error)
 
 // sshAgentConn is a connection to an SSH agent that remembers whether writing to it or
-// reading from it failed. x/crypto reports a dropped connection and a request the agent
-// refused alike, as a plain error, so this is what tells a listing worth retrying -- the
-// request never reached the agent, or its answer never came back -- from one the agent
-// itself turned down. A relay that drops the connection may do so before the request is
-// written, failing the write with a broken pipe, or after, failing the read with EOF. The
-// flag is atomic because x/crypto reads a closable connection from a goroutine of its own.
+// reading from it failed, and whether any of the agent's answer arrived. x/crypto reports a
+// dropped connection and a request the agent refused alike, as a plain error, so this is
+// what tells a listing worth retrying -- the request never reached the agent, or its answer
+// never came back -- from one the agent itself turned down. A relay that drops the
+// connection may do so before the request is written, failing the write with a broken pipe,
+// or after, failing the read with EOF.
+//
+// A failed read alone does not mean the agent never answered. x/crypto's reader goroutine
+// keeps reading after it hands an answer over, so an agent that refuses and then closes the
+// connection fails that next read, usually before the caller looks; and a read may return
+// an answer's last bytes together with [io.EOF]. A failure is therefore a drop only when
+// none of the answer arrived. The price is that a connection dropped part-way through an
+// answer is not retried either: the agent did answer, and may already have asked the
+// operator. The flags are atomic because x/crypto reads a closable connection from a
+// goroutine of its own.
 type sshAgentConn struct {
 	net.Conn
 
-	failed atomic.Bool
+	failed   atomic.Bool
+	answered atomic.Bool
 }
 
 // sshAgentSigner is a key the SSH agent holds, signing over a connection of its own.
@@ -120,11 +130,12 @@ func DetectSSHAgentSockets() []string {
 // again when it is asked to sign.
 //
 // A listing whose connection is dropped before the agent answers is tried again after a
-// pause. The liveness probe in NewSSHAgentAuthFromSocket closes its connection without a
-// request, and a relay that starts a process per connection -- npiperelay, bridging a
-// Windows agent into WSL -- can drop the next connection while that one is still winding
-// down. Signing is not retried: a dropped signature request may already have asked the
-// operator to approve it.
+// pause; one the agent answered is not, however the connection ended after the answer
+// (see sshAgentConn). The liveness probe in NewSSHAgentAuthFromSocket closes its
+// connection without a request, and a relay that starts a process per connection --
+// npiperelay, bridging a Windows agent into WSL -- can drop the next connection while that
+// one is still winding down. Signing is not retried: a dropped signature request may
+// already have asked the operator to approve it.
 func listSSHAgentSigners(dial sshAgentDialer) ([]ssh.Signer, error) {
 	var keys []*agent.Key
 	for attempt := 1; ; attempt++ {
@@ -154,7 +165,8 @@ func listSSHAgentSigners(dial sshAgentDialer) ([]ssh.Signer, error) {
 }
 
 // listSSHAgentKeys lists the agent's keys over one connection, reporting whether a failure
-// came from the connection being dropped rather than from the agent's answer.
+// came from the connection being dropped before the agent answered rather than from the
+// agent's answer.
 func listSSHAgentKeys(dial sshAgentDialer) ([]*agent.Key, bool, error) {
 	raw, err := dial()
 	if err != nil {
@@ -165,14 +177,19 @@ func listSSHAgentKeys(dial sshAgentDialer) ([]*agent.Key, bool, error) {
 
 	keys, err := agent.NewClient(conn).List()
 	if err != nil {
-		return nil, conn.failed.Load(), err
+		return nil, conn.dropped(), err
 	}
 	return keys, false, nil
 }
 
-// Read reads from the agent, remembering whether a read failed.
+// Read reads from the agent, remembering whether any of its answer arrived and whether a
+// read failed. The answer is recorded first, so whoever sees a read's failure also sees the
+// data that read returned with it.
 func (c *sshAgentConn) Read(buffer []byte) (int, error) {
 	read, err := c.Conn.Read(buffer)
+	if read > 0 {
+		c.answered.Store(true)
+	}
 	if err != nil {
 		c.failed.Store(true)
 	}
@@ -186,6 +203,11 @@ func (c *sshAgentConn) Write(buffer []byte) (int, error) {
 		c.failed.Store(true)
 	}
 	return written, err
+}
+
+// dropped reports whether the connection failed before any of the agent's answer arrived.
+func (c *sshAgentConn) dropped() bool {
+	return c.failed.Load() && !c.answered.Load()
 }
 
 // PublicKey returns the public half of the agent key.

@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed `NewSSHAgentAuthFromSocket` asking an SSH agent up to twice more for its keys after the agent refused to list them and then closed the connection, as if a relay had dropped the connection before the agent answered'
-time: '2026-11-17T19:59:04.662433487Z'

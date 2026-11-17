@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added `InstallSSHTransportWith` and `SSHTransportOptions`, whose `MissingKeyRemedy` lets a consumer append its own way to provide a key to the warning the SSH transport logs when `IdentitiesOnly` leaves a host alias no key to offer'
-time: '2026-11-17T20:03:53.110103379Z'

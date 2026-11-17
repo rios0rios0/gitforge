@@ -22,6 +22,16 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-11-17
+
+### Added
+
+- added `InstallSSHTransportWith` and `SSHTransportOptions`, whose `MissingKeyRemedy` lets a consumer append its own way to provide a key to the warning the SSH transport logs when `IdentitiesOnly` leaves a host alias no key to offer
+
+### Fixed
+
+- fixed `NewSSHAgentAuthFromSocket` asking an SSH agent up to twice more for its keys after the agent refused to list them and then closed the connection, as if a relay had dropped the connection before the agent answered
+
 ## [4.5.0] - 2026-11-17
 
 ### Added

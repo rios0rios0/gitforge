@@ -89,13 +89,36 @@ func NewSSHTransportWith(
 	automountRoot string,
 	knownHostsFiles []string,
 ) transport.Transport {
+	return NewSSHTransportWithOptions(next, SSHTransportOptions{}, sources, automountRoot, knownHostsFiles)
+}
+
+// NewSSHTransportWithOptions builds the transport NewSSHTransportWith builds, with the
+// options a consumer adds through InstallSSHTransportWith.
+func NewSSHTransportWithOptions(
+	next transport.Transport,
+	options SSHTransportOptions,
+	sources []SSHConfigSource,
+	automountRoot string,
+	knownHostsFiles []string,
+) transport.Transport {
 	config := loadSSHConfigFiles(sources, automountRoot)
 	hostKeys := buildKnownHostsDB(knownHostsFiles)
 	return newSSHTransport(
 		next,
 		func() *sshConfigFiles { return config },
 		func() *knownhosts.HostKeyDB { return hostKeys },
+		options,
 	)
+}
+
+// SSHTransportOptionsOf returns the options of an SSH transport gitforge built, and false
+// when candidate is not one.
+func SSHTransportOptionsOf(candidate transport.Transport) (SSHTransportOptions, bool) {
+	built, isGitforge := candidate.(*sshTransport)
+	if !isGitforge {
+		return SSHTransportOptions{}, false
+	}
+	return built.options, true
 }
 
 // ListSSHAgentSigners exports listSSHAgentSigners for testing, taking the dialer as a plain

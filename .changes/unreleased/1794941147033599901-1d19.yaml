@@ -1,0 +1,3 @@
+kind: 'Added'
+body: 'added `InstallSSHTransport`, which makes every go-git SSH connection honour `ssh_config` host aliases (`HostName`, `Port`, `IdentityFile`, `IdentitiesOnly`, and under WSL the Windows profile''s `.ssh/config` when git runs `ssh.exe`), verify hosts against the `known_hosts` files discovered on the host, including the Windows profiles'' under WSL, and negotiate only the host key types they record, so a host recorded with its Ed25519 key no longer fails with `knownhosts: key mismatch`'
+time: '2026-11-17T18:45:47.033541236Z'

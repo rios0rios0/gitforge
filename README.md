@@ -23,6 +23,7 @@ A shared Go library providing common abstractions for working with Git hosting p
 - **Pull Request Management**: Create PRs/MRs and check for existing ones
 - **File Operations**: Read files, list trees, check file existence via API
 - **Local Git Operations**: Branch, commit, push (SSH/HTTPS) via go-git
+- **SSH Client Configuration**: SSH connections that honour `ssh_config` host aliases, `known_hosts` and SSH agent keys the way the `ssh` binary does (see [SSH client configuration](#ssh-client-configuration))
 - **Commit Signing**: GPG signing with keyring export and passphrase support, and SSH signing via `ssh-keygen`
 - **Changelog Processing**: Full Keep-a-Changelog toolkit (version calculation, deduplication, entry insertion)
 - **Configuration**: Token resolution (inline, `${ENV_VAR}`, file path), config file discovery
@@ -71,6 +72,21 @@ Two optional single-method interfaces sit beside that hierarchy, also reached by
 - **`OrganizationRepositoryLister`** (Azure DevOps): lists a whole organization in one strict call and fails instead of skipping a part of it, where `DiscoverRepositories` stays best-effort
 
 Discovered repositories report `IsFork`, `IsArchived` and `IsDisabled` (disabled, or under maintenance on Azure DevOps). Providers never filter on them; skipping such repositories is the consumer's policy.
+
+## SSH Client Configuration
+
+go-git is a pure-Go SSH client and never runs the `ssh` binary, so the configuration `ssh` would read does not apply to its connections on its own. A consumer calls `InstallSSHTransport()` (`pkg/git/infrastructure`) once at startup, and every SSH push, clone and remote listing then behaves the way `git` does on that machine:
+
+- **Host aliases.** The `HostName` and `Port` an alias names in `~/.ssh/config` or `/etc/ssh/ssh_config` are dialed, read as one OpenSSH configuration: the first file that sets a keyword wins, and `IdentityFile` accumulates. Under WSL, when git runs Windows' `ssh.exe` (through `GIT_SSH_COMMAND`, `core.sshCommand`, `GIT_SSH`, or an `ssh` on `PATH` that is or wraps it), the Windows profile's `.ssh/config` is read too.
+- **Keys.** An agent auth method offers the keys an alias's `IdentityFile` names first, the agent's others unless `IdentitiesOnly` is set, and unencrypted key files the agent does not hold last, as OpenSSH does.
+- **Host keys.** Hosts are verified against `SSH_KNOWN_HOSTS`, or `~/.ssh/known_hosts`, `/etc/ssh/ssh_known_hosts` and, under WSL, the Windows profiles' `known_hosts`. The server is asked only for the host key types those files record, so a host recorded with its Ed25519 key is not failed with `knownhosts: key mismatch` because Go's SSH library asked for ECDSA first.
+
+Building blocks for a consumer's own auth methods:
+
+- **`NewSSHAgentAuthFromSocket(path)`**: an agent auth method for any agent socket, which lists the keys and signs over connections of its own, retrying a listing a relay dropped.
+- **`DetectSSHAgentSockets()`**: the agent sockets that exist (`SSH_AUTH_SOCK`, then 1Password's `~/.1password/agent.sock`).
+- **`KnownHostsCallback()`**: the host key callback auth methods should carry, as the transport reads the host key types from the same files.
+- **`RunningUnderWSL()`** and **`SSHConfigSearchDescription()`**: for a consumer's own error messages.
 
 ## License
 

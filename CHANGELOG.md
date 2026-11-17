@@ -22,6 +22,17 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-11-17
+
+### Added
+
+- added `InstallSSHTransport`, which makes every go-git SSH connection honour `ssh_config` host aliases (`HostName`, `Port`, `IdentityFile`, `IdentitiesOnly`, and under WSL the Windows profile's `.ssh/config` when git runs `ssh.exe`), verify hosts against the `known_hosts` files discovered on the host, including the Windows profiles' under WSL, and negotiate only the host key types they record, so a host recorded with its Ed25519 key no longer fails with `knownhosts: key mismatch`
+- added `NewSSHAgentAuthFromSocket`, `DetectSSHAgentSockets`, `KnownHostsCallback`, `SSHHostKeyCallback`, `RunningUnderWSL` and `SSHConfigSearchDescription` for consumers that build their own SSH auth methods and error messages; the agent auth method signs over connections of its own and retries a listing a relay dropped
+
+### Changed
+
+- changed the Go modules `github.com/rios0rios0/testkit` from `v0.3.8` to `v0.3.9`, `github.com/sergi/go-diff` from `v1.4.0` to `v1.4.5` and `gitlab.com/gitlab-org/api/client-go/v3` from `v3.51.0` to `v3.52.0`
+
 ## [4.4.0] - 2026-11-16
 
 ### Added

@@ -22,6 +22,18 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-11-19
+
+### Added
+
+- added `ServiceType.DisplayName()`, which names a forge as people write it (`GitHub`, `Azure DevOps`) while `%v` keeps printing the number, and `TokenEnvVars`, which lists the environment variables that can hold a forge's token
+- added safeguards to the CLI credential fallback: the CLI runs from the home directory, or the filesystem root when there is none, never from the repository being processed; a timeout kills its whole process group; and a `GITLAB_TOKEN` or `GL_TOKEN` is not sent to gitlab.com while `GITLAB_HOST` or `GL_HOST` names another server
+- added the `pkg/credentials` bounded context, which resolves a forge token from its environment variables and then from the forge's own CLI (`gh auth token --hostname github.com` for GitHub, `az account get-access-token` for Azure DevOps, scoped to the organization's Microsoft Entra tenant), so consumers no longer need a separately exported token when the user is already signed in; the chain moved here from dev-toolkit, without its `glab auth token` fallback, a command glab does not have
+
+### Changed
+
+- changed the Go modules `gitlab.com/gitlab-org/api/client-go/v3` from `v3.52.0` to `v3.53.0` and `golang.org/x/net` from `v0.62.0` to `v0.63.0`
+
 ## [4.6.0] - 2026-11-17
 
 ### Added

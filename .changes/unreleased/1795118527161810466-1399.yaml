@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added `ServiceType.DisplayName()`, which names a forge as people write it (`GitHub`, `Azure DevOps`) while `%v` keeps printing the number, and `TokenEnvVars`, which lists the environment variables that can hold a forge''s token'
-time: '2026-11-19T20:02:07.161767626Z'

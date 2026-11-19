@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added the `pkg/credentials` bounded context, which resolves a forge token from its environment variables and then from the forge''s own CLI (`gh auth token --hostname github.com` for GitHub, `az account get-access-token` for Azure DevOps, scoped to the organization''s Microsoft Entra tenant), so consumers no longer need a separately exported token when the user is already signed in; the chain moved here from dev-toolkit, without its `glab auth token` fallback, a command glab does not have'
-time: '2026-11-19T20:02:07.159797998Z'

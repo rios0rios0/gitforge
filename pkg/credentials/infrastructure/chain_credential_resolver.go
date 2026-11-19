@@ -48,7 +48,7 @@ func (r *ChainCredentialResolver) Resolve(
 			return credential, nil
 		}
 		if err == nil {
-			err = newUnavailableError(nil, "a credential source returned an empty token")
+			err = emptyTokenFailure(credential.Source)
 		}
 		reasons = append(reasons, err)
 		if ctx.Err() != nil {
@@ -56,4 +56,13 @@ func (r *ChainCredentialResolver) Resolve(
 		}
 	}
 	return entities.Credential{}, &noCredentialError{forge: forge, reasons: reasons}
+}
+
+// emptyTokenFailure explains a resolver that returned no token and no error, naming its
+// source when it gave one.
+func emptyTokenFailure(source string) error {
+	if source == "" {
+		return newUnavailableError(nil, "a credential source returned an empty token")
+	}
+	return newUnavailableError(nil, "the %s returned an empty token", source)
 }

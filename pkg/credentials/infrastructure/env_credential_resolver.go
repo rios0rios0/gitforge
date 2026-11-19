@@ -2,16 +2,27 @@ package infrastructure
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"strings"
 
 	configHelpers "github.com/rios0rios0/gitforge/v4/pkg/config/domain/helpers"
 	"github.com/rios0rios0/gitforge/v4/pkg/credentials/domain/entities"
+	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 )
 
+// gitlabHost is the only host gitforge's GitLab provider talks to.
+const gitlabHost = "gitlab.com"
+
+// gitlabHostVariables name the GitLab server glab sends GITLAB_TOKEN to. A token exported
+// for a self-managed server must not be sent to gitlab.com.
+//
+//nolint:gochecknoglobals // read-only lookup table
+var gitlabHostVariables = []string{"GITLAB_HOST", "GL_HOST"}
+
 // EnvCredentialResolver reads a forge's token from the environment variables gitforge
-// knows for it (configHelpers.TokenEnvVars), in priority order: GH_TOKEN then
-// GITHUB_TOKEN, GITLAB_TOKEN then GL_TOKEN, AZURE_DEVOPS_EXT_PAT then SYSTEM_ACCESSTOKEN,
+// knows for it (configHelpers.TokenEnvVars), in priority order: GITHUB_TOKEN then
+// GH_TOKEN, GITLAB_TOKEN then GL_TOKEN, AZURE_DEVOPS_EXT_PAT then SYSTEM_ACCESSTOKEN,
 // and CODEBERG_TOKEN.
 type EnvCredentialResolver struct {
 	// Lookup reads one variable. Nil means os.Getenv; tests set it instead of changing
@@ -41,15 +52,47 @@ func (r *EnvCredentialResolver) Resolve(
 		lookup = os.Getenv
 	}
 	for _, name := range names {
-		if token := strings.TrimSpace(lookup(name)); token != "" {
-			return entities.Credential{Token: token, Source: name + " environment variable"}, nil
+		token := strings.TrimSpace(lookup(name))
+		if token == "" {
+			continue
 		}
+		if request.ServiceType == globalEntities.GITLAB {
+			if variable, host, foreign := foreignGitLabHost(lookup); foreign {
+				return entities.Credential{}, newUnavailableError(
+					nil, "%s names the GitLab server %s, so %s is not sent to %s", variable, host, name, gitlabHost,
+				)
+			}
+		}
+		return entities.Credential{Token: token, Source: name + " environment variable"}, nil
 	}
 	return entities.Credential{}, newUnavailableError(nil, "%s not set", describeUnsetVariables(names))
 }
 
+// foreignGitLabHost reports the first of GITLAB_HOST and GL_HOST that names a server other
+// than gitlab.com, with that server's host name.
+func foreignGitLabHost(lookup func(string) string) (string, string, bool) {
+	for _, name := range gitlabHostVariables {
+		value := strings.TrimSpace(lookup(name))
+		if value == "" {
+			continue
+		}
+		host := value
+		withScheme := value
+		if !strings.Contains(value, "://") {
+			withScheme = "https://" + value
+		}
+		if parsed, err := url.Parse(withScheme); err == nil && parsed.Hostname() != "" {
+			host = parsed.Hostname()
+		}
+		if !strings.EqualFold(host, gitlabHost) {
+			return name, host, true
+		}
+	}
+	return "", "", false
+}
+
 // describeUnsetVariables names the variables for "... not set": "CODEBERG_TOKEN is",
-// "GH_TOKEN and GITHUB_TOKEN are".
+// "GITHUB_TOKEN and GH_TOKEN are".
 func describeUnsetVariables(names []string) string {
 	if len(names) == 1 {
 		return names[0] + " is"

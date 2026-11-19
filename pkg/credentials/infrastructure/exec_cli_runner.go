@@ -7,20 +7,23 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
 
-// cliWaitDelay bounds how long a CLI's output may stay open once its context is done. A
-// killed program can leave a child holding standard output, which would otherwise keep
-// Output waiting after the deadline.
+// cliWaitDelay bounds how long Output waits for a CLI's output to close once the CLI has
+// exited or its context has ended. A launcher can leave a child holding standard output,
+// which would otherwise keep Output waiting indefinitely.
 const cliWaitDelay = 2 * time.Second
 
 // ExecCLIRunner finds forge CLIs on PATH and runs them as child processes.
 type ExecCLIRunner struct {
-	// Dir is the directory the CLI runs in. Empty means the user's home directory: the
-	// consumers work inside a repository they were pointed at, and nothing in that
-	// checkout should reach the program that hands over the user's credentials.
+	// Dir is the directory the CLI runs in. Empty means the user's home directory, or the
+	// filesystem root when there is none, and never the caller's own directory: the
+	// consumers work inside a repository they were pointed at, and a CLI such as a
+	// pip-installed az puts its working directory on Python's module path, so a file in
+	// that checkout would run as the user while their credentials are at hand.
 	Dir string
 }
 
@@ -55,8 +58,15 @@ func (r *ExecCLIRunner) Output(ctx context.Context, path string, args ...string)
 	// end of file instead of waiting for an answer that never comes.
 	cmd.Stdin = nil
 	cmd.WaitDelay = cliWaitDelay
+	killProcessGroupOnCancel(cmd)
 
 	output, err := cmd.Output()
+	// ErrWaitDelay after a successful exit, with the context still live, means only that
+	// something the CLI started kept standard output open: the CLI itself finished and
+	// printed what it had to.
+	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+		err = nil
+	}
 	if err == nil {
 		return strings.TrimSpace(string(output)), nil
 	}
@@ -73,14 +83,27 @@ func (r *ExecCLIRunner) Output(ctx context.Context, path string, args ...string)
 	return "", fmt.Errorf("%s: %w", command, err)
 }
 
-// workingDirectory returns Dir, else the user's home directory, else "" to inherit the
-// caller's.
+// workingDirectory returns Dir, else the user's home directory when it exists, else the
+// filesystem root. It never returns "", which would run the CLI in the caller's directory.
 func (r *ExecCLIRunner) workingDirectory() string {
 	if r.Dir != "" {
 		return r.Dir
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		return home
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if info, statErr := os.Stat(home); statErr == nil && info.IsDir() {
+			return home
+		}
 	}
-	return ""
+	return filesystemRoot()
+}
+
+// filesystemRoot returns the root of the filesystem, or of the system drive on Windows.
+func filesystemRoot() string {
+	if runtime.GOOS != "windows" {
+		return string(filepath.Separator)
+	}
+	if drive := os.Getenv("SystemDrive"); drive != "" {
+		return drive + string(filepath.Separator)
+	}
+	return `C:\`
 }

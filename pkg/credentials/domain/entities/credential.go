@@ -16,8 +16,12 @@ import (
 var ErrNoCredential = errors.New("no credential available")
 
 // Credential is a token a forge accepts, together with a human-readable description of
-// where it came from ("GH_TOKEN environment variable", "gh CLI"). The source exists so a
-// log line or an error can name what produced a token without ever printing the token.
+// where it came from ("GITHUB_TOKEN environment variable", "gh CLI"). The source exists so
+// a log line or an error can name what produced a token without ever printing the token.
+//
+// A token from a CLI can be short-lived: an Azure CLI token lasts about an hour, and az
+// may return a cached one with minutes left. Resolve again for each run or organization
+// rather than keeping one for a long batch.
 type Credential struct {
 	Token  string
 	Source string

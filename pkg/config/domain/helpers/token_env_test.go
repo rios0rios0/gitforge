@@ -12,28 +12,28 @@ import (
 // TestResolveTokenFromEnv is deliberately not parallel: it sets process environment
 // variables with t.Setenv, which the runtime forbids in a parallel test.
 func TestResolveTokenFromEnv(t *testing.T) {
-	t.Run("should return GH_TOKEN when both GitHub variables are set", func(t *testing.T) {
+	t.Run("should return GITHUB_TOKEN when both GitHub variables are set", func(t *testing.T) {
 		// given
+		t.Setenv("GITHUB_TOKEN", "fixture-github-token")
 		t.Setenv("GH_TOKEN", "fixture-gh-token")
-		t.Setenv("GITHUB_TOKEN", "fixture-github-token")
-
-		// when
-		token := helpers.ResolveTokenFromEnv(entities.GITHUB)
-
-		// then
-		assert.Equal(t, "fixture-gh-token", token)
-	})
-
-	t.Run("should fall back to GITHUB_TOKEN when GH_TOKEN is empty", func(t *testing.T) {
-		// given
-		t.Setenv("GH_TOKEN", "")
-		t.Setenv("GITHUB_TOKEN", "fixture-github-token")
 
 		// when
 		token := helpers.ResolveTokenFromEnv(entities.GITHUB)
 
 		// then
 		assert.Equal(t, "fixture-github-token", token)
+	})
+
+	t.Run("should fall back to GH_TOKEN when GITHUB_TOKEN is empty", func(t *testing.T) {
+		// given
+		t.Setenv("GITHUB_TOKEN", "")
+		t.Setenv("GH_TOKEN", "fixture-gh-token")
+
+		// when
+		token := helpers.ResolveTokenFromEnv(entities.GITHUB)
+
+		// then
+		assert.Equal(t, "fixture-gh-token", token)
 	})
 
 	t.Run("should return GITLAB_TOKEN when set", func(t *testing.T) {
@@ -122,7 +122,7 @@ func TestTokenEnvHint(t *testing.T) {
 		hint := helpers.TokenEnvHint(entities.GITHUB)
 
 		// then
-		assert.Equal(t, "GH_TOKEN or GITHUB_TOKEN", hint)
+		assert.Equal(t, "GITHUB_TOKEN or GH_TOKEN", hint)
 	})
 
 	t.Run("should return GitLab env var names", func(t *testing.T) {
@@ -159,7 +159,7 @@ func TestTokenEnvHint(t *testing.T) {
 func TestTokenEnvVars(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should list GH_TOKEN before GITHUB_TOKEN when the forge is GitHub", func(t *testing.T) {
+	t.Run("should list GITHUB_TOKEN before GH_TOKEN when the forge is GitHub", func(t *testing.T) {
 		t.Parallel()
 
 		// given
@@ -169,7 +169,7 @@ func TestTokenEnvVars(t *testing.T) {
 		names := helpers.TokenEnvVars(serviceType)
 
 		// then
-		assert.Equal(t, []string{"GH_TOKEN", "GITHUB_TOKEN"}, names)
+		assert.Equal(t, []string{"GITHUB_TOKEN", "GH_TOKEN"}, names)
 	})
 
 	t.Run("should return no variable when the forge has none", func(t *testing.T) {
@@ -195,6 +195,6 @@ func TestTokenEnvVars(t *testing.T) {
 		names[0] = "CHANGED"
 
 		// then
-		assert.Equal(t, []string{"GH_TOKEN", "GITHUB_TOKEN"}, helpers.TokenEnvVars(entities.GITHUB))
+		assert.Equal(t, []string{"GITHUB_TOKEN", "GH_TOKEN"}, helpers.TokenEnvVars(entities.GITHUB))
 	})
 }

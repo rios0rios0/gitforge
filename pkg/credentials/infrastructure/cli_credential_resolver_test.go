@@ -211,6 +211,41 @@ func TestCLICredentialResolverResolve(t *testing.T) {
 		assert.NotContains(t, runner.Calls()[0], "--tenant")
 	})
 
+	t.Run("should report az as not installed before looking up a tenant when az is missing", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		runner := &doubles.CLIRunnerStub{}
+		tenants := &doubles.AzureTenantResolverStub{Tenant: fixtureTenant}
+		resolver := &infrastructure.CLICredentialResolver{Runner: runner, TenantResolver: tenants}
+
+		// when
+		_, err := resolver.Resolve(t.Context(), azureRequest("fixture-org"))
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+		require.EqualError(t, err, "the az CLI is not installed")
+		assert.Empty(t, tenants.Organizations())
+	})
+
+	t.Run("should leave a GitHub request unscoped when it names an organization", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		runner := &doubles.CLIRunnerStub{Paths: map[string]string{"gh": "/usr/bin/gh"}, Token: "fixture-gh-token"}
+		tenants := &doubles.AzureTenantResolverStub{Tenant: fixtureTenant}
+		resolver := &infrastructure.CLICredentialResolver{Runner: runner, TenantResolver: tenants}
+		request := entities.CredentialRequest{ServiceType: globalEntities.GITHUB, Organization: "fixture-org"}
+
+		// when
+		_, err := resolver.Resolve(t.Context(), request)
+
+		// then
+		require.NoError(t, err)
+		assert.Empty(t, tenants.Organizations())
+		assert.Equal(t, [][]string{{"/usr/bin/gh", "auth", "token", "--hostname", "github.com"}}, runner.Calls())
+	})
+
 	t.Run("should decline without running az when the tenant lookup fails", func(t *testing.T) {
 		t.Parallel()
 
@@ -279,6 +314,27 @@ func TestCLICredentialResolverResolve(t *testing.T) {
 		// then
 		require.ErrorIs(t, err, entities.ErrNoCredential)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Contains(t, err.Error(), "the gh CLI did not provide a token in time")
+		assert.NotContains(t, err.Error(), "authenticate with")
+	})
+
+	t.Run("should say the request was cancelled when the caller cancels it", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		runner := &doubles.CLIRunnerStub{Paths: map[string]string{"gh": "/usr/bin/gh"}, Block: true}
+		resolver := &infrastructure.CLICredentialResolver{Runner: runner}
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		// when
+		_, err := resolver.Resolve(ctx, githubRequest())
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+		require.ErrorIs(t, err, context.Canceled)
+		assert.Contains(t, err.Error(), "asking the gh CLI for a token was cancelled")
+		assert.NotContains(t, err.Error(), "authenticate with")
 	})
 }
 

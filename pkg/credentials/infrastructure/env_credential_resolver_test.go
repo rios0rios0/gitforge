@@ -18,30 +18,13 @@ func lookupFrom(values map[string]string) func(string) string {
 func TestEnvCredentialResolverResolve(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should return GH_TOKEN when both GitHub variables are set", func(t *testing.T) {
+	t.Run("should return GITHUB_TOKEN when both GitHub variables are set", func(t *testing.T) {
 		t.Parallel()
 
 		// given
 		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+			"GITHUB_TOKEN": "fixture-github-token",
 			"GH_TOKEN":     "fixture-gh-token",
-			"GITHUB_TOKEN": "fixture-github-token",
-		})}
-
-		// when
-		credential, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITHUB})
-
-		// then
-		require.NoError(t, err)
-		assert.Equal(t, "fixture-gh-token", credential.Token)
-		assert.Equal(t, "GH_TOKEN environment variable", credential.Source)
-	})
-
-	t.Run("should fall back to GITHUB_TOKEN when GH_TOKEN is empty", func(t *testing.T) {
-		t.Parallel()
-
-		// given
-		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
-			"GITHUB_TOKEN": "fixture-github-token",
 		})}
 
 		// when
@@ -51,6 +34,23 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "fixture-github-token", credential.Token)
 		assert.Equal(t, "GITHUB_TOKEN environment variable", credential.Source)
+	})
+
+	t.Run("should fall back to GH_TOKEN when GITHUB_TOKEN is empty", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+			"GH_TOKEN": "fixture-gh-token",
+		})}
+
+		// when
+		credential, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITHUB})
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "fixture-gh-token", credential.Token)
+		assert.Equal(t, "GH_TOKEN environment variable", credential.Source)
 	})
 
 	t.Run("should return AZURE_DEVOPS_EXT_PAT when the forge is Azure DevOps", func(t *testing.T) {
@@ -97,8 +97,62 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 
 		// given
 		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
-			"GH_TOKEN":     " \n",
+			"GITHUB_TOKEN": " \n",
+			"GH_TOKEN":     "fixture-gh-token",
+		})}
+
+		// when
+		credential, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITHUB})
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "fixture-gh-token", credential.Token)
+	})
+
+	t.Run("should not send a GitLab token to gitlab.com when GITLAB_HOST names another server", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+			"GITLAB_TOKEN": "fixture-gitlab-token",
+			"GITLAB_HOST":  "https://gitlab.example.com:8443/",
+		})}
+
+		// when
+		credential, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITLAB})
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+		require.EqualError(t, err,
+			"GITLAB_HOST names the GitLab server gitlab.example.com, so GITLAB_TOKEN is not sent to gitlab.com")
+		assert.Empty(t, credential.Token)
+	})
+
+	t.Run("should use the GitLab token when GL_HOST names gitlab.com", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+			"GL_TOKEN": "fixture-gitlab-token",
+			"GL_HOST":  "GitLab.com:443",
+		})}
+
+		// when
+		credential, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITLAB})
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "fixture-gitlab-token", credential.Token)
+		assert.Equal(t, "GL_TOKEN environment variable", credential.Source)
+	})
+
+	t.Run("should ignore GITLAB_HOST when the forge is GitHub", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
 			"GITHUB_TOKEN": "fixture-github-token",
+			"GITLAB_HOST":  "gitlab.example.com",
 		})}
 
 		// when
@@ -120,7 +174,7 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 
 		// then
 		require.ErrorIs(t, err, entities.ErrNoCredential)
-		require.EqualError(t, err, "GH_TOKEN and GITHUB_TOKEN are not set")
+		require.EqualError(t, err, "GITHUB_TOKEN and GH_TOKEN are not set")
 	})
 
 	t.Run("should name the single variable when the forge has one", func(t *testing.T) {

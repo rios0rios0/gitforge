@@ -8,13 +8,10 @@ import (
 )
 
 // tokenEnvVars maps each ServiceType to the environment variable names
-// checked for authentication tokens, ordered by priority. GitHub reads
-// GH_TOKEN before GITHUB_TOKEN, the order the gh CLI itself uses, so a
-// personal token exported for gh wins over the workflow token GitHub
-// Actions sets.
+// checked for authentication tokens, ordered by priority.
 var tokenEnvVars = map[entities.ServiceType][]string{ //nolint:gochecknoglobals // read-only lookup table
 	entities.UNKNOWN:     {},
-	entities.GITHUB:      {"GH_TOKEN", "GITHUB_TOKEN"},
+	entities.GITHUB:      {"GITHUB_TOKEN", "GH_TOKEN"},
 	entities.GITLAB:      {"GITLAB_TOKEN", "GL_TOKEN"},
 	entities.AZUREDEVOPS: {"AZURE_DEVOPS_EXT_PAT", "SYSTEM_ACCESSTOKEN"},
 	entities.BITBUCKET:   {},
@@ -26,7 +23,7 @@ var tokenEnvVars = map[entities.ServiceType][]string{ //nolint:gochecknoglobals 
 // the environment variables that can provide an authentication token.
 var tokenEnvHints = map[entities.ServiceType]string{ //nolint:gochecknoglobals // read-only lookup table
 	entities.UNKNOWN:     "",
-	entities.GITHUB:      "GH_TOKEN or GITHUB_TOKEN",
+	entities.GITHUB:      "GITHUB_TOKEN or GH_TOKEN",
 	entities.GITLAB:      "GITLAB_TOKEN or GL_TOKEN",
 	entities.AZUREDEVOPS: "AZURE_DEVOPS_EXT_PAT or SYSTEM_ACCESSTOKEN",
 	entities.BITBUCKET:   "",
@@ -35,8 +32,8 @@ var tokenEnvHints = map[entities.ServiceType]string{ //nolint:gochecknoglobals /
 }
 
 // TokenEnvVars returns the environment variables that can hold a token for the
-// given service type, in priority order, or nil when there are none. The slice
-// is a copy, so callers may change it.
+// given service type, in priority order; the slice is empty when there are
+// none. It is a copy, so callers may change it.
 func TokenEnvVars(serviceType entities.ServiceType) []string {
 	return slices.Clone(tokenEnvVars[serviceType])
 }
@@ -59,7 +56,7 @@ func ResolveTokenFromEnv(serviceType entities.ServiceType) string {
 }
 
 // TokenEnvHint returns a human-readable string listing the environment
-// variables checked for the given service type (e.g. "GH_TOKEN or GITHUB_TOKEN").
+// variables checked for the given service type (e.g. "GITHUB_TOKEN or GH_TOKEN").
 // Returns "<unknown provider>" for unsupported service types.
 //
 // Exported for use by autobump and autoupdate to produce helpful error

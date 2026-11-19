@@ -1,0 +1,3 @@
+kind: 'Changed'
+body: 'changed the GitHub token environment variables to read `GH_TOKEN` before `GITHUB_TOKEN`, the order the `gh` CLI uses, so a token exported for `gh` wins over the workflow token GitHub Actions sets; `TokenEnvHint` now reads `GH_TOKEN or GITHUB_TOKEN`'
+time: '2026-11-19T20:02:07.163742364Z'

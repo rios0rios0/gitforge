@@ -27,6 +27,7 @@ A shared Go library providing common abstractions for working with Git hosting p
 - **Commit Signing**: GPG signing with keyring export and passphrase support, and SSH signing via `ssh-keygen`
 - **Changelog Processing**: Full Keep-a-Changelog toolkit (version calculation, deduplication, entry insertion)
 - **Configuration**: Token resolution (inline, `${ENV_VAR}`, file path), config file discovery
+- **Credentials**: A token for a forge from its environment variables or, failing that, from an already signed-in `gh` or `az` CLI (see [Credentials](#credentials))
 - **Registry Pattern**: Factory-based provider and discoverer registries
 
 ## Installation
@@ -46,6 +47,7 @@ gitforge/
 ├── pkg/
 │   ├── changelog/        # Keep-a-Changelog processing (version calculation, deduplication, insertion)
 │   ├── config/           # YAML configuration loading, token resolution, config file discovery
+│   ├── credentials/      # Forge tokens from environment variables or the forge's own CLI (gh, az)
 │   ├── git/              # Local git operations (go-git), URL parsing, SSH/HTTPS push
 │   ├── global/           # Shared interfaces (ForgeProvider, FileAccessProvider, etc.) and entities
 │   ├── providers/        # GitHub, GitLab, Azure DevOps, Codeberg implementations
@@ -89,6 +91,37 @@ Building blocks for a consumer's own auth methods:
 - **`DetectSSHAgentSockets()`**: the agent sockets that exist (`SSH_AUTH_SOCK`, then 1Password's `~/.1password/agent.sock`).
 - **`KnownHostsCallback()`**: the host key callback auth methods should carry, as the transport reads the host key types from the same files.
 - **`RunningUnderWSL()`** and **`SSHConfigSearchDescription()`**: for a consumer's own error messages.
+
+## Credentials
+
+A consumer that has no token configured for a forge asks `pkg/credentials` for one. `NewDefaultCredentialResolver()` (`pkg/credentials/infrastructure`) tries the forge's environment variables first, so an explicitly exported token always wins, then the forge's own CLI, so someone who already ran `gh auth login` or `az login` does not have to export a second token:
+
+| Forge | Environment variables, in order | CLI fallback | Sign in with |
+|-------|---------------------------------|--------------|--------------|
+| GitHub | `GH_TOKEN`, `GITHUB_TOKEN` | `gh auth token --hostname github.com` | `gh auth login` |
+| Azure DevOps | `AZURE_DEVOPS_EXT_PAT`, `SYSTEM_ACCESSTOKEN` | `az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798` | `az login` |
+| GitLab | `GITLAB_TOKEN`, `GL_TOKEN` | -- | -- |
+| Codeberg | `CODEBERG_TOKEN` | -- | -- |
+
+```go
+credential, err := credentialInfra.NewDefaultCredentialResolver().Resolve(ctx, credentialEntities.CredentialRequest{
+    ServiceType:  globalEntities.AZUREDEVOPS,
+    Organization: "my-org", // Azure DevOps only: selects the organization's Microsoft Entra tenant
+})
+if err != nil {
+    // errors.Is(err, credentialEntities.ErrNoCredential); the text names every source tried:
+    // "no Azure DevOps credential available: AZURE_DEVOPS_EXT_PAT and SYSTEM_ACCESSTOKEN are not set; ..."
+}
+log.Infof("Using the %s token from the %s", globalEntities.AZUREDEVOPS.DisplayName(), credential.Source)
+```
+
+- **GitHub** asks `gh` for `github.com` by name: the GitHub provider only talks to `api.github.com`, and a bare `gh auth token` answers for `GH_HOST`, which may be a GitHub Enterprise server.
+- **Azure DevOps** tokens are issued for the Azure DevOps resource, which Azure DevOps accepts wherever it accepts a personal access token. With an `Organization`, the organization's tenant is read from its public `connectionData` endpoint (no credential is sent) and passed as `--tenant`, because the signed-in account's default subscription can belong to another tenant.
+- **GitLab** has no CLI fallback: `glab` has no command that prints a token.
+- The CLI runs by the absolute path `PATH` lookup returns, from the user's home directory, with no standard input and a 30-second limit (`DefaultCLITimeout`). Its standard output (the token) never appears in an error; a failure reports its standard error and the command to sign in.
+- **Send the token only to the forge's API.** The providers call fixed hosts (`api.github.com`, `dev.azure.com`), which is safe. Do not hand it to git-over-HTTPS authentication for a remote's own host: forges are recognised by a substring of the remote URL, so a remote such as `https://github.com.example.net/...` would receive the user's token.
+
+Each source is its own `CredentialResolver` (`EnvCredentialResolver`, `CLICredentialResolver`), combined with `NewChainCredentialResolver`; `test/doubles` has stubs for the resolver, the CLI runner and the tenant lookup.
 
 ## License
 

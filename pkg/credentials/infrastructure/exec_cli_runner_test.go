@@ -64,6 +64,92 @@ func TestExecCLIRunnerLookPath(t *testing.T) {
 		// then
 		require.ErrorIs(t, err, exec.ErrNotFound)
 	})
+
+	t.Run("should refuse a program PATH lookup finds in the current directory", func(t *testing.T) {
+		// given
+		if runtime.GOOS == "windows" {
+			t.Skip("the fixture CLI is a link to a POSIX shell")
+		}
+		dir := t.TempDir()
+		require.NoError(t, os.Symlink(posixShell, filepath.Join(dir, "fixture-cli")))
+		t.Chdir(dir)
+		t.Setenv("PATH", ".")
+		runner := infrastructure.NewExecCLIRunner()
+
+		// when
+		_, err := runner.LookPath("fixture-cli")
+
+		// then
+		require.ErrorIs(t, err, exec.ErrDot)
+	})
+
+	t.Run("should refuse a relative path when GODEBUG lets PATH lookup return one", func(t *testing.T) {
+		// given
+		if runtime.GOOS == "windows" {
+			t.Skip("the fixture CLI is a link to a POSIX shell")
+		}
+		dir := t.TempDir()
+		require.NoError(t, os.Symlink(posixShell, filepath.Join(dir, "fixture-cli")))
+		t.Chdir(dir)
+		t.Setenv("PATH", ".")
+		t.Setenv("GODEBUG", "execerrdot=0")
+		runner := infrastructure.NewExecCLIRunner()
+
+		// when
+		_, err := runner.LookPath("fixture-cli")
+
+		// then
+		require.ErrorIs(t, err, infrastructure.ErrRelativeExecutable)
+	})
+}
+
+// TestExecCLIRunnerWorkingDirectory is deliberately not parallel: it changes HOME with
+// t.Setenv, which the runtime forbids in a parallel test.
+func TestExecCLIRunnerWorkingDirectory(t *testing.T) {
+	t.Run("should run the program in the home directory when Dir is empty", func(t *testing.T) {
+		// given
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		script := writeScript(t, "pwd -P")
+		runner := infrastructure.NewExecCLIRunner()
+
+		// when
+		output, err := runner.Output(t.Context(), posixShell, script)
+
+		// then
+		require.NoError(t, err)
+		expected, evalErr := filepath.EvalSymlinks(home)
+		require.NoError(t, evalErr)
+		assert.Equal(t, expected, output)
+	})
+
+	t.Run("should run the program at the filesystem root when HOME is unset", func(t *testing.T) {
+		// given
+		t.Setenv("HOME", "")
+		script := writeScript(t, "pwd -P")
+		runner := infrastructure.NewExecCLIRunner()
+
+		// when
+		output, err := runner.Output(t.Context(), posixShell, script)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "/", output)
+	})
+
+	t.Run("should run the program at the filesystem root when HOME does not exist", func(t *testing.T) {
+		// given
+		t.Setenv("HOME", filepath.Join(t.TempDir(), "missing"))
+		script := writeScript(t, "pwd -P")
+		runner := infrastructure.NewExecCLIRunner()
+
+		// when
+		output, err := runner.Output(t.Context(), posixShell, script)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "/", output)
+	})
 }
 
 func TestExecCLIRunnerOutput(t *testing.T) {
@@ -135,30 +221,11 @@ func TestExecCLIRunnerOutput(t *testing.T) {
 		assert.Equal(t, expected, output)
 	})
 
-	t.Run("should run the program in the home directory when Dir is empty", func(t *testing.T) {
+	t.Run("should stop the program and what it started when its context ends", func(t *testing.T) {
 		t.Parallel()
 
 		// given
-		home, homeErr := os.UserHomeDir()
-		require.NoError(t, homeErr)
-		script := writeScript(t, "pwd -P")
-		runner := infrastructure.NewExecCLIRunner()
-
-		// when
-		output, err := runner.Output(t.Context(), posixShell, script)
-
-		// then
-		require.NoError(t, err)
-		expected, evalErr := filepath.EvalSymlinks(home)
-		require.NoError(t, evalErr)
-		assert.Equal(t, expected, output)
-	})
-
-	t.Run("should stop the program when its context ends", func(t *testing.T) {
-		t.Parallel()
-
-		// given
-		script := writeScript(t, "exec sleep 30")
+		script := writeScript(t, "sleep 30; printf 'fixture-late-output'")
 		runner := infrastructure.NewExecCLIRunner()
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
@@ -169,6 +236,23 @@ func TestExecCLIRunnerOutput(t *testing.T) {
 
 		// then
 		require.ErrorIs(t, err, context.DeadlineExceeded)
-		assert.Less(t, time.Since(started), 10*time.Second)
+		// The shell runs sleep as its child: only killing the whole process group returns
+		// before the two seconds Output would otherwise wait for sleep's open output.
+		assert.Less(t, time.Since(started), 2*time.Second)
+	})
+
+	t.Run("should return the output when the program leaves a child holding it open", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		script := writeScript(t, "printf 'fixture-token\\n'; (sleep 5) & exit 0")
+		runner := infrastructure.NewExecCLIRunner()
+
+		// when
+		output, err := runner.Output(t.Context(), posixShell, script)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "fixture-token", output)
 	})
 }

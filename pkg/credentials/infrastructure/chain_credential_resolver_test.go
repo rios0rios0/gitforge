@@ -43,7 +43,7 @@ func TestChainCredentialResolverResolve(t *testing.T) {
 		t.Parallel()
 
 		// given
-		first := &doubles.CredentialResolverStub{Err: errors.New("GH_TOKEN is not set")}
+		first := &doubles.CredentialResolverStub{Err: errors.New("GITHUB_TOKEN is not set")}
 		second := &doubles.CredentialResolverStub{
 			Credential: entities.Credential{Token: "fixture-second-token", Source: "gh CLI"},
 		}
@@ -63,7 +63,7 @@ func TestChainCredentialResolverResolve(t *testing.T) {
 
 		// given
 		chain := infrastructure.NewChainCredentialResolver(
-			&doubles.CredentialResolverStub{Err: errors.New("GH_TOKEN and GITHUB_TOKEN are not set")},
+			&doubles.CredentialResolverStub{Err: errors.New("GITHUB_TOKEN and GH_TOKEN are not set")},
 			&doubles.CredentialResolverStub{Err: errors.New("the gh CLI is not installed")},
 		)
 
@@ -73,7 +73,7 @@ func TestChainCredentialResolverResolve(t *testing.T) {
 		// then
 		require.ErrorIs(t, err, entities.ErrNoCredential)
 		require.EqualError(t, err,
-			"no GitHub credential available: GH_TOKEN and GITHUB_TOKEN are not set; the gh CLI is not installed")
+			"no GitHub credential available: GITHUB_TOKEN and GH_TOKEN are not set; the gh CLI is not installed")
 	})
 
 	t.Run("should treat an empty token as a decline when a resolver returns one without an error", func(t *testing.T) {
@@ -89,6 +89,21 @@ func TestChainCredentialResolverResolve(t *testing.T) {
 		// then
 		require.ErrorIs(t, err, entities.ErrNoCredential)
 		assert.Contains(t, err.Error(), "returned an empty token")
+	})
+
+	t.Run("should name the source when it returns an empty token without an error", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		empty := &doubles.CredentialResolverStub{Credential: entities.Credential{Source: "fixture source"}}
+		chain := infrastructure.NewChainCredentialResolver(empty)
+
+		// when
+		_, err := chain.Resolve(t.Context(), githubRequest())
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+		require.EqualError(t, err, "no GitHub credential available: the fixture source returned an empty token")
 	})
 
 	t.Run("should say no source is configured when the chain is empty", func(t *testing.T) {

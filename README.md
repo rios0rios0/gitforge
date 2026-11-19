@@ -98,7 +98,7 @@ A consumer that has no token configured for a forge asks `pkg/credentials` for o
 
 | Forge | Environment variables, in order | CLI fallback | Sign in with |
 |-------|---------------------------------|--------------|--------------|
-| GitHub | `GH_TOKEN`, `GITHUB_TOKEN` | `gh auth token --hostname github.com` | `gh auth login` |
+| GitHub | `GITHUB_TOKEN`, `GH_TOKEN` | `gh auth token --hostname github.com` | `gh auth login` |
 | Azure DevOps | `AZURE_DEVOPS_EXT_PAT`, `SYSTEM_ACCESSTOKEN` | `az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798` | `az login` |
 | GitLab | `GITLAB_TOKEN`, `GL_TOKEN` | -- | -- |
 | Codeberg | `CODEBERG_TOKEN` | -- | -- |
@@ -117,8 +117,9 @@ log.Infof("Using the %s token from the %s", globalEntities.AZUREDEVOPS.DisplayNa
 
 - **GitHub** asks `gh` for `github.com` by name: the GitHub provider only talks to `api.github.com`, and a bare `gh auth token` answers for `GH_HOST`, which may be a GitHub Enterprise server.
 - **Azure DevOps** tokens are issued for the Azure DevOps resource, which Azure DevOps accepts wherever it accepts a personal access token. With an `Organization`, the organization's tenant is read from its public `connectionData` endpoint (no credential is sent) and passed as `--tenant`, because the signed-in account's default subscription can belong to another tenant.
-- **GitLab** has no CLI fallback: `glab` has no command that prints a token.
-- The CLI runs by the absolute path `PATH` lookup returns, from the user's home directory, with no standard input and a 30-second limit (`DefaultCLITimeout`). Its standard output (the token) never appears in an error; a failure reports its standard error and the command to sign in.
+- **GitLab** has no CLI fallback: `glab` has no command that prints a token. The GitLab provider only talks to `gitlab.com`, so when `GITLAB_HOST` or `GL_HOST` names another server, `GITLAB_TOKEN` and `GL_TOKEN` are taken to be that server's and are not used.
+- The CLI runs by the absolute path `PATH` lookup returns, from the user's home directory (the filesystem root when there is none, never the caller's directory: a pip-installed `az` puts its working directory on Python's module path), with no standard input and a 30-second limit (`DefaultCLITimeout`) that kills the CLI's whole process group. Its standard output (the token) never appears in an error; a failure reports its standard error and the command to sign in, and a timeout or cancellation says so instead.
+- **A CLI token is short-lived.** An Azure CLI token lasts about an hour, and `az` may hand back a cached one with minutes left. Resolve again for each run or organization rather than keeping one for a long batch.
 - **Send the token only to the forge's API.** The providers call fixed hosts (`api.github.com`, `dev.azure.com`), which is safe. Do not hand it to git-over-HTTPS authentication for a remote's own host: forges are recognised by a substring of the remote URL, so a remote such as `https://github.com.example.net/...` would receive the user's token.
 
 Each source is its own `CredentialResolver` (`EnvCredentialResolver`, `CLICredentialResolver`), combined with `NewChainCredentialResolver`; `test/doubles` has stubs for the resolver, the CLI runner and the tenant lookup.

@@ -152,9 +152,7 @@ func (r *CLICredentialResolver) Resolve(
 	// and leaves the cause to the wrapped error.
 	token, err := runner.Output(ctx, path, cli.TokenArgs...)
 	if err != nil {
-		return entities.Credential{}, newUnavailableError(
-			err, "the %s CLI could not provide a token (authenticate with %q)", cli.Binary, cli.LoginHint,
-		)
+		return entities.Credential{}, cliFailure(ctx, cli, err)
 	}
 	if token == "" {
 		return entities.Credential{}, newUnavailableError(
@@ -207,6 +205,21 @@ func (r *CLICredentialResolver) scopeToOrganization(
 	cli.TokenArgs = append(cli.TokenArgs, "--tenant", tenant)
 	cli.LoginHint = "az login --tenant " + tenant + " --allow-no-subscriptions"
 	return cli, nil
+}
+
+// cliFailure explains a CLI run that produced no token. A run cut short by the deadline
+// or by the caller says so instead of suggesting a sign-in that would not have helped.
+func cliFailure(ctx context.Context, cli ProviderCLI, err error) error {
+	switch ctxErr := ctx.Err(); {
+	case errors.Is(ctxErr, context.DeadlineExceeded):
+		return newUnavailableError(err, "the %s CLI did not provide a token in time", cli.Binary)
+	case ctxErr != nil:
+		return newUnavailableError(err, "asking the %s CLI for a token was cancelled", cli.Binary)
+	default:
+		return newUnavailableError(
+			err, "the %s CLI could not provide a token (authenticate with %q)", cli.Binary, cli.LoginHint,
+		)
+	}
 }
 
 // isNotTokenRune reports a character no token contains.

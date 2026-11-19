@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added safeguards to the CLI credential fallback: the CLI runs from the home directory, or the filesystem root when there is none, never from the repository being processed; a timeout kills its whole process group; and a `GITLAB_TOKEN` or `GL_TOKEN` is not sent to gitlab.com while `GITLAB_HOST` or `GL_HOST` names another server'
-time: '2026-11-19T20:35:50.849506766Z'

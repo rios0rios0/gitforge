@@ -8,10 +8,12 @@ import (
 )
 
 // tokenEnvVars maps each ServiceType to the environment variable names
-// checked for authentication tokens, ordered by priority.
+// checked for authentication tokens, ordered by priority. GitHub's follow gh's
+// own precedence, "GH_TOKEN, GITHUB_TOKEN (in order of precedence)" (`gh help
+// environment`), so a token gh would use is the token read here.
 var tokenEnvVars = map[entities.ServiceType][]string{ //nolint:gochecknoglobals // read-only lookup table
 	entities.UNKNOWN:     {},
-	entities.GITHUB:      {"GITHUB_TOKEN", "GH_TOKEN"},
+	entities.GITHUB:      {"GH_TOKEN", "GITHUB_TOKEN"},
 	entities.GITLAB:      {"GITLAB_TOKEN", "GL_TOKEN"},
 	entities.AZUREDEVOPS: {"AZURE_DEVOPS_EXT_PAT", "SYSTEM_ACCESSTOKEN"},
 	entities.BITBUCKET:   {},
@@ -23,7 +25,7 @@ var tokenEnvVars = map[entities.ServiceType][]string{ //nolint:gochecknoglobals 
 // the environment variables that can provide an authentication token.
 var tokenEnvHints = map[entities.ServiceType]string{ //nolint:gochecknoglobals // read-only lookup table
 	entities.UNKNOWN:     "",
-	entities.GITHUB:      "GITHUB_TOKEN or GH_TOKEN",
+	entities.GITHUB:      "GH_TOKEN or GITHUB_TOKEN",
 	entities.GITLAB:      "GITLAB_TOKEN or GL_TOKEN",
 	entities.AZUREDEVOPS: "AZURE_DEVOPS_EXT_PAT or SYSTEM_ACCESSTOKEN",
 	entities.BITBUCKET:   "",
@@ -39,7 +41,8 @@ func TokenEnvVars(serviceType entities.ServiceType) []string {
 }
 
 // ResolveTokenFromEnv returns the first non-empty token found in
-// provider-specific environment variables for the given service type.
+// provider-specific environment variables for the given service type, in the
+// order TokenEnvVars lists them (GH_TOKEN before GITHUB_TOKEN for GitHub).
 // Returns an empty string if no token is found.
 //
 // Deprecated: it makes none of the checks the credentials bounded context
@@ -58,7 +61,8 @@ func ResolveTokenFromEnv(serviceType entities.ServiceType) string {
 }
 
 // TokenEnvHint returns a human-readable string listing the environment
-// variables checked for the given service type (e.g. "GITHUB_TOKEN or GH_TOKEN").
+// variables checked for the given service type, in the order they are read
+// (e.g. "GH_TOKEN or GITHUB_TOKEN").
 // Returns "<unknown provider>" for unsupported service types.
 //
 // Exported for use by autobump and autoupdate to produce helpful error

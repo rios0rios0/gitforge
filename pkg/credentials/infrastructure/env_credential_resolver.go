@@ -50,9 +50,9 @@ var gitlabServerVariables = []gitlabServerVariable{
 }
 
 // EnvCredentialResolver reads a forge's token from the environment variables gitforge
-// knows for it (configHelpers.TokenEnvVars), in priority order: GITHUB_TOKEN then
-// GH_TOKEN, GITLAB_TOKEN then GL_TOKEN, AZURE_DEVOPS_EXT_PAT then SYSTEM_ACCESSTOKEN,
-// and CODEBERG_TOKEN.
+// knows for it (configHelpers.TokenEnvVars), in priority order: GH_TOKEN then
+// GITHUB_TOKEN (gh's own precedence, so a token gh would use wins here too), GITLAB_TOKEN
+// then GL_TOKEN, AZURE_DEVOPS_EXT_PAT then SYSTEM_ACCESSTOKEN, and CODEBERG_TOKEN.
 type EnvCredentialResolver struct {
 	// Lookup reads one variable. Nil means os.Getenv; tests set it instead of changing
 	// the process environment, so they can run in parallel.
@@ -206,7 +206,7 @@ func isHostName(s string) bool {
 }
 
 // describeUnsetVariables names the variables for "... not set": "CODEBERG_TOKEN is",
-// "GITHUB_TOKEN and GH_TOKEN are".
+// "GH_TOKEN and GITHUB_TOKEN are".
 func describeUnsetVariables(names []string) string {
 	if len(names) == 1 {
 		return names[0] + " is"

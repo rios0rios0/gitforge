@@ -104,7 +104,7 @@ A consumer that has no token configured for a forge asks `pkg/credentials` for o
 
 | Forge | Environment variables, in order | CLI fallback | Sign in with |
 |-------|---------------------------------|--------------|--------------|
-| GitHub | `GITHUB_TOKEN`, `GH_TOKEN` | `gh auth token --hostname github.com` | `gh auth login` |
+| GitHub | `GH_TOKEN`, `GITHUB_TOKEN` | `gh auth token --hostname github.com` | `gh auth login` |
 | Azure DevOps | `AZURE_DEVOPS_EXT_PAT`, `SYSTEM_ACCESSTOKEN` | `az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798` | `az login` |
 | GitLab | `GITLAB_TOKEN`, `GL_TOKEN` | -- | -- |
 | Codeberg | `CODEBERG_TOKEN` | -- | -- |
@@ -121,7 +121,7 @@ if err != nil {
 log.Infof("Using the %s token from the %s", globalEntities.AZUREDEVOPS.DisplayName(), credential.Source)
 ```
 
-- **GitHub** asks `gh` for `github.com` by name: the GitHub provider only talks to `api.github.com`, and a bare `gh auth token` answers for `GH_HOST`, which may be a GitHub Enterprise server.
+- **GitHub** reads `GH_TOKEN` before `GITHUB_TOKEN`, gh's own precedence (`gh help environment`), so when both hold different tokens the one gh would use wins. It asks `gh` for `github.com` by name: the GitHub provider only talks to `api.github.com`, and a bare `gh auth token` answers for `GH_HOST`, which may be a GitHub Enterprise server.
 - **Azure DevOps** tokens are issued for the Azure DevOps resource, which Azure DevOps accepts wherever it accepts a personal access token. With an `Organization`, the organization's tenant is read from its public `connectionData` endpoint (no credential is sent) and passed as `--tenant`, because the signed-in account's default subscription can belong to another tenant.
 - **GitLab** has no CLI fallback: `glab` has no command that prints a token. The GitLab provider only talks to `gitlab.com`, so when a variable that names a GitLab server names another one, `GITLAB_TOKEN` and `GL_TOKEN` are taken to be that server's and are not used: glab's `GITLAB_HOST`, `GITLAB_URI`, `GL_HOST`, `GITLAB_API_HOST` and `GITLAB_REPO` (when it is a URL or `[user@]host:path`), semantic-release's `GL_URL` and `GITLAB_URL`, Lerna's `GL_API_URL`, the Terraform provider's `GITLAB_BASE_URL`, and a GitLab CI job's `CI_SERVER_URL`, `CI_SERVER_HOST`, `CI_SERVER_FQDN` and `CI_API_V4_URL`. A value that cannot be read refuses the token too, and the refusal names the variable and the host, never the value. The check is best effort: a tool can also take its server from its own configuration file, which no variable shows. `CheckGitLabTokenServer` exports this check for a GitLab token a consumer exports itself. A GitLab CI job's `CI_JOB_TOKEN` is judged by the job's own variables alone: `GitLabCIServerHost` returns the host `CI_SERVER_URL`, `CI_SERVER_HOST`, `CI_SERVER_FQDN` and `CI_API_V4_URL` agree on, and `CheckGitLabCIJobTokenServer` allows the token at gitlab.com only when that host is gitlab.com, refusing it as well when none of them is set.
 - The CLI runs by the absolute path `PATH` lookup returns, from the user's home directory (the filesystem root when there is none, never the caller's directory: a pip-installed `az` puts its working directory on Python's module path), with no standard input and a 30-second limit (`DefaultCLITimeout`) that kills the CLI's whole process group. Its standard output (the token) never appears in an error; a failure reports its standard error and the command to sign in, and a timeout or cancellation says so instead.

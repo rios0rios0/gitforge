@@ -300,8 +300,9 @@ Optional single-method interfaces (reached by type assertion, never added to For
 - `(p *ProviderConfig) ResolveToken() string` -- expands `${ENV_VAR}` references and reads from file if path exists
 - `FindConfigFile(appName string) (string, error)` -- searches standard locations (working dir first, then home) for `.{appName}.yaml` config files
 - `FindGlobalConfigFile(appName string) (string, error)` -- searches only the user's home directory, for operator-level config that must not be shadowed by a repository's own `.{appName}.yaml`; callers fall back to `FindConfigFile` on `ErrConfigFileNotFound`
-- `ResolveTokenFromEnv(serviceType ServiceType) string` -- resolves provider token from the standard env var for that service type
-- `TokenEnvHint(serviceType ServiceType) string` -- returns the expected env var name for a service type (e.g. `GITHUB_TOKEN`)
+- `ResolveTokenFromEnv(serviceType ServiceType) string` -- deprecated; returns the first set env var of `TokenEnvVars(serviceType)`, without the credential chain's checks
+- `TokenEnvVars(serviceType ServiceType) []string` -- the env vars that can hold the service type's token, in the order they are read (GitHub: `GH_TOKEN`, then `GITHUB_TOKEN`, gh's own precedence)
+- `TokenEnvHint(serviceType ServiceType) string` -- the same variables for a message (e.g. `GH_TOKEN or GITHUB_TOKEN`)
 
 **Config infrastructure** (`pkg/config/infrastructure`):
 - `LoadConfig(path string) (*Config, error)` -- reads, parses, and validates a YAML config from file or URL

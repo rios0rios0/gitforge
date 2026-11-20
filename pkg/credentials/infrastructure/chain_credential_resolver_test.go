@@ -63,7 +63,7 @@ func TestChainCredentialResolverResolve(t *testing.T) {
 
 		// given
 		chain := infrastructure.NewChainCredentialResolver(
-			&doubles.CredentialResolverStub{Err: errors.New("GITHUB_TOKEN and GH_TOKEN are not set")},
+			&doubles.CredentialResolverStub{Err: errors.New("GH_TOKEN and GITHUB_TOKEN are not set")},
 			&doubles.CredentialResolverStub{Err: errors.New("the gh CLI is not installed")},
 		)
 
@@ -73,7 +73,7 @@ func TestChainCredentialResolverResolve(t *testing.T) {
 		// then
 		require.ErrorIs(t, err, entities.ErrNoCredential)
 		require.EqualError(t, err,
-			"no GitHub credential available: GITHUB_TOKEN and GH_TOKEN are not set; the gh CLI is not installed")
+			"no GitHub credential available: GH_TOKEN and GITHUB_TOKEN are not set; the gh CLI is not installed")
 	})
 
 	t.Run("should treat an empty token as a decline when a resolver returns one without an error", func(t *testing.T) {

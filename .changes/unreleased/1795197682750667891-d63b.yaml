@@ -1,0 +1,3 @@
+kind: 'Changed'
+body: 'changed the order of the GitHub token environment variables to `GH_TOKEN` before `GITHUB_TOKEN`, the precedence gh documents: when both are set to different tokens, `GH_TOKEN` now wins, as in gh, where `GITHUB_TOKEN` used to. `TokenEnvVars`, `TokenEnvHint` and the credential chain follow the new order'
+time: '2026-11-20T18:01:22.750588719Z'

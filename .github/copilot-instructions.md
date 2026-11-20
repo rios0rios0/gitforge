@@ -119,6 +119,7 @@ gitforge/
 │   │       │   ├── review_provider_test.go # BDD tests for ReviewVerdict, CommentOption, MergeOption helpers
 │   │       │   └── service_type.go          # ServiceType enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT, CODEBERG
 │   │       └── helpers/
+│   │           ├── forge_url.go             # HTTPURLHost: the host of an http(s) remote, which MatchesURL compares with the forge's own hosts
 │   │           └── versions.go              # SortVersionsDescending, NormalizeVersion
 │   ├── providers/
 │   │   └── infrastructure/
@@ -321,9 +322,10 @@ Optional single-method interfaces (reached by type assertion, never added to For
 - `NewSSHSigner(keyPath string) *SSHSigner` -- creates an SSH commit signer
 - `ResolveSignerFromGitConfig(gpgSign, signingFormat, signingKey, gpgKeyPath, gpgPassphrase, appName) (CommitSigner, error)` -- resolves GPG/SSH signer from git config values
 
-**Version helpers** (`pkg/global/domain/helpers`):
+**Global helpers** (`pkg/global/domain/helpers`):
 - `SortVersionsDescending(versions []string)` -- sorts version strings descending by semver
 - `NormalizeVersion(version string) string` -- ensures a "v" prefix for semver compatibility
+- `HTTPURLHost(rawURL string) (string, bool)` -- the lowercase host of an `http(s)://` remote without user name or port (`""` when it does not parse), and whether the remote is one; every provider's `MatchesURL` takes an HTTP(S) remote only on its forge's own hosts, and any other remote (scp-like, `ssh://`) by substring, so SSH host aliases still match
 
 ## Consumer Projects
 
@@ -387,6 +389,8 @@ When adding features to gitforge:
 | `pkg/providers/infrastructure/gitlab/gitlab_internal_test.go`      | DiscoverRepositories, CreatePullRequest, file access (httptest server)             |
 | `pkg/providers/infrastructure/azuredevops/azuredevops_test.go`     | NewProvider, Name, MatchesURL, GetServiceType                                      |
 | `pkg/providers/infrastructure/azuredevops/azuredevops_internal_test.go` | DiscoverRepositories, file access (redirectTransport to httptest server)      |
+| `pkg/providers/infrastructure/codeberg/codeberg_test.go`           | MatchesURL (codeberg.org over HTTPS, lookalike hosts, SSH aliases)                 |
+| `pkg/global/domain/helpers/forge_url_test.go`                      | HTTPURLHost                                                                        |
 | `pkg/registry/infrastructure/registry_test.go`                     | NewProviderRegistry, Get, GetDiscoverer, GetAdapterByURL, GetReviewProvider        |
 
 ### Provider Test Patterns

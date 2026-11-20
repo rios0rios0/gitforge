@@ -1,0 +1,3 @@
+kind: 'Added'
+body: 'added `HTTPURLHost` (`pkg/global/domain/helpers`), the host of an `http://` or `https://` remote, without user name or port, that the providers'' `MatchesURL` compares with their forge''s own hosts'
+time: '2026-11-20T18:28:18.068050103Z'

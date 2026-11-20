@@ -7,6 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/azuredevops"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/codeberg"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/github"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/gitlab"
 	infrastructure "github.com/rios0rios0/gitforge/v4/pkg/registry/infrastructure"
 	"github.com/rios0rios0/gitforge/v4/test/builders"
 	"github.com/rios0rios0/gitforge/v4/test/doubles"
@@ -129,6 +133,72 @@ func TestProviderRegistryGetAdapterByURL(t *testing.T) {
 		// then
 		assert.Nil(t, result)
 	})
+}
+
+func TestProviderRegistryGetAdapterByURLWithTheForgeProviders(t *testing.T) {
+	t.Parallel()
+
+	for _, scenario := range []struct {
+		remoteURL, provider string
+	}{
+		{"https://github.com/org/repo.git", "github"},
+		{"git@github.com-work:org/repo.git", "github"},
+		{"https://gitlab.com/group/repo.git", "gitlab"},
+		{"git@gitlab.com:group/repo.git", "gitlab"},
+		{"https://org@dev.azure.com/org/project/_git/repo", "azuredevops"},
+		{"https://org.visualstudio.com/project/_git/repo", "azuredevops"},
+		{"git@ssh.dev.azure.com:v3/org/project/repo", "azuredevops"},
+		{"https://codeberg.org/owner/repo.git", "codeberg"},
+		{"git@codeberg.org:owner/repo.git", "codeberg"},
+	} {
+		t.Run("should return the "+scenario.provider+" adapter when the remote is "+scenario.remoteURL,
+			func(t *testing.T) {
+				t.Parallel()
+
+				// given
+				registry := newForgeRegistry()
+
+				// when
+				adapter := registry.GetAdapterByURL(scenario.remoteURL)
+
+				// then
+				require.NotNil(t, adapter)
+				assert.Equal(t, scenario.provider, adapter.Name())
+			})
+	}
+
+	for _, remoteURL := range []string{
+		"https://github.com.evil.example/org/repo.git",
+		"https://github.company.com/org/repo.git",
+		"https://gitlab.company.com/group/repo.git",
+		"https://dev.azure.com.evil.example/org/project/_git/repo",
+		"https://notcodeberg.org/owner/repo.git",
+	} {
+		t.Run("should return no adapter when the HTTPS remote "+remoteURL+" only looks like a forge",
+			func(t *testing.T) {
+				t.Parallel()
+
+				// given
+				registry := newForgeRegistry()
+
+				// when
+				adapter := registry.GetAdapterByURL(remoteURL)
+
+				// then
+				assert.Nil(t, adapter)
+			})
+	}
+}
+
+// newForgeRegistry returns a registry holding gitforge's providers as adapters, as the
+// consumers register them.
+func newForgeRegistry() *infrastructure.ProviderRegistry {
+	registry := infrastructure.NewProviderRegistry()
+	registry.RegisterAdapter(github.NewProvider(""))
+	registry.RegisterAdapter(gitlab.NewProvider(""))
+	registry.RegisterAdapter(azuredevops.NewProvider(""))
+	registry.RegisterAdapter(codeberg.NewProvider(""))
+	return registry
 }
 
 func TestProviderRegistryGetAdapterByServiceType(t *testing.T) {

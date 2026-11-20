@@ -29,8 +29,10 @@ func NewChainCredentialResolver(resolvers ...entities.CredentialResolver) *Chain
 // Use it only after the caller's own configured token, if any, came up empty. The token
 // it returns belongs to the operator running the program, so send it only to the forge it
 // was issued for: gitforge's providers call fixed API hosts (api.github.com,
-// dev.azure.com), which is safe, while a git remote's own host is not, because a remote
-// that merely contains "github.com" in its URL would receive the token too.
+// dev.azure.com), which is safe, while a git remote's own host is not. The providers'
+// MatchesURL now takes an https:// remote for a forge only on the forge's own hosts, but
+// it still accepts a plaintext http:// remote there, which would carry the token
+// unencrypted.
 func NewDefaultCredentialResolver() *ChainCredentialResolver {
 	return NewChainCredentialResolver(NewEnvCredentialResolver(), NewCLICredentialResolver())
 }

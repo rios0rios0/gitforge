@@ -75,6 +75,15 @@ Two optional single-method interfaces sit beside that hierarchy, also reached by
 
 Discovered repositories report `IsFork`, `IsArchived` and `IsDisabled` (disabled, or under maintenance on Azure DevOps). Providers never filter on them; skipping such repositories is the consumer's policy.
 
+## Forge Detection
+
+`MatchesURL`, and with it the registry's `GetAdapterByURL` and `GitOperations`' `GetServiceTypeByURL` and `GetRemoteServiceType`, recognise a remote's forge in one of two ways:
+
+- **An `http://` or `https://` remote** belongs to a forge only when its host, without the user name or the port and whatever its letter case, is one of the forge's own: `github.com` or `www.github.com`; `gitlab.com` or `www.gitlab.com`; `dev.azure.com` or an organization's `<org>.visualstudio.com`; `codeberg.org`; and, for the service types without a provider, `bitbucket.org` or `www.bitbucket.org` and AWS CodeCommit's `git-codecommit[-fips].<region>.amazonaws.com[.cn]`. A provider's token is sent to that host, so `https://github.com.example.net/...`, `https://notgithub.com/...`, a GitHub Enterprise host such as `https://github.company.com/...` and a self-managed `https://gitlab.company.com/...` are not taken for github.com or gitlab.com, and an HTTP(S) URL whose host cannot be read matches no forge. `HTTPURLHost` (`pkg/global/domain/helpers`) reads that host.
+- **Any other remote**, scp-like `git@host:path`, `ssh://` or a local path, belongs to a forge when it contains the forge's name, as before: SSH host aliases such as `git@github.com-work:...` or `git@dev.azure.com-<alias>:v3/...`, which `ssh_config` resolves, keep matching, and SSH authenticates with keys, never with the provider's token.
+
+`ParseRemoteURL` and `ParsePullRequestURL`, which read the organization and repository from a URL, still recognise forges by a substring; nothing in gitforge sends a token on their answer.
+
 ## SSH Client Configuration
 
 go-git is a pure-Go SSH client and never runs the `ssh` binary, so the configuration `ssh` would read does not apply to its connections on its own. A consumer calls `InstallSSHTransport()` (`pkg/git/infrastructure`) once at startup, and every SSH push, clone and remote listing then behaves the way `git` does on that machine:
@@ -129,7 +138,7 @@ log.Infof("Using the %s token from the %s", globalEntities.AZUREDEVOPS.DisplayNa
 - The CLI runs without the forge token variables in its environment: every one of the table above, and gh's `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`. gh prints `GH_TOKEN` or `GITHUB_TOKEN` back when either is set, which would hand out the very token the environment step declined, so the CLI reports only the login it stored itself. The rest of the environment (`HOME`, `PATH`, proxy settings, the CLI's own configuration) is kept.
 - **A CLI token is short-lived.** An Azure CLI token lasts about an hour, and `az` may hand back a cached one with minutes left. Resolve again for each run or organization rather than keeping one for a long batch.
 - **Send the token only to the forge's API, and check an Azure DevOps organization before discovery.** The GitHub, GitLab and Codeberg providers call fixed hosts (`api.github.com`, `gitlab.com`, `codeberg.org`), and so does Azure DevOps for operations on a repository (`dev.azure.com`). Azure DevOps discovery does not: `DiscoverRepositories` and `ListOrganizationRepositories` take an organization value that begins with `https://` as the organization's base URL, whatever its host, and send the token to that host. Pass a bare organization name (`my-org`), or check that the host is `dev.azure.com` or `<org>.visualstudio.com`, before handing such a value to discovery with a token that did not come from the operator's own configuration, such as one this chain resolved: an organization read from a working directory's or a repository's own config file is not the operator's, and a token was leaked this way.
-- **Do not hand the token to git-over-HTTPS authentication for a remote's own host** either: forges are recognised by a substring of the remote URL, so a remote such as `https://github.com.example.net/...` would receive the user's token.
+- **Do not hand the token to git-over-HTTPS authentication for a remote's own host** either. `MatchesURL` no longer takes an `https://` lookalike such as `https://github.com.example.net/...` for the forge (see [Forge detection](#forge-detection)), but it still accepts a plaintext `http://` remote on the forge's host, where the token would travel unencrypted.
 
 Each source is its own `CredentialResolver` (`EnvCredentialResolver`, `CLICredentialResolver`), combined with `NewChainCredentialResolver`; `test/doubles` has stubs for the resolver, the CLI runner and the tenant lookup.
 

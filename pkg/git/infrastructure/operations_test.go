@@ -18,6 +18,11 @@ import (
 
 	gitops "github.com/rios0rios0/gitforge/v4/pkg/git/infrastructure"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/azuredevops"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/codeberg"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/github"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/gitlab"
+	registryInfra "github.com/rios0rios0/gitforge/v4/pkg/registry/infrastructure"
 	signingInfra "github.com/rios0rios0/gitforge/v4/pkg/signing/infrastructure"
 	"github.com/rios0rios0/gitforge/v4/test/builders"
 	"github.com/rios0rios0/gitforge/v4/test/doubles"
@@ -83,6 +88,66 @@ func TestGetServiceTypeByURL(t *testing.T) {
 		// then
 		assert.Equal(t, globalEntities.UNKNOWN, result)
 	})
+
+	for _, scenario := range []struct {
+		name, rawURL string
+		serviceType  globalEntities.ServiceType
+	}{
+		{"a Bitbucket HTTPS remote with a user name", "https://fixture-user@bitbucket.org/org/repo.git", globalEntities.BITBUCKET},
+		{"a Bitbucket SSH remote", "git@bitbucket.org:org/repo.git", globalEntities.BITBUCKET},
+		{"a Bitbucket SSH host alias", "git@bitbucket.org-work:org/repo.git", globalEntities.BITBUCKET},
+		{
+			"a CodeCommit FIPS HTTPS remote",
+			"https://git-codecommit-fips.us-east-2.amazonaws.com/v1/repos/my-repo", globalEntities.CODECOMMIT,
+		},
+		{
+			"a CodeCommit HTTPS remote in a China region",
+			"https://git-codecommit.cn-north-1.amazonaws.com.cn/v1/repos/my-repo", globalEntities.CODECOMMIT,
+		},
+		{
+			"a CodeCommit SSH remote",
+			"ssh://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-repo", globalEntities.CODECOMMIT,
+		},
+	} {
+		t.Run("should return "+scenario.serviceType.DisplayName()+" when the remote is "+scenario.name,
+			func(t *testing.T) {
+				t.Parallel()
+
+				// given
+				ops := gitops.NewGitOperations(
+					builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub),
+				)
+
+				// when
+				result := ops.GetServiceTypeByURL(scenario.rawURL)
+
+				// then
+				assert.Equal(t, scenario.serviceType, result)
+			})
+	}
+
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"an HTTPS host that starts with bitbucket.org", "https://bitbucket.org.evil.example/org/repo.git"},
+		{"an HTTPS host that ends with bitbucket.org", "https://notbitbucket.org/org/repo.git"},
+		{
+			"an HTTPS host that starts with a CodeCommit host",
+			"https://git-codecommit.us-east-1.amazonaws.com.evil.example/v1/repos/my-repo",
+		},
+		{"an HTTPS remote that names git-codecommit in its path", "https://evil.example/git-codecommit/my-repo"},
+	} {
+		t.Run("should return UNKNOWN when the remote is "+scenario.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			ops := gitops.NewGitOperations(builders.NewAdapterFinderStubBuilder().Build().(*doubles.AdapterFinderStub))
+
+			// when
+			result := ops.GetServiceTypeByURL(scenario.rawURL)
+
+			// then
+			assert.Equal(t, globalEntities.UNKNOWN, result)
+		})
+	}
 
 	t.Run("should return adapter service type when adapter matches", func(t *testing.T) {
 		t.Parallel()
@@ -853,6 +918,73 @@ func TestGetRemoteServiceType(t *testing.T) {
 			require.Equal(t, globalEntities.GITHUB, serviceType)
 		}
 	})
+}
+
+func TestGetRemoteServiceTypeWithTheForgeProviders(t *testing.T) {
+	t.Parallel()
+
+	for _, scenario := range []struct {
+		remoteURL   string
+		serviceType globalEntities.ServiceType
+	}{
+		{"https://github.com/org/repo.git", globalEntities.GITHUB},
+		{"git@github.com-mine:org/repo.git", globalEntities.GITHUB},
+		{"https://gitlab.com/group/repo.git", globalEntities.GITLAB},
+		{"git@gitlab.com:group/repo.git", globalEntities.GITLAB},
+		{"https://org@dev.azure.com/org/project/_git/repo", globalEntities.AZUREDEVOPS},
+		{"https://org.visualstudio.com/project/_git/repo", globalEntities.AZUREDEVOPS},
+		{"git@ssh.dev.azure.com:v3/org/project/repo", globalEntities.AZUREDEVOPS},
+		{"https://codeberg.org/owner/repo.git", globalEntities.CODEBERG},
+		{"https://bitbucket.org/org/repo.git", globalEntities.BITBUCKET},
+		{"https://github.com.evil.example/org/repo.git", globalEntities.UNKNOWN},
+		{"https://github.company.com/org/repo.git", globalEntities.UNKNOWN},
+		{"https://gitlab.company.com/group/repo.git", globalEntities.UNKNOWN},
+	} {
+		t.Run("should return "+scenario.serviceType.DisplayName()+" when origin is "+scenario.remoteURL,
+			func(t *testing.T) {
+				t.Parallel()
+
+				// given
+				repo := createInMemoryRepoWithCommit(t)
+				_, err := repo.CreateRemote(&gitcfg.RemoteConfig{Name: "origin", URLs: []string{scenario.remoteURL}})
+				require.NoError(t, err)
+				ops := gitops.NewGitOperations(newForgeAdapterFinder())
+
+				// when
+				serviceType, err := ops.GetRemoteServiceType(repo)
+
+				// then
+				require.NoError(t, err)
+				assert.Equal(t, scenario.serviceType, serviceType)
+			})
+	}
+}
+
+// forgeAdapterFinder is the AdapterFinder autobump and autoupdate build over a
+// ProviderRegistry: the registry's adapters, as the LocalGitAuthProvider they all are.
+type forgeAdapterFinder struct {
+	registry *registryInfra.ProviderRegistry
+}
+
+// newForgeAdapterFinder returns a finder over gitforge's providers.
+func newForgeAdapterFinder() forgeAdapterFinder {
+	registry := registryInfra.NewProviderRegistry()
+	registry.RegisterAdapter(github.NewProvider(""))
+	registry.RegisterAdapter(gitlab.NewProvider(""))
+	registry.RegisterAdapter(azuredevops.NewProvider(""))
+	registry.RegisterAdapter(codeberg.NewProvider(""))
+	return forgeAdapterFinder{registry: registry}
+}
+
+func (f forgeAdapterFinder) GetAdapterByServiceType(
+	serviceType globalEntities.ServiceType,
+) globalEntities.LocalGitAuthProvider {
+	return f.registry.GetAdapterByServiceType(serviceType)
+}
+
+func (f forgeAdapterFinder) GetAdapterByURL(url string) globalEntities.LocalGitAuthProvider {
+	adapter, _ := f.registry.GetAdapterByURL(url).(globalEntities.LocalGitAuthProvider)
+	return adapter
 }
 
 func TestGetRemoteRepoURLWithRemote(t *testing.T) {

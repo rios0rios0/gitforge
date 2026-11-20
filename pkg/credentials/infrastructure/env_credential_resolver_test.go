@@ -128,6 +128,56 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 		assert.Empty(t, credential.Token)
 	})
 
+	// glab names its server in GITLAB_URI and its API host in GITLAB_API_HOST; semantic-release's
+	// GitLab plugin pairs GL_TOKEN and GITLAB_TOKEN with GL_URL or GITLAB_URL.
+	for _, scenario := range []struct {
+		variable, value, host, tokenVariable string
+	}{
+		{"GITLAB_URI", "gitlab.example.com", "gitlab.example.com", "GITLAB_TOKEN"},
+		{"GITLAB_API_HOST", "api.gitlab.example.com:8443", "api.gitlab.example.com", "GITLAB_TOKEN"},
+		{"GL_URL", "https://gitlab.example.com/", "gitlab.example.com", "GL_TOKEN"},
+		{"GITLAB_URL", "https://gitlab.example.com/gitlab/api/v4", "gitlab.example.com", "GL_TOKEN"},
+	} {
+		t.Run("should not send a GitLab token to gitlab.com when "+scenario.variable+" names another server",
+			func(t *testing.T) {
+				t.Parallel()
+
+				// given
+				resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+					scenario.tokenVariable: "fixture-gitlab-token",
+					scenario.variable:      scenario.value,
+				})}
+
+				// when
+				credential, err := resolver.Resolve(
+					t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITLAB},
+				)
+
+				// then
+				require.ErrorIs(t, err, entities.ErrNoCredential)
+				require.EqualError(t, err, scenario.variable+" names the GitLab server "+scenario.host+
+					", so "+scenario.tokenVariable+" is not sent to gitlab.com")
+				assert.Empty(t, credential.Token)
+			})
+	}
+
+	t.Run("should use the GitLab token when GITLAB_URL names gitlab.com", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+			"GL_TOKEN":   "fixture-gitlab-token",
+			"GITLAB_URL": "https://gitlab.com/",
+		})}
+
+		// when
+		credential, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITLAB})
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "fixture-gitlab-token", credential.Token)
+	})
+
 	t.Run("should use the GitLab token when GL_HOST names gitlab.com", func(t *testing.T) {
 		t.Parallel()
 

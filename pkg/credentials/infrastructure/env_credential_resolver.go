@@ -14,11 +14,16 @@ import (
 // gitlabHost is the only host gitforge's GitLab provider talks to.
 const gitlabHost = "gitlab.com"
 
-// gitlabHostVariables name the GitLab server glab sends GITLAB_TOKEN to. A token exported
-// for a self-managed server must not be sent to gitlab.com.
+// gitlabHostVariables name the GitLab server a GITLAB_TOKEN or GL_TOKEN in the environment
+// was exported for: glab reads its server from GITLAB_HOST, GITLAB_URI or GL_HOST and its API
+// host from GITLAB_API_HOST, and semantic-release's GitLab plugin, which reads GL_TOKEN or
+// GITLAB_TOKEN, takes its server from GL_URL or GITLAB_URL. A token exported for a
+// self-managed server must not be sent to gitlab.com.
 //
 //nolint:gochecknoglobals // read-only lookup table
-var gitlabHostVariables = []string{"GITLAB_HOST", "GL_HOST"}
+var gitlabHostVariables = []string{
+	"GITLAB_HOST", "GITLAB_URI", "GL_HOST", "GITLAB_API_HOST", "GL_URL", "GITLAB_URL",
+}
 
 // EnvCredentialResolver reads a forge's token from the environment variables gitforge
 // knows for it (configHelpers.TokenEnvVars), in priority order: GITHUB_TOKEN then
@@ -68,8 +73,9 @@ func (r *EnvCredentialResolver) Resolve(
 	return entities.Credential{}, newUnavailableError(nil, "%s not set", describeUnsetVariables(names))
 }
 
-// foreignGitLabHost reports the first of GITLAB_HOST and GL_HOST that names a server other
-// than gitlab.com, with that server's host name.
+// foreignGitLabHost reports the first of gitlabHostVariables that names a server other than
+// gitlab.com, with that server's host name. A value may be a bare host, a host and port, or a
+// URL.
 func foreignGitLabHost(lookup func(string) string) (string, string, bool) {
 	for _, name := range gitlabHostVariables {
 		value := strings.TrimSpace(lookup(name))

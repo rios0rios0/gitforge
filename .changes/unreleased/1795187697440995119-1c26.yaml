@@ -1,0 +1,3 @@
+kind: 'Security'
+body: 'stopped sending a `GITLAB_TOKEN` or `GL_TOKEN` from the environment to gitlab.com when `GITLAB_URI` or `GITLAB_API_HOST` (glab''s) or `GL_URL` or `GITLAB_URL` (semantic-release''s) names another GitLab server: only `GITLAB_HOST` and `GL_HOST` were checked, so a token exported for a self-managed server could reach gitlab.com'
+time: '2026-11-20T15:14:57.440898696Z'

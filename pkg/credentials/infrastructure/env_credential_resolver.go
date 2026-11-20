@@ -14,13 +14,34 @@ import (
 // gitlabHost is the only host gitforge's GitLab provider talks to.
 const gitlabHost = "gitlab.com"
 
-// gitlabServerVariable is an environment variable that names the GitLab server a token
-// exported next to it belongs to, and how its value names that server.
-type gitlabServerVariable struct {
+// githubAPIHost is the host gitforge's GitHub provider sends its requests to, the API of
+// github.com (githubHost).
+const githubAPIHost = "api.github.com"
+
+// serverVariable is an environment variable that names the server a token exported next to
+// it belongs to, how its value names that server, and the host it names when that server is
+// the one gitforge's provider calls.
+type serverVariable struct {
 	name string
 	// server returns the host the value names, "" when the value cannot be read (which
 	// counts as another server), and false when the value names no server at all.
 	server func(value string) (string, bool)
+	// host is the host the value names when the token is one the provider may be sent;
+	// any other host, or a value that cannot be read, keeps the token from the provider.
+	host string
+}
+
+// githubServerVariables are the variables a GitHub Actions runner names its GitHub server
+// in: GITHUB_SERVER_URL (https://github.com on github.com) and GITHUB_API_URL
+// (https://api.github.com). On a GitHub Enterprise Server or a GHE.com (*.ghe.com) runner
+// they name that server, which issued the job's GITHUB_TOKEN, and a token exported beside
+// them belongs there and must not be sent to api.github.com, the only host gitforge's GitHub
+// provider calls.
+//
+//nolint:gochecknoglobals // read-only lookup table
+var githubServerVariables = []serverVariable{
+	{"GITHUB_SERVER_URL", serverHost, githubHost},
+	{"GITHUB_API_URL", serverHost, githubAPIHost},
 }
 
 // gitlabServerVariables are the variables that tools which read GITLAB_TOKEN or GL_TOKEN
@@ -33,20 +54,36 @@ type gitlabServerVariable struct {
 // tool can also take its server from its own configuration file, which no variable shows.
 //
 //nolint:gochecknoglobals // read-only lookup table
-var gitlabServerVariables = []gitlabServerVariable{
-	{"GITLAB_HOST", serverHost},
-	{"GITLAB_URI", serverHost},
-	{"GL_HOST", serverHost},
-	{"GITLAB_API_HOST", serverHost},
-	{"GITLAB_REPO", repositoryHost},
-	{"GL_URL", serverHost},
-	{"GITLAB_URL", serverHost},
-	{"GL_API_URL", serverHost},
-	{"GITLAB_BASE_URL", serverHost},
-	{"CI_SERVER_URL", serverHost},
-	{"CI_SERVER_HOST", serverHost},
-	{"CI_SERVER_FQDN", serverHost},
-	{"CI_API_V4_URL", serverHost},
+var gitlabServerVariables = []serverVariable{
+	{"GITLAB_HOST", serverHost, gitlabHost},
+	{"GITLAB_URI", serverHost, gitlabHost},
+	{"GL_HOST", serverHost, gitlabHost},
+	{"GITLAB_API_HOST", serverHost, gitlabHost},
+	{"GITLAB_REPO", repositoryHost, gitlabHost},
+	{"GL_URL", serverHost, gitlabHost},
+	{"GITLAB_URL", serverHost, gitlabHost},
+	{"GL_API_URL", serverHost, gitlabHost},
+	{"GITLAB_BASE_URL", serverHost, gitlabHost},
+	{"CI_SERVER_URL", serverHost, gitlabHost},
+	{"CI_SERVER_HOST", serverHost, gitlabHost},
+	{"CI_SERVER_FQDN", serverHost, gitlabHost},
+	{"CI_API_V4_URL", serverHost, gitlabHost},
+}
+
+// tokenServerVariables maps a forge to the variables that can say its environment tokens
+// belong to another server. A forge with an empty entry has none, and its tokens are used as
+// they are found. Give a forge its variables here when one of its tokens is paired with a
+// server in the environment.
+//
+//nolint:gochecknoglobals // read-only lookup table
+var tokenServerVariables = map[globalEntities.ServiceType][]serverVariable{
+	globalEntities.UNKNOWN:     nil,
+	globalEntities.GITHUB:      githubServerVariables,
+	globalEntities.GITLAB:      gitlabServerVariables,
+	globalEntities.AZUREDEVOPS: nil,
+	globalEntities.BITBUCKET:   nil,
+	globalEntities.CODECOMMIT:  nil,
+	globalEntities.CODEBERG:    nil,
 }
 
 // EnvCredentialResolver reads a forge's token from the environment variables gitforge
@@ -65,7 +102,11 @@ func NewEnvCredentialResolver() *EnvCredentialResolver {
 }
 
 // Resolve returns the first non-empty variable's value, trimmed, with the variable's name
-// as the source.
+// as the source. It declines that token instead, with an error matching
+// entities.ErrNoCredential, when a variable of tokenServerVariables says it belongs to
+// another server: a GitHub token while GITHUB_SERVER_URL names a host other than github.com
+// or GITHUB_API_URL one other than api.github.com, and a GitLab token while a GitLab server
+// variable names a host other than gitlab.com.
 func (r *EnvCredentialResolver) Resolve(
 	_ context.Context, request entities.CredentialRequest,
 ) (entities.Credential, error) {
@@ -85,10 +126,8 @@ func (r *EnvCredentialResolver) Resolve(
 		if token == "" {
 			continue
 		}
-		if request.ServiceType == globalEntities.GITLAB {
-			if err := CheckGitLabTokenServer(lookup, name); err != nil {
-				return entities.Credential{}, err
-			}
+		if err := checkTokenServer(request.ServiceType, lookup, name); err != nil {
+			return entities.Credential{}, err
 		}
 		return entities.Credential{Token: token, Source: name + " environment variable"}, nil
 	}
@@ -107,39 +146,51 @@ func CheckGitLabTokenServer(lookup func(string) string, tokenVariable string) er
 	if lookup == nil {
 		lookup = os.Getenv
 	}
-	if variable, host, foreign := foreignGitLabHost(lookup); foreign {
-		return foreignGitLabHostError(variable, host, tokenVariable)
+	return checkTokenServer(globalEntities.GITLAB, lookup, tokenVariable)
+}
+
+// checkTokenServer returns an error matching entities.ErrNoCredential when one of the forge's
+// tokenServerVariables names a host other than its own, or holds a value it cannot read: the
+// token in tokenVariable then belongs to another server. It returns nil when none does.
+func checkTokenServer(
+	serviceType globalEntities.ServiceType, lookup func(string) string, tokenVariable string,
+) error {
+	if variable, host, foreign := foreignServer(tokenServerVariables[serviceType], lookup); foreign {
+		return foreignServerError(serviceType, variable, host, tokenVariable)
 	}
 	return nil
 }
 
-// foreignGitLabHost reports the first of gitlabServerVariables that names a server other than
-// gitlab.com, with that server's host name, or "" when its value cannot be read.
-func foreignGitLabHost(lookup func(string) string) (string, string, bool) {
-	for _, variable := range gitlabServerVariables {
+// foreignServer reports the first of variables that names a server other than its host, with
+// that server's host name, or "" when its value cannot be read.
+func foreignServer(variables []serverVariable, lookup func(string) string) (serverVariable, string, bool) {
+	for _, variable := range variables {
 		value := strings.TrimSpace(lookup(variable.name))
 		if value == "" {
 			continue
 		}
 		host, named := variable.server(value)
-		if named && !strings.EqualFold(host, gitlabHost) {
-			return variable.name, host, true
+		if named && !strings.EqualFold(host, variable.host) {
+			return variable, host, true
 		}
 	}
-	return "", "", false
+	return serverVariable{}, "", false
 }
 
-// foreignGitLabHostError explains why the token in tokenVariable is not used. It names the
-// host only, never the variable's value: a URL can carry a user name and a password of its
-// own, and a value that does not parse cannot be shown safely at all.
-func foreignGitLabHostError(variable, host, tokenVariable string) error {
+// foreignServerError explains why the token in tokenVariable is not used. It names the host
+// only, never the variable's value: a URL can carry a user name and a password of its own,
+// and a value that does not parse cannot be shown safely at all.
+func foreignServerError(
+	serviceType globalEntities.ServiceType, variable serverVariable, host, tokenVariable string,
+) error {
 	if host == "" {
 		return newUnavailableError(
-			nil, "%s does not name %s, so %s is not sent there", variable, gitlabHost, tokenVariable,
+			nil, "%s does not name %s, so %s is not sent there", variable.name, variable.host, tokenVariable,
 		)
 	}
 	return newUnavailableError(
-		nil, "%s names the GitLab server %s, so %s is not sent to %s", variable, host, tokenVariable, gitlabHost,
+		nil, "%s names the %s server %s, so %s is not sent to %s",
+		variable.name, serviceType.DisplayName(), host, tokenVariable, variable.host,
 	)
 }
 

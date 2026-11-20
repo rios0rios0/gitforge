@@ -2,6 +2,7 @@ package infrastructure_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -243,6 +244,9 @@ func TestExecCLIRunnerOutput(t *testing.T) {
 		assert.Contains(t, err.Error(), "auth token")
 		assert.Contains(t, err.Error(), "not signed in run the login command")
 		assert.NotContains(t, err.Error(), "fixture-printed-token")
+		exitErr, exited := errors.AsType[*exec.ExitError](err)
+		require.True(t, exited)
+		assert.Equal(t, "not signed in\nrun the login command\n", string(exitErr.Stderr))
 	})
 
 	t.Run("should give the program no input when it tries to read some", func(t *testing.T) {

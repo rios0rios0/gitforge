@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'corrected the README and the CLI resolver''s documentation, which said `glab` has no command that prints a token: it has no `auth token` command, while `glab auth status --show-token` and `glab config get token` do print one. GitLab still has no CLI fallback'
-time: '2026-11-20T18:19:20.033776075Z'

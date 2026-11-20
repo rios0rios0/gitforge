@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added `HTTPURLHost`, `HTTPRemoteServiceType` and `VisualStudioOrganization` (`pkg/global/domain/helpers`): the host of an `http://` or `https://` remote, without user name or port; the forge whose own host it is, from the one table of forge hosts that the providers'' `MatchesURL`, `GetServiceTypeByURL`, `ParseRemoteURL` and `ParsePullRequestURL` all ask; and the organization of a legacy `<org>.visualstudio.com` host'
-time: '2026-11-20T18:28:18.068050103Z'

@@ -22,6 +22,30 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-11-20
+
+### Added
+
+- added `HTTPURLHost`, `HTTPRemoteServiceType` and `VisualStudioOrganization` (`pkg/global/domain/helpers`): the host of an `http://` or `https://` remote, without user name or port; the forge whose own host it is, from the one table of forge hosts that the providers' `MatchesURL`, `GetServiceTypeByURL`, `ParseRemoteURL` and `ParsePullRequestURL` all ask; and the organization of a legacy `<org>.visualstudio.com` host
+- added `OriginPushURL` (`pkg/git/infrastructure`), the URL a push to origin dials: the last of origin's URLs, which is its `pushurl` when one is set. Every push reads its URL through the same function, so a consumer that explains a failed push, such as autobump's SSH diagnostics, can use the URL that push dialed instead of copying the rule
+
+### Changed
+
+- changed the order of the GitHub token environment variables to `GH_TOKEN` before `GITHUB_TOKEN`, the precedence gh documents: when both are set to different tokens, `GH_TOKEN` now wins, as in gh, where `GITHUB_TOKEN` used to. `TokenEnvVars`, `TokenEnvHint` and the credential chain follow the new order
+
+### Fixed
+
+- corrected the README and the CLI resolver's documentation, which said `glab` has no command that prints a token: it has no `auth token` command, while `glab auth status --show-token` and `glab config get token` do print one. GitLab still has no CLI fallback
+- fixed a forge CLI that kept running after the program asking it for a token was stopped with Ctrl-C, `SIGTERM` or a hangup: `ExecCLIRunner` starts the CLI in a process group of its own, which a terminal's interrupt does not reach, so the CLI outlived the program and its 30-second limit. On Unix, `SIGINT`, `SIGTERM` and `SIGHUP` are now relayed to the CLI's process group while it runs, and the first one is sent to the program again once the CLI has exited, so the program ends as it would have. A program with its own handler for the signal receives it twice
+- fixed Azure DevOps remotes on `vs-ssh.visualstudio.com`, the SSH host of the legacy `<org>.visualstudio.com` addresses (`<org>@vs-ssh.visualstudio.com:v3/<org>/<project>/<repo>`), which no provider matched: the Azure DevOps provider's `MatchesURL` now takes them beside those of `ssh.dev.azure.com`, host aliases included, and `ParseRemoteURL` reads them, scp-like or `ssh://`, with the same `v3/<org>/<project>/<repo>` layout
+- fixed the organization of the repositories Azure DevOps discovery lists from a legacy `https://<org>.visualstudio.com` address, which came back empty: the organization is now read from the host, and from the segment after `v3` of an SSH remote (`git@ssh.dev.azure.com:v3/<org>/...`, `<org>@vs-ssh.visualstudio.com:v3/<org>/...`)
+
+### Security
+
+- stopped handing the forge token variables to the CLIs the credential chain runs: `ExecCLIRunner` now withholds every variable of `TokenEnvVars` and gh's `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`, and keeps the rest of the environment. `gh auth token` printed `GH_TOKEN` or `GITHUB_TOKEN` back, so a token the environment step declined, such as a GitHub Enterprise Server runner's, reached api.github.com through the CLI step; the CLI now reports only the login it stored itself
+- stopped sending a `GH_TOKEN` or `GITHUB_TOKEN` from the environment to api.github.com while `GITHUB_SERVER_URL` names a host other than github.com or `GITHUB_API_URL` one other than api.github.com, as on a GitHub Enterprise Server or GHE.com (`*.ghe.com`) Actions runner, whose server issued the job's `GITHUB_TOKEN`, or while gh's `GH_HOST` names a GHE.com host, to which gh sends those tokens. A GitHub Enterprise Server host in `GH_HOST` keeps them, since gh sends it `GH_ENTERPRISE_TOKEN` instead. A value that cannot be read refuses the token too, and the refusal names the variable and the host, never the value. A GitHub Enterprise Server or GHE.com runner that sent a github.com token through this fallback must now configure it explicitly
+- stopped taking an `http://` or `https://` remote for GitHub, GitLab, Azure DevOps, Codeberg, Bitbucket or AWS CodeCommit when its host merely contains the forge's name: `MatchesURL` and `GetServiceTypeByURL` matched a substring of the URL, so `https://github.com.example.net/...`, `https://notgithub.com/...`, a GitHub Enterprise host such as `https://github.company.com/...` or a self-managed `https://gitlab.company.com/...` was handed the github.com or gitlab.com token. An HTTP(S) remote now matches only on the forge's own hosts (`github.com`, `www.github.com`, `gitlab.com`, `www.gitlab.com`, `dev.azure.com`, an organization's `<org>.visualstudio.com`, which now matches Azure DevOps too, `codeberg.org`, `bitbucket.org`, `git-codecommit.<region>.amazonaws.com`), and SSH remotes keep matching by name, so host aliases such as `github.com-work` still resolve. `ParseRemoteURL` and `ParsePullRequestURL` now recognise an HTTP(S) URL's forge the same way, from the same table of hosts: a lookalike no longer parses as github.com, gitlab.com or dev.azure.com, which handed autoupdate's local mode and code-guru that forge's token, an organization's `https://<org>.visualstudio.com` remote and pull request now parse, and a refused remote is named without its user information
+
 ## [4.8.0] - 2026-11-20
 
 ### Added

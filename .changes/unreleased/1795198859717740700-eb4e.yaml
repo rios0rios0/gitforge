@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed the organization of the repositories Azure DevOps discovery lists from a legacy `https://<org>.visualstudio.com` address, which came back empty: the organization is now read from the host, and from the segment after `v3` of an SSH remote (`git@ssh.dev.azure.com:v3/<org>/...`, `<org>@vs-ssh.visualstudio.com:v3/<org>/...`)'
-time: '2026-11-20T18:20:59.71766191Z'

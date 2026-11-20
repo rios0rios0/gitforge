@@ -1,3 +1,0 @@
-kind: 'Security'
-body: 'stopped handing the forge token variables to the CLIs the credential chain runs: `ExecCLIRunner` now withholds every variable of `TokenEnvVars` and gh''s `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`, and keeps the rest of the environment. `gh auth token` printed `GH_TOKEN` or `GITHUB_TOKEN` back, so a token the environment step declined, such as a GitHub Enterprise Server runner''s, reached api.github.com through the CLI step; the CLI now reports only the login it stored itself'
-time: '2026-11-20T18:08:54.295579182Z'

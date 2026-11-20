@@ -348,3 +348,51 @@ func TestNewEnvCredentialResolver(t *testing.T) {
 		assert.Equal(t, "fixture-codeberg-token", credential.Token)
 	})
 }
+
+func TestCheckGitLabTokenServer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should refuse CI_JOB_TOKEN when the CI job runs on another GitLab server", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		lookup := lookupFrom(map[string]string{"CI_SERVER_HOST": "gitlab.example.com"})
+
+		// when
+		err := infrastructure.CheckGitLabTokenServer(lookup, "CI_JOB_TOKEN")
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+		require.EqualError(t, err,
+			"CI_SERVER_HOST names the GitLab server gitlab.example.com, so CI_JOB_TOKEN is not sent to gitlab.com")
+	})
+
+	t.Run("should allow CI_JOB_TOKEN when the CI job runs on gitlab.com", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		lookup := lookupFrom(map[string]string{
+			"CI_SERVER_HOST": "gitlab.com",
+			"CI_SERVER_URL":  "https://gitlab.com",
+		})
+
+		// when
+		err := infrastructure.CheckGitLabTokenServer(lookup, "CI_JOB_TOKEN")
+
+		// then
+		assert.NoError(t, err)
+	})
+
+	t.Run("should allow the token when no variable names a GitLab server", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		lookup := lookupFrom(nil)
+
+		// when
+		err := infrastructure.CheckGitLabTokenServer(lookup, "CI_JOB_TOKEN")
+
+		// then
+		assert.NoError(t, err)
+	})
+}

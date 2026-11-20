@@ -86,13 +86,29 @@ func (r *EnvCredentialResolver) Resolve(
 			continue
 		}
 		if request.ServiceType == globalEntities.GITLAB {
-			if variable, host, foreign := foreignGitLabHost(lookup); foreign {
-				return entities.Credential{}, foreignGitLabHostError(variable, host, name)
+			if err := CheckGitLabTokenServer(lookup, name); err != nil {
+				return entities.Credential{}, err
 			}
 		}
 		return entities.Credential{Token: token, Source: name + " environment variable"}, nil
 	}
 	return entities.Credential{}, newUnavailableError(nil, "%s not set", describeUnsetVariables(names))
+}
+
+// CheckGitLabTokenServer returns an error matching entities.ErrNoCredential when a variable of
+// gitlabServerVariables names a GitLab server other than gitlab.com: the GitLab token in
+// tokenVariable then belongs to that server and must not be sent to gitlab.com. It returns nil
+// when no variable does. EnvCredentialResolver applies it to GITLAB_TOKEN and GL_TOKEN; a
+// consumer applies it to any other GitLab token it takes from the environment, such as a GitLab
+// CI job's CI_JOB_TOKEN. A nil lookup reads the process environment.
+func CheckGitLabTokenServer(lookup func(string) string, tokenVariable string) error {
+	if lookup == nil {
+		lookup = os.Getenv
+	}
+	if variable, host, foreign := foreignGitLabHost(lookup); foreign {
+		return foreignGitLabHostError(variable, host, tokenVariable)
+	}
+	return nil
 }
 
 // foreignGitLabHost reports the first of gitlabServerVariables that names a server other than

@@ -22,6 +22,15 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.7.1] - 2026-11-19
+
+### Fixed
+
+- fixed `GetRemoteServiceType` naming the forge of whichever remote it read first in a repository with several, so a push to origin could be given another forge's token: it now reads origin's first URL, and the other remotes in name order when there is no origin
+- fixed `ParseRemoteURL` misreading `ssh://` remotes: `ssh://git@ssh.dev.azure.com/v3/org/project/repo` came back with `v3` as the organization and `org` as the project, and a host followed by a port, such as `ssh://git@github.com:22/owner/repo.git` or GitLab's `ssh://git@altssh.gitlab.com:443/group/repo.git`, was rejected; every `ssh://[user@]host[:port]/path` remote of GitHub, GitLab and Azure DevOps now parses exactly like its scp-like `git@host:path` form
+- fixed pushes choosing SSH or HTTPS from origin's first URL while go-git dialed its last one, its `pushurl` when one is set, which sent the forge token as HTTP Basic auth to whatever host a `pushurl` or a second `url` named: `PushWithTransportDetection`, `PushChangesSSH` and `PushChangesHTTPS` now classify and dial that push URL, passing it as `PushOptions.RemoteURL`, build the SSH agent fallback for it, and refuse HTTP credentials for a push URL whose host is not the host of origin's first URL, failing with an error that names both hosts
+- fixed the README's Credentials section, which said the providers only call fixed hosts: Azure DevOps `DiscoverRepositories` and `ListOrganizationRepositories` send the token to the host of an organization value that begins with `https://`, so a consumer passes a bare organization name, or checks that the host is `dev.azure.com` or `<org>.visualstudio.com`, before handing such a value to discovery with a token the operator's own configuration did not supply
+
 ## [4.7.0] - 2026-11-19
 
 ### Added

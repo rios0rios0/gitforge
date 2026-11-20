@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed pushes choosing SSH or HTTPS from origin''s first URL while go-git dialed its last one, its `pushurl` when one is set, which sent the forge token as HTTP Basic auth to whatever host a `pushurl` or a second `url` named: `PushWithTransportDetection`, `PushChangesSSH` and `PushChangesHTTPS` now classify and dial that push URL, passing it as `PushOptions.RemoteURL`, build the SSH agent fallback for it, and refuse HTTP credentials for a push URL whose host is not the host of origin''s first URL, failing with an error that names both hosts'
-time: '2026-11-20T04:15:27.577645642Z'

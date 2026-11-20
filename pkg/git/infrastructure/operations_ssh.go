@@ -81,7 +81,9 @@ func defaultSSHAuth(remoteURL string) transport.AuthMethod {
 	return auth
 }
 
-// defaultSSHAuthForRemote builds the fallback auth method from a remote's first URL.
+// defaultSSHAuthForRemote builds the fallback auth method for listing a remote: from its
+// first URL, the one go-git's Remote.List dials. A push dials the last URL instead, so
+// PushChangesSSH builds its fallback from the push URL it pins (see pushTarget).
 func defaultSSHAuthForRemote(remote *git.Remote) transport.AuthMethod {
 	if remote == nil {
 		return nil
@@ -93,19 +95,4 @@ func defaultSSHAuthForRemote(remote *git.Remote) transport.AuthMethod {
 	}
 
 	return defaultSSHAuth(urls[0])
-}
-
-// defaultSSHAuthForRepo builds the fallback auth method from the repository's origin
-// remote.
-func defaultSSHAuthForRepo(repo *git.Repository) transport.AuthMethod {
-	if repo == nil {
-		return nil
-	}
-
-	remote, err := repo.Remote(originRemoteName)
-	if err != nil {
-		return nil
-	}
-
-	return defaultSSHAuthForRemote(remote)
 }

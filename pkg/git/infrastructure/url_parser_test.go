@@ -208,6 +208,209 @@ func TestParseRemoteURL(t *testing.T) {
 	})
 }
 
+// TestParseRemoteURLWithSSHScheme covers SSH remotes written as a URL, ssh://[user@]host[:port]/path.
+// Each case names the scp-like remote it must parse exactly like: the user and the port pick
+// the account and the port to connect with, not the repository.
+func TestParseRemoteURLWithSSHScheme(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		rawURL  string
+		scpLike string
+		want    infrastructure.RemoteURLInfo
+	}{
+		{
+			name:    "should parse a GitHub ssh:// URL with a user",
+			rawURL:  "ssh://git@github.com/rios0rios0/autobump.git",
+			scpLike: "git@github.com:rios0rios0/autobump.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITHUB,
+				Organization: "rios0rios0",
+				RepoName:     "autobump",
+			},
+		},
+		{
+			name:    "should parse a GitHub ssh:// URL with a user and a port",
+			rawURL:  "ssh://git@github.com:22/rios0rios0/autobump.git",
+			scpLike: "git@github.com:rios0rios0/autobump.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITHUB,
+				Organization: "rios0rios0",
+				RepoName:     "autobump",
+			},
+		},
+		{
+			name:    "should parse a GitHub ssh:// URL without a user",
+			rawURL:  "ssh://github.com/rios0rios0/autobump.git",
+			scpLike: "git@github.com:rios0rios0/autobump.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITHUB,
+				Organization: "rios0rios0",
+				RepoName:     "autobump",
+			},
+		},
+		{
+			name:    "should parse a GitHub ssh:// URL without a user but with a port",
+			rawURL:  "ssh://ssh.github.com:443/rios0rios0/autobump",
+			scpLike: "git@ssh.github.com:rios0rios0/autobump",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITHUB,
+				Organization: "rios0rios0",
+				RepoName:     "autobump",
+			},
+		},
+		{
+			name:    "should parse a GitHub ssh:// URL naming an SSH config alias",
+			rawURL:  "ssh://git@github.com-mine/rios0rios0/autobump.git",
+			scpLike: "git@github.com-mine:rios0rios0/autobump.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITHUB,
+				Organization: "rios0rios0",
+				RepoName:     "autobump",
+			},
+		},
+		{
+			name:    "should parse a GitLab ssh:// URL with a user",
+			rawURL:  "ssh://git@gitlab.com/mygroup/myrepo.git",
+			scpLike: "git@gitlab.com:mygroup/myrepo.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITLAB,
+				Organization: "mygroup",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			name:    "should parse a GitLab ssh:// URL with nested groups, a user and a port",
+			rawURL:  "ssh://git@gitlab.com:2222/group/subgroup/myrepo.git",
+			scpLike: "git@gitlab.com:group/subgroup/myrepo.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITLAB,
+				Organization: "group/subgroup",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			name:    "should parse a GitLab ssh:// URL with nested groups and without a user",
+			rawURL:  "ssh://gitlab.com/group/subgroup/myrepo.git",
+			scpLike: "git@gitlab.com:group/subgroup/myrepo.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITLAB,
+				Organization: "group/subgroup",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			name:    "should parse a self-hosted GitLab ssh:// URL with another user and a port",
+			rawURL:  "ssh://deploy@gitlab.example.com:2222/mygroup/myrepo.git",
+			scpLike: "git@gitlab.example.com:mygroup/myrepo.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITLAB,
+				Organization: "mygroup",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			// GitLab's documented SSH endpoint on port 443, for networks that block port 22.
+			name:    "should parse a GitLab ssh:// URL through altssh.gitlab.com on port 443",
+			rawURL:  "ssh://git@altssh.gitlab.com:443/group/repo.git",
+			scpLike: "git@gitlab.com:group/repo.git",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.GITLAB,
+				Organization: "group",
+				RepoName:     "repo",
+			},
+		},
+		{
+			name:    "should parse an Azure DevOps ssh:// URL with a user",
+			rawURL:  "ssh://git@ssh.dev.azure.com/v3/myorg/myproject/myrepo",
+			scpLike: "git@ssh.dev.azure.com:v3/myorg/myproject/myrepo",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.AZUREDEVOPS,
+				Organization: "myorg",
+				Project:      "myproject",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			name:    "should parse an Azure DevOps ssh:// URL with a user and a port",
+			rawURL:  "ssh://git@ssh.dev.azure.com:22/v3/myorg/myproject/myrepo",
+			scpLike: "git@ssh.dev.azure.com:v3/myorg/myproject/myrepo",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.AZUREDEVOPS,
+				Organization: "myorg",
+				Project:      "myproject",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			name:    "should parse an Azure DevOps ssh:// URL without a user",
+			rawURL:  "ssh://ssh.dev.azure.com/v3/myorg/myproject/myrepo",
+			scpLike: "git@ssh.dev.azure.com:v3/myorg/myproject/myrepo",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.AZUREDEVOPS,
+				Organization: "myorg",
+				Project:      "myproject",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			name:    "should parse an Azure DevOps ssh:// URL without a user but with a port",
+			rawURL:  "ssh://ssh.dev.azure.com:22/v3/myorg/myproject/myrepo",
+			scpLike: "git@ssh.dev.azure.com:v3/myorg/myproject/myrepo",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.AZUREDEVOPS,
+				Organization: "myorg",
+				Project:      "myproject",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			name:    "should keep an escaped Azure DevOps project name escaped in an ssh:// URL",
+			rawURL:  "ssh://git@ssh.dev.azure.com:22/v3/myorg/My%20Project/myrepo",
+			scpLike: "git@ssh.dev.azure.com:v3/myorg/My%20Project/myrepo",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.AZUREDEVOPS,
+				Organization: "myorg",
+				Project:      "My%20Project",
+				RepoName:     "myrepo",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			scpLikeResult, err := infrastructure.ParseRemoteURL(test.scpLike)
+			require.NoError(t, err)
+
+			// when
+			result, err := infrastructure.ParseRemoteURL(test.rawURL)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, test.want, *result)
+			assert.Equal(t, *scpLikeResult, *result, "the ssh:// URL must parse like %s", test.scpLike)
+		})
+	}
+
+	t.Run("should return error for an ssh:// URL of an unsupported forge", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		rawURL := "ssh://git@bitbucket.org/owner/repo.git"
+
+		// when
+		_, err := infrastructure.ParseRemoteURL(rawURL)
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported remote URL format")
+	})
+}
+
 func TestParsePullRequestURL(t *testing.T) {
 	t.Parallel()
 

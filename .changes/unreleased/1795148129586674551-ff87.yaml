@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed the README''s Credentials section, which said the providers only call fixed hosts: Azure DevOps `DiscoverRepositories` and `ListOrganizationRepositories` send the token to the host of an organization value that begins with `https://`, so a consumer passes a bare organization name, or checks that the host is `dev.azure.com` or `<org>.visualstudio.com`, before handing such a value to discovery with a token the operator''s own configuration did not supply'
+time: '2026-11-20T04:15:29.58661654Z'

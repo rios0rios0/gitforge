@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed `ParseRemoteURL` misreading `ssh://` remotes: `ssh://git@ssh.dev.azure.com/v3/org/project/repo` came back with `v3` as the organization and `org` as the project, and a host followed by a port, such as `ssh://git@github.com:22/owner/repo.git` or GitLab''s `ssh://git@altssh.gitlab.com:443/group/repo.git`, was rejected; every `ssh://[user@]host[:port]/path` remote of GitHub, GitLab and Azure DevOps now parses exactly like its scp-like `git@host:path` form'
+time: '2026-11-20T04:15:26.572801489Z'

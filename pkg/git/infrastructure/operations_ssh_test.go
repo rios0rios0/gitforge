@@ -136,23 +136,23 @@ func TestSetDefaultSSHHostKeyCallback(t *testing.T) {
 	})
 }
 
-// TestDefaultSSHAuthForRepo is deliberately not parallel: it mutates the package-level
+// TestDefaultSSHAuthForRemote is deliberately not parallel: it mutates the package-level
 // fallback hook and the process environment.
-func TestDefaultSSHAuthForRepo(t *testing.T) {
+func TestDefaultSSHAuthForRemote(t *testing.T) {
 	defer SetDefaultSSHHostKeyCallback(nil)
 	agentSock := newFakeAgentSocket(t)
 
-	t.Run("should return nil when the repository has no origin", func(t *testing.T) {
+	t.Run("should return nil when the remote has no URL", func(t *testing.T) {
 		// given
 		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", agentSock)
-		repo := newInMemoryRepo(t)
+		remote := git.NewRemote(memory.NewStorage(), &gitcfg.RemoteConfig{Name: "origin"})
 
 		// when / then
-		assert.Nil(t, defaultSSHAuthForRepo(repo))
+		assert.Nil(t, defaultSSHAuthForRemote(remote))
 	})
 
-	t.Run("should build the fallback auth from the origin URL", func(t *testing.T) {
+	t.Run("should build the fallback auth from the remote's first URL", func(t *testing.T) {
 		// given
 		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", agentSock)
@@ -162,20 +162,21 @@ func TestDefaultSSHAuthForRepo(t *testing.T) {
 			URLs: []string{"ssh://git@github.com/org/repo.git"},
 		})
 		require.NoError(t, err)
+		remote, err := repo.Remote("origin")
+		require.NoError(t, err)
 
 		// when
-		auth := defaultSSHAuthForRepo(repo)
+		auth := defaultSSHAuthForRemote(remote)
 
 		// then
 		assert.NotNil(t, auth)
 	})
 
-	t.Run("should tolerate a nil repository", func(t *testing.T) {
+	t.Run("should tolerate a nil remote", func(t *testing.T) {
 		// given
 		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 
 		// when / then
-		assert.Nil(t, defaultSSHAuthForRepo(nil))
 		assert.Nil(t, defaultSSHAuthForRemote(nil))
 	})
 }

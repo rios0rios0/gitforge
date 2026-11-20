@@ -68,12 +68,16 @@ func getPRURLParsers() map[string]prURLParser {
 //   - GitLab HTTPS:         https://gitlab.com/group/repo.git
 //   - Azure DevOps SSH:     git@ssh.dev.azure.com:v3/org/project/repo
 //   - Azure DevOps HTTPS:   https://dev.azure.com/org/project/_git/repo
+//
+// Each SSH format may also be written as a URL, ssh://[user@]host[:port]/path, which parses
+// exactly like the scp-like form above it: ssh://git@ssh.dev.azure.com:22/v3/org/project/repo
+// names the same repository as git@ssh.dev.azure.com:v3/org/project/repo.
 func ParseRemoteURL(rawURL string) (*RemoteURLInfo, error) {
 	if rawURL == "" {
 		return nil, errors.New("empty remote URL")
 	}
 
-	cleaned := strings.TrimSuffix(rawURL, ".git")
+	cleaned := asSCPLikeRemote(strings.TrimSuffix(rawURL, ".git"))
 
 	for _, entry := range getRemoteURLParsers() {
 		if entry.matches(cleaned) {
@@ -111,6 +115,20 @@ func ParsePullRequestURL(rawURL string) (*PullRequestURLInfo, error) {
 	}
 
 	return nil, fmt.Errorf("unsupported provider host: %q", host)
+}
+
+// asSCPLikeRemote rewrites an SSH remote written as a URL, ssh://[user@]host[:port]/path, as the
+// scp-like git@host:path the SSH parsers read, and returns any other remote unchanged. Read as
+// it was written, such a URL reached the HTTPS parsers, which took Azure DevOps's v3 segment for
+// the organization and rejected a host followed by a port. The user and the port choose the
+// account and the port to connect with, not the repository, so neither carries over, and the
+// path keeps its escaping, as the scp-like form does.
+func asSCPLikeRemote(cleaned string) string {
+	parsed, err := url.Parse(cleaned)
+	if err != nil || parsed.Scheme != sshProtocol || parsed.Hostname() == "" {
+		return cleaned
+	}
+	return "git@" + parsed.Hostname() + ":" + strings.TrimPrefix(parsed.EscapedPath(), "/")
 }
 
 // --- GitHub remote URL matchers and parsers ---

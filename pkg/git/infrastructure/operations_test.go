@@ -934,6 +934,7 @@ func TestGetRemoteServiceTypeWithTheForgeProviders(t *testing.T) {
 		{"https://org@dev.azure.com/org/project/_git/repo", globalEntities.AZUREDEVOPS},
 		{"https://org.visualstudio.com/project/_git/repo", globalEntities.AZUREDEVOPS},
 		{"git@ssh.dev.azure.com:v3/org/project/repo", globalEntities.AZUREDEVOPS},
+		{"org@vs-ssh.visualstudio.com:v3/org/project/repo", globalEntities.AZUREDEVOPS},
 		{"https://codeberg.org/owner/repo.git", globalEntities.CODEBERG},
 		{"https://bitbucket.org/org/repo.git", globalEntities.BITBUCKET},
 		{"https://github.com.evil.example/org/repo.git", globalEntities.UNKNOWN},

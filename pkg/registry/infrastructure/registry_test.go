@@ -148,6 +148,7 @@ func TestProviderRegistryGetAdapterByURLWithTheForgeProviders(t *testing.T) {
 		{"https://org@dev.azure.com/org/project/_git/repo", "azuredevops"},
 		{"https://org.visualstudio.com/project/_git/repo", "azuredevops"},
 		{"git@ssh.dev.azure.com:v3/org/project/repo", "azuredevops"},
+		{"org@vs-ssh.visualstudio.com:v3/org/project/repo", "azuredevops"},
 		{"https://codeberg.org/owner/repo.git", "codeberg"},
 		{"git@codeberg.org:owner/repo.git", "codeberg"},
 	} {

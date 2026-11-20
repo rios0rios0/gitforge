@@ -57,6 +57,9 @@ func TestProviderMatchesURL(t *testing.T) {
 		{"a scp-like SSH remote", "git@ssh.dev.azure.com:v3/org/project/repo"},
 		{"an SSH host alias", "git@dev.azure.com-work:v3/org/project/repo"},
 		{"an ssh:// remote", "ssh://git@ssh.dev.azure.com/v3/org/project/repo"},
+		{"a scp-like SSH remote on the legacy visualstudio.com host", "org@vs-ssh.visualstudio.com:v3/org/project/repo"},
+		{"an ssh:// remote on the legacy visualstudio.com host", "ssh://org@vs-ssh.visualstudio.com:22/v3/org/project/repo"},
+		{"an SSH host alias of the legacy visualstudio.com host", "org@vs-ssh.visualstudio.com-work:v3/org/project/repo"},
 	} {
 		t.Run("should match when the remote is "+scenario.name, func(t *testing.T) {
 			t.Parallel()
@@ -81,6 +84,7 @@ func TestProviderMatchesURL(t *testing.T) {
 		{"an HTTPS host two labels under visualstudio.com", "https://org.team.visualstudio.com/project/_git/repo"},
 		{"an HTTPS remote that names dev.azure.com in its path", "https://evil.example/dev.azure.com/org/project/_git/repo"},
 		{"a remote on another forge", "https://github.com/org/repo.git"},
+		{"an SSH remote on a visualstudio.com host other than vs-ssh", "org@org.visualstudio.com:v3/org/project/repo"},
 	} {
 		t.Run("should not match when the remote is "+scenario.name, func(t *testing.T) {
 			t.Parallel()

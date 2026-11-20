@@ -1,3 +1,0 @@
-kind: 'Deprecated'
-body: 'deprecated `ResolveTokenFromEnv`, which makes none of the credential chain''s checks before it returns an environment token; use `pkg/credentials`'' `EnvCredentialResolver` or `NewDefaultCredentialResolver`'
-time: '2026-11-20T15:57:29.771830517Z'

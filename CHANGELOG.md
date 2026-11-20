@@ -22,6 +22,24 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-11-20
+
+### Added
+
+- added `CheckGitLabTokenServer`, the credential chain's GitLab server check, for a GitLab token a consumer exports itself, and `GitLabCIServerHost` and `CheckGitLabCIJobTokenServer`, which judge a GitLab CI job's `CI_JOB_TOKEN` by the job's own `CI_SERVER_*` variables alone, so a self-managed runner's job token is never sent to gitlab.com
+
+### Changed
+
+- changed the Go module `gitlab.com/gitlab-org/api/client-go/v3` from `v3.53.0` to `v3.54.1`
+
+### Deprecated
+
+- deprecated `ResolveTokenFromEnv`, which makes none of the credential chain's checks before it returns an environment token; use `pkg/credentials`' `EnvCredentialResolver` or `NewDefaultCredentialResolver`
+
+### Security
+
+- stopped sending a `GITLAB_TOKEN` or `GL_TOKEN` from the environment to gitlab.com when another variable names a self-managed GitLab server: glab's `GITLAB_URI`, `GITLAB_API_HOST` and `GITLAB_REPO`, semantic-release's `GL_URL` and `GITLAB_URL`, Lerna's `GL_API_URL`, Terraform's `GITLAB_BASE_URL`, and a GitLab CI job's `CI_SERVER_URL`, `CI_SERVER_HOST`, `CI_SERVER_FQDN` and `CI_API_V4_URL`. Only `GITLAB_HOST` and `GL_HOST` were checked, so the token of a self-managed server reached gitlab.com. A value of the new variables that cannot be read refuses the token too, and a refusal no longer quotes the value, which can carry credentials. A self-managed GitLab CI runner that used a gitlab.com token through this fallback must now configure it explicitly
+
 ## [4.7.1] - 2026-11-19
 
 ### Fixed

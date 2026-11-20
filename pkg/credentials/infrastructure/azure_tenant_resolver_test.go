@@ -1,6 +1,7 @@
 package infrastructure_test
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/rios0rios0/gitforge/v4/pkg/credentials/infrastructure"
+	"github.com/rios0rios0/gitforge/v4/test/doubles"
 )
 
 const tenantHeader = "X-Vss-Resourcetenant"
@@ -183,16 +185,20 @@ func TestHTTPAzureTenantResolverGetTenant(t *testing.T) {
 	t.Run("should fail when Azure DevOps cannot be reached", func(t *testing.T) {
 		t.Parallel()
 
-		// given
-		server := httptest.NewServer(http.NotFoundHandler())
-		server.Close()
-		resolver := &infrastructure.HTTPAzureTenantResolver{BaseURL: server.URL}
+		// given: a transport that fails as a dial to an unreachable host does, without the
+		// network. A closed test server's port does not stay closed: a parallel test's server
+		// can take it and answer.
+		errUnreachable := errors.New("fixture: Azure DevOps cannot be reached")
+		transport := &doubles.RoundTripperStub{Err: errUnreachable}
+		resolver := &infrastructure.HTTPAzureTenantResolver{Client: &http.Client{Transport: transport}}
 
 		// when
-		_, err := resolver.GetTenant(t.Context(), "fixture-org")
+		tenant, err := resolver.GetTenant(t.Context(), "fixture-org")
 
 		// then
-		require.Error(t, err)
+		require.ErrorIs(t, err, errUnreachable)
 		assert.Contains(t, err.Error(), "request the organization's tenant")
+		assert.Empty(t, tenant)
+		assert.Equal(t, []string{"https://dev.azure.com/fixture-org/_apis/connectionData"}, transport.URLs())
 	})
 }

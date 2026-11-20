@@ -179,7 +179,8 @@ gitforge/
 │   │   ├── commit_signer_stub.go           # CommitSignerStub (mock CommitSigner)
 │   │   ├── forge_provider_stub.go          # ForgeProviderStub (mock ForgeProvider + LocalGitAuthProvider)
 │   │   ├── mirror_provider_stub.go         # MirrorProviderStub (mock MirrorProvider)
-│   │   └── repository_discoverer_stub.go   # RepositoryDiscovererStub (mock RepositoryDiscoverer)
+│   │   ├── repository_discoverer_stub.go   # RepositoryDiscovererStub (mock RepositoryDiscoverer)
+│   │   └── round_tripper_stub.go           # RoundTripperStub: an http.RoundTripper that fails every request, without the network
 │   └── builders/
 │       ├── adapter_finder_stub_builder.go          # Builder for AdapterFinderStub
 │       ├── forge_provider_stub_builder.go          # Builder for ForgeProviderStub
@@ -374,6 +375,7 @@ When adding features to gitforge:
 | `AdapterFinderStub`         | `AdapterFinder`                         |
 | `CommitSignerStub`          | `CommitSigner`                          |
 | `AuthStub`                  | go-git `transport.AuthMethod`           |
+| `RoundTripperStub`          | `http.RoundTripper` (fails every request, records its URL) |
 
 `test/builders/` provides builder-pattern helpers for constructing stubs in tests.
 

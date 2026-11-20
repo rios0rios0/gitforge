@@ -3,6 +3,9 @@ package infrastructure_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -156,4 +159,38 @@ func TestNewDefaultCredentialResolver(t *testing.T) {
 		assert.IsType(t, &infrastructure.EnvCredentialResolver{}, chain.Resolvers[0])
 		assert.IsType(t, &infrastructure.CLICredentialResolver{}, chain.Resolvers[1])
 	})
+}
+
+// TestNewDefaultCredentialResolverWithAStubGH is deliberately not parallel: it puts a stub gh
+// on PATH and sets the GitHub variables with t.Setenv, which the runtime forbids in a parallel
+// test.
+func TestNewDefaultCredentialResolverWithAStubGH(t *testing.T) {
+	t.Run("should take gh's own login, not the GH_TOKEN it declined, when the runner names another server",
+		func(t *testing.T) {
+			// given
+			if runtime.GOOS == "windows" {
+				t.Skip("the stub gh is a POSIX shell script")
+			}
+			dir := t.TempDir()
+			// Like gh, the stub prints GH_TOKEN or GITHUB_TOKEN when either reaches it, and the
+			// login it stored otherwise.
+			stub := "#!/bin/sh\nprintf '%s\\n' \"${GH_TOKEN:-${GITHUB_TOKEN:-fixture-stored-login-placeholder}}\"\n"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o700))
+			t.Setenv("PATH", dir)
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("GH_TOKEN", "fixture-declined-token-placeholder")
+			t.Setenv("GITHUB_TOKEN", "")
+			t.Setenv("GITHUB_SERVER_URL", "https://ghe.example.com")
+			resolver := infrastructure.NewDefaultCredentialResolver()
+
+			// when
+			credential, err := resolver.Resolve(
+				t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITHUB},
+			)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, "fixture-stored-login-placeholder", credential.Token)
+			assert.Equal(t, "gh CLI", credential.Source)
+		})
 }

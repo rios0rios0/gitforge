@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	configHelpers "github.com/rios0rios0/gitforge/v4/pkg/config/domain/helpers"
 )
 
 // cliWaitDelay bounds how long Output waits for a CLI's output to close once the CLI has
@@ -17,7 +19,16 @@ import (
 // which would otherwise keep Output waiting indefinitely.
 const cliWaitDelay = 2 * time.Second
 
-// ExecCLIRunner finds forge CLIs on PATH and runs them as child processes.
+// enterpriseTokenVariables are the variables gh reads a GitHub Enterprise Server token from,
+// "GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN (in order of precedence)". gitforge reads
+// neither, so configHelpers.TokenEnvVars does not list them.
+//
+//nolint:gochecknoglobals // read-only lookup table
+var enterpriseTokenVariables = []string{"GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+
+// ExecCLIRunner finds forge CLIs on PATH and runs them as child processes, with the
+// environment of this process minus the variables that hold a forge token (see
+// cliEnvironment), so a CLI reports only the login it stored itself.
 type ExecCLIRunner struct {
 	// Dir is the directory the CLI runs in. Empty means the user's home directory, or the
 	// filesystem root when there is none, and never the caller's own directory: the
@@ -48,12 +59,13 @@ func (r *ExecCLIRunner) LookPath(name string) (string, error) {
 
 // Output runs the executable at path and returns its trimmed standard output. On failure
 // the error reports standard error only, because standard output is where a CLI prints
-// the token.
+// the token. The CLI gets this process's environment without the forge token variables.
 func (r *ExecCLIRunner) Output(ctx context.Context, path string, args ...string) (string, error) {
 	// #nosec G204 -- path is LookPath's absolute result for a fixed program name, and args
 	// are constants plus a tenant ID validated as a GUID.
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = r.workingDirectory()
+	cmd.Env = cliEnvironment(os.Environ())
 	// A nil Stdin reads from the null device, so a CLI that unexpectedly prompts fails on
 	// end of file instead of waiting for an answer that never comes.
 	cmd.Stdin = nil
@@ -81,6 +93,37 @@ func (r *ExecCLIRunner) Output(ctx context.Context, path string, args ...string)
 		}
 	}
 	return "", fmt.Errorf("%s: %w", command, err)
+}
+
+// cliEnvironment returns environ without the variables that hold a forge token: every one
+// configHelpers.TokenEnvVars lists for a forge, and gh's GitHub Enterprise Server tokens. gh
+// prints GH_TOKEN or GITHUB_TOKEN back when either is set (`gh auth token` reports the token
+// gh would use, and they take precedence over its stored login), so the credential chain's CLI
+// step would hand out the very token its environment step declined, such as one a GitHub
+// Enterprise Server runner exported. Everything else is kept: a CLI needs HOME, PATH, its
+// configuration directory and the proxy settings. Names are compared without regard to case,
+// as Windows compares them.
+func cliEnvironment(environ []string) []string {
+	withheld := make(map[string]bool)
+	for _, name := range enterpriseTokenVariables {
+		withheld[strings.ToUpper(name)] = true
+	}
+	// providerCLIs has an entry for every forge: the exhaustive linter fails a literal of it
+	// that leaves one out.
+	for serviceType := range providerCLIs {
+		for _, name := range configHelpers.TokenEnvVars(serviceType) {
+			withheld[strings.ToUpper(name)] = true
+		}
+	}
+
+	kept := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		name, _, _ := strings.Cut(entry, "=")
+		if !withheld[strings.ToUpper(name)] {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // workingDirectory returns Dir, else the user's home directory when it exists, else the

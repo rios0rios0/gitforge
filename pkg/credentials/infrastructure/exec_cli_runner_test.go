@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,6 +150,62 @@ func TestExecCLIRunnerWorkingDirectory(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.Equal(t, "/", output)
+	})
+}
+
+// forgeTokenVariables are the variables that hold a forge token: gitforge's own, and gh's
+// GitHub Enterprise Server tokens.
+func forgeTokenVariables() []string {
+	return []string{
+		"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+		"GITLAB_TOKEN", "GL_TOKEN", "AZURE_DEVOPS_EXT_PAT", "SYSTEM_ACCESSTOKEN", "CODEBERG_TOKEN",
+	}
+}
+
+// writeVariableReport writes a fixture CLI that prints the name of each of names that reached
+// it, never a value.
+func writeVariableReport(t *testing.T, names []string) string {
+	t.Helper()
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
+		lines = append(lines, `if [ -n "${`+name+`+set}" ]; then printf '%s ' `+name+`; fi`)
+	}
+	return writeScript(t, strings.Join(lines, "\n"))
+}
+
+// TestExecCLIRunnerEnvironment is deliberately not parallel: it sets the variables the
+// program may or may not see with t.Setenv, which the runtime forbids in a parallel test.
+func TestExecCLIRunnerEnvironment(t *testing.T) {
+	t.Run("should keep every forge token variable from the program when they are set", func(t *testing.T) {
+		// given
+		for _, name := range forgeTokenVariables() {
+			t.Setenv(name, "fixture-token-placeholder")
+		}
+		script := writeVariableReport(t, forgeTokenVariables())
+		runner := infrastructure.NewExecCLIRunner()
+
+		// when
+		output, err := runner.Output(t.Context(), posixShell, script)
+
+		// then
+		require.NoError(t, err)
+		assert.Empty(t, output, "these forge token variables reached the program")
+	})
+
+	t.Run("should hand the program the rest of the environment when token variables are withheld", func(t *testing.T) {
+		// given
+		t.Setenv("GH_TOKEN", "fixture-token-placeholder")
+		t.Setenv("HTTPS_PROXY", "http://proxy.invalid:3128")
+		t.Setenv("GITFORGE_FIXTURE_SETTING", "fixture-setting-placeholder")
+		script := writeVariableReport(t, []string{"HOME", "PATH", "HTTPS_PROXY", "GITFORGE_FIXTURE_SETTING"})
+		runner := infrastructure.NewExecCLIRunner()
+
+		// when
+		output, err := runner.Output(t.Context(), posixShell, script)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "HOME PATH HTTPS_PROXY GITFORGE_FIXTURE_SETTING", output)
 	})
 }
 

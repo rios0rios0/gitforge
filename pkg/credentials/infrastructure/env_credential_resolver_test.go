@@ -135,6 +135,7 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 	for _, scenario := range []struct {
 		variable, value, host, tokenVariable string
 	}{
+		{"GL_HOST", "gitlab.example.com", "gitlab.example.com", "GL_TOKEN"},
 		{"GITLAB_URI", "gitlab.example.com", "gitlab.example.com", "GITLAB_TOKEN"},
 		{"GITLAB_API_HOST", "api.gitlab.example.com:8443", "api.gitlab.example.com", "GITLAB_TOKEN"},
 		{"GITLAB_REPO", "https://gitlab.example.com/group/project", "gitlab.example.com", "GITLAB_TOKEN"},
@@ -209,7 +210,35 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 	for _, scenario := range []struct {
 		variable, value string
 	}{
+		{"GITLAB_REPO", "https://gitlab.example.com:not-a-port/group/project"},
+		{"GITLAB_REPO", "fixture-user:x@gitlab.example.com:group/project"},
+		{"GITLAB_REPO", "git@[2001:db8::1]:group/project"},
+	} {
+		t.Run("should refuse the GitLab token without showing "+scenario.variable+" when it cannot read "+
+			scenario.value, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+				"GITLAB_TOKEN":    "fixture-gitlab-token",
+				scenario.variable: scenario.value,
+			})}
+
+			// when
+			_, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITLAB})
+
+			// then
+			require.ErrorIs(t, err, entities.ErrNoCredential)
+			require.EqualError(t, err, scenario.variable+" does not name gitlab.com, so GITLAB_TOKEN is not sent there")
+		})
+	}
+
+	for _, scenario := range []struct {
+		variable, value string
+	}{
 		{"GITLAB_REPO", "group/subgroup/project"},
+		{"GITLAB_REPO", "group/project:x"},
+		{"GITLAB_REPO", "https://gitlab.com:443/group/project"},
 		{"GITLAB_REPO", "git@gitlab.com:group/project.git"},
 		{"CI_SERVER_HOST", "gitlab.com"},
 		{"CI_API_V4_URL", "https://gitlab.com/api/v4"},
@@ -352,35 +381,19 @@ func TestNewEnvCredentialResolver(t *testing.T) {
 func TestCheckGitLabTokenServer(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should refuse CI_JOB_TOKEN when the CI job runs on another GitLab server", func(t *testing.T) {
+	t.Run("should refuse an exported GitLab token when a variable names another GitLab server", func(t *testing.T) {
 		t.Parallel()
 
 		// given
-		lookup := lookupFrom(map[string]string{"CI_SERVER_HOST": "gitlab.example.com"})
+		lookup := lookupFrom(map[string]string{"GITLAB_BASE_URL": "https://gitlab.example.com/api/v4"})
 
 		// when
-		err := infrastructure.CheckGitLabTokenServer(lookup, "CI_JOB_TOKEN")
+		err := infrastructure.CheckGitLabTokenServer(lookup, "MY_GITLAB_TOKEN")
 
 		// then
 		require.ErrorIs(t, err, entities.ErrNoCredential)
 		require.EqualError(t, err,
-			"CI_SERVER_HOST names the GitLab server gitlab.example.com, so CI_JOB_TOKEN is not sent to gitlab.com")
-	})
-
-	t.Run("should allow CI_JOB_TOKEN when the CI job runs on gitlab.com", func(t *testing.T) {
-		t.Parallel()
-
-		// given
-		lookup := lookupFrom(map[string]string{
-			"CI_SERVER_HOST": "gitlab.com",
-			"CI_SERVER_URL":  "https://gitlab.com",
-		})
-
-		// when
-		err := infrastructure.CheckGitLabTokenServer(lookup, "CI_JOB_TOKEN")
-
-		// then
-		assert.NoError(t, err)
+			"GITLAB_BASE_URL names the GitLab server gitlab.example.com, so MY_GITLAB_TOKEN is not sent to gitlab.com")
 	})
 
 	t.Run("should allow the token when no variable names a GitLab server", func(t *testing.T) {
@@ -390,9 +403,159 @@ func TestCheckGitLabTokenServer(t *testing.T) {
 		lookup := lookupFrom(nil)
 
 		// when
-		err := infrastructure.CheckGitLabTokenServer(lookup, "CI_JOB_TOKEN")
+		err := infrastructure.CheckGitLabTokenServer(lookup, "MY_GITLAB_TOKEN")
 
 		// then
-		assert.NoError(t, err)
+		require.NoError(t, err)
+	})
+}
+
+// TestGitLabServerChecksReadTheEnvironment is deliberately not parallel: it sets the
+// process environment with t.Setenv, which the runtime forbids in a parallel test.
+func TestGitLabServerChecksReadTheEnvironment(t *testing.T) {
+	t.Run("should read the process environment when CheckGitLabTokenServer has no lookup", func(t *testing.T) {
+		// given
+		t.Setenv("GITLAB_HOST", "gitlab.example.com")
+
+		// when
+		err := infrastructure.CheckGitLabTokenServer(nil, "MY_GITLAB_TOKEN")
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+	})
+
+	t.Run("should read the process environment when GitLabCIServerHost has no lookup", func(t *testing.T) {
+		// given
+		for _, name := range []string{"CI_SERVER_URL", "CI_SERVER_FQDN", "CI_API_V4_URL"} {
+			t.Setenv(name, "")
+		}
+		t.Setenv("CI_SERVER_HOST", "gitlab.example.com")
+
+		// when
+		host, err := infrastructure.GitLabCIServerHost(nil)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "gitlab.example.com", host)
+	})
+}
+
+func TestGitLabCIServerHost(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should return the host every CI server variable agrees on when a job runs", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		lookup := lookupFrom(map[string]string{
+			"CI_SERVER_URL":  "https://gitlab.example.com:8443",
+			"CI_SERVER_HOST": "gitlab.example.com",
+			"CI_SERVER_FQDN": "gitlab.example.com:8443",
+			"CI_API_V4_URL":  "https://gitlab.example.com:8443/api/v4",
+		})
+
+		// when
+		host, err := infrastructure.GitLabCIServerHost(lookup)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "gitlab.example.com", host)
+	})
+
+	t.Run("should ignore the other GitLab server variables when a job runs", func(t *testing.T) {
+		t.Parallel()
+
+		// given: GITLAB_HOST describes another token, never the job's
+		lookup := lookupFrom(map[string]string{"CI_SERVER_HOST": "gitlab.com", "GITLAB_HOST": "gitlab.example.com"})
+
+		// when
+		host, err := infrastructure.GitLabCIServerHost(lookup)
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "gitlab.com", host)
+	})
+
+	for _, scenario := range []struct {
+		name    string
+		values  map[string]string
+		message string
+	}{
+		{
+			"no CI server variable is set",
+			nil,
+			"none of CI_SERVER_URL, CI_SERVER_HOST, CI_SERVER_FQDN, CI_API_V4_URL names the GitLab server of a CI job",
+		},
+		{
+			"two CI server variables disagree",
+			map[string]string{"CI_SERVER_HOST": "gitlab.com", "CI_API_V4_URL": "https://gitlab.example.com/api/v4"},
+			"CI_SERVER_HOST names the GitLab server gitlab.com but CI_API_V4_URL names gitlab.example.com",
+		},
+		{
+			"a CI server variable cannot be read",
+			map[string]string{"CI_SERVER_FQDN": "gitlab.example.com:not-a-port"},
+			"CI_SERVER_FQDN cannot be read as the GitLab server of the CI job",
+		},
+	} {
+		t.Run("should fail when "+scenario.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			lookup := lookupFrom(scenario.values)
+
+			// when
+			host, err := infrastructure.GitLabCIServerHost(lookup)
+
+			// then
+			require.ErrorIs(t, err, entities.ErrNoCredential)
+			require.EqualError(t, err, scenario.message)
+			assert.Empty(t, host)
+		})
+	}
+}
+
+func TestCheckGitLabCIJobTokenServer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("should allow CI_JOB_TOKEN when the CI job runs on gitlab.com", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		lookup := lookupFrom(map[string]string{"CI_SERVER_HOST": "gitlab.com", "CI_SERVER_URL": "https://gitlab.com"})
+
+		// when
+		err := infrastructure.CheckGitLabCIJobTokenServer(lookup)
+
+		// then
+		require.NoError(t, err)
+	})
+
+	t.Run("should refuse CI_JOB_TOKEN when the CI job runs on another GitLab server", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		lookup := lookupFrom(map[string]string{"CI_SERVER_HOST": "gitlab.example.com"})
+
+		// when
+		err := infrastructure.CheckGitLabCIJobTokenServer(lookup)
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+		require.EqualError(t, err,
+			"the CI job runs on the GitLab server gitlab.example.com, so CI_JOB_TOKEN is not sent to gitlab.com")
+	})
+
+	t.Run("should refuse CI_JOB_TOKEN when no CI server variable names the job's server", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		lookup := lookupFrom(map[string]string{"GITLAB_HOST": "gitlab.com"})
+
+		// when
+		err := infrastructure.CheckGitLabCIJobTokenServer(lookup)
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+		require.ErrorContains(t, err, "CI_JOB_TOKEN is not sent to gitlab.com: none of CI_SERVER_URL")
 	})
 }

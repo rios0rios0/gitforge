@@ -95,12 +95,14 @@ func (r *EnvCredentialResolver) Resolve(
 	return entities.Credential{}, newUnavailableError(nil, "%s not set", describeUnsetVariables(names))
 }
 
-// CheckGitLabTokenServer returns an error matching entities.ErrNoCredential when a variable of
-// gitlabServerVariables names a GitLab server other than gitlab.com: the GitLab token in
-// tokenVariable then belongs to that server and must not be sent to gitlab.com. It returns nil
-// when no variable does. EnvCredentialResolver applies it to GITLAB_TOKEN and GL_TOKEN; a
-// consumer applies it to any other GitLab token it takes from the environment, such as a GitLab
-// CI job's CI_JOB_TOKEN. A nil lookup reads the process environment.
+// CheckGitLabTokenServer returns an error matching entities.ErrNoCredential when a variable that
+// names a GitLab server names one other than gitlab.com, or holds a value it cannot read: the
+// GitLab token in tokenVariable then belongs to that server and must not be sent to gitlab.com.
+// The variables are those of glab, semantic-release, Lerna, Terraform's gitlab provider and a
+// GitLab CI job (see the README). It returns nil when none of them does. EnvCredentialResolver
+// applies it to GITLAB_TOKEN and GL_TOKEN; a consumer applies it to another GitLab token it
+// exported itself. A GitLab CI job's own CI_JOB_TOKEN is judged by CheckGitLabCIJobTokenServer
+// instead. A nil lookup reads the process environment.
 func CheckGitLabTokenServer(lookup func(string) string, tokenVariable string) error {
 	if lookup == nil {
 		lookup = os.Getenv
@@ -170,10 +172,37 @@ func repositoryHost(value string) (string, bool) {
 		return "", false
 	}
 	host := value[:colon]
+	pathStart, _, _ := strings.Cut(value[colon+1:], "/")
 	if at := strings.LastIndex(host, "@"); at >= 0 {
 		host = host[at+1:]
+	} else if strings.Contains(pathStart, "@") {
+		// `user:password@host:path` is no git address, and what precedes its first colon is a
+		// user name or a token, never a host: it is refused without being shown.
+		return "", true
+	}
+	if !isHostName(host) {
+		return "", true
 	}
 	return host, true
+}
+
+// isHostName reports whether s is shaped like a host name or an IPv4 address: ASCII letters,
+// digits, hyphens and dots, beginning and ending with a letter or a digit.
+func isHostName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := range len(s) {
+		c := s[i]
+		alphanumeric := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+		if alphanumeric {
+			continue
+		}
+		if (c != '-' && c != '.') || i == 0 || i == len(s)-1 {
+			return false
+		}
+	}
+	return true
 }
 
 // describeUnsetVariables names the variables for "... not set": "CODEBERG_TOKEN is",

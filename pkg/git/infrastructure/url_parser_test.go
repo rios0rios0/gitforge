@@ -8,6 +8,7 @@ import (
 
 	"github.com/rios0rios0/gitforge/v4/pkg/git/infrastructure"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	"github.com/rios0rios0/gitforge/v4/pkg/providers/infrastructure/azuredevops"
 )
 
 func TestParseRemoteURL(t *testing.T) {
@@ -358,6 +359,17 @@ func TestParseRemoteURLWithSSHScheme(t *testing.T) {
 			name:    "should parse an Azure DevOps ssh:// URL without a user but with a port",
 			rawURL:  "ssh://ssh.dev.azure.com:22/v3/myorg/myproject/myrepo",
 			scpLike: "git@ssh.dev.azure.com:v3/myorg/myproject/myrepo",
+			want: infrastructure.RemoteURLInfo{
+				ServiceType:  globalEntities.AZUREDEVOPS,
+				Organization: "myorg",
+				Project:      "myproject",
+				RepoName:     "myrepo",
+			},
+		},
+		{
+			name:    "should parse a legacy vs-ssh.visualstudio.com ssh:// URL with the organization as its user",
+			rawURL:  "ssh://myorg@vs-ssh.visualstudio.com:22/v3/myorg/myproject/myrepo",
+			scpLike: "myorg@vs-ssh.visualstudio.com:v3/myorg/myproject/myrepo",
 			want: infrastructure.RemoteURLInfo{
 				ServiceType:  globalEntities.AZUREDEVOPS,
 				Organization: "myorg",
@@ -729,4 +741,41 @@ func TestParsePullRequestURLRecognisesForgesByHost(t *testing.T) {
 		require.ErrorContains(t, err, "invalid Azure DevOps PR URL format")
 		assert.Nil(t, info)
 	})
+}
+
+func TestParseRemoteURLReadsTheAzureDevOpsSSHRemotesTheProviderMatches(t *testing.T) {
+	t.Parallel()
+
+	want := infrastructure.RemoteURLInfo{
+		ServiceType:  globalEntities.AZUREDEVOPS,
+		Organization: "myorg",
+		Project:      "myproject",
+		RepoName:     "myrepo",
+	}
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"a scp-like remote on ssh.dev.azure.com", "git@ssh.dev.azure.com:v3/myorg/myproject/myrepo"},
+		{"an alias of ssh.dev.azure.com", "git@dev.azure.com-work:v3/myorg/myproject/myrepo"},
+		{"an ssh:// remote on ssh.dev.azure.com", "ssh://git@ssh.dev.azure.com/v3/myorg/myproject/myrepo"},
+		{"a scp-like remote on vs-ssh.visualstudio.com", "myorg@vs-ssh.visualstudio.com:v3/myorg/myproject/myrepo"},
+		{"an alias of vs-ssh.visualstudio.com", "myorg@vs-ssh.visualstudio.com-work:v3/myorg/myproject/myrepo"},
+		{
+			"an ssh:// remote on vs-ssh.visualstudio.com",
+			"ssh://myorg@vs-ssh.visualstudio.com:22/v3/myorg/myproject/myrepo",
+		},
+	} {
+		t.Run("should parse "+scenario.name+" when the Azure DevOps provider matches it", func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			provider := azuredevops.NewProvider("token")
+			require.True(t, provider.MatchesURL(scenario.rawURL), "the provider no longer matches %s", scenario.rawURL)
+
+			// when
+			info, err := infrastructure.ParseRemoteURL(scenario.rawURL)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, want, *info)
+		})
+	}
 }

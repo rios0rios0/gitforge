@@ -100,6 +100,7 @@ func getPRURLParsers() map[globalEntities.ServiceType]prURLParser {
 //   - GitLab SSH:           git@gitlab.com:group/repo.git
 //   - GitLab HTTPS:         https://gitlab.com/group/repo.git
 //   - Azure DevOps SSH:     git@ssh.dev.azure.com:v3/org/project/repo
+//   - Azure DevOps SSH:     org@vs-ssh.visualstudio.com:v3/org/project/repo
 //   - Azure DevOps HTTPS:   https://dev.azure.com/org/project/_git/repo
 //   - Azure DevOps HTTPS:   https://org.visualstudio.com/[collection/]project/_git/repo
 //
@@ -319,8 +320,20 @@ func parseGitLabHTTPSRemote(cleaned string) (*RemoteURLInfo, bool) {
 
 // --- Azure DevOps remote URL matchers and parsers ---
 
+// azureDevOpsLegacySSHHost is vs-ssh.visualstudio.com, the SSH host of the legacy
+// <org>.visualstudio.com addresses, whose remotes the Azure DevOps provider's MatchesURL takes too.
+const azureDevOpsLegacySSHHost = "vs-ssh.visualstudio.com"
+
+// matchesAzureDevOpsSSH reports an Azure DevOps SSH remote: git@ssh.dev.azure.com:v3/... or an
+// alias of it, or a scp-like remote on vs-ssh.visualstudio.com or an alias of it, whose user is
+// the organization (<org>@vs-ssh.visualstudio.com:v3/...). Both have the same
+// v3/<org>/<project>/<repo> path, and an ssh:// URL reaches here in the scp-like form.
 func matchesAzureDevOpsSSH(cleaned string) bool {
-	return strings.HasPrefix(cleaned, "git@") && strings.Contains(cleaned, "dev.azure.com")
+	if strings.HasPrefix(cleaned, "git@") && strings.Contains(cleaned, "dev.azure.com") {
+		return true
+	}
+	address, _, isSCPLike := strings.Cut(cleaned, ":")
+	return isSCPLike && !strings.Contains(address, "/") && strings.Contains(address, azureDevOpsLegacySSHHost)
 }
 
 func parseAzureDevOpsSSHRemote(cleaned string) (*RemoteURLInfo, bool) {

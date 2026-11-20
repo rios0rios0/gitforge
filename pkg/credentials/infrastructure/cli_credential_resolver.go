@@ -66,9 +66,9 @@ var providerCLIs = map[globalEntities.ServiceType]ProviderCLI{
 		},
 		LoginHint: "az login",
 	},
-	// glab has no command that prints a token (its auth commands are login, logout,
-	// status, git-credential, docker and generate), so GitLab stays on GITLAB_TOKEN and
-	// GL_TOKEN.
+	// glab has no `auth token` command. `glab auth status --show-token` and `glab config get
+	// token` print one, but gitforge reads a token from neither, so GitLab stays on
+	// GITLAB_TOKEN and GL_TOKEN.
 	globalEntities.GITLAB:     {},
 	globalEntities.BITBUCKET:  {},
 	globalEntities.CODECOMMIT: {},

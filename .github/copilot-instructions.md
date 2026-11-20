@@ -72,8 +72,9 @@ gitforge/
 │   │       ├── operations_branch.go   # Branch create/switch (never a forced checkout)/checkout; remote branch list + remote/local delete helpers
 │   │       ├── operations_clone.go    # Repository cloning
 │   │       ├── operations_commit.go   # Commit creation (GPG/SSH signing)
-│   │       ├── operations_push.go     # Push (SSH/HTTPS)
+│   │       ├── operations_push.go     # Push (SSH/HTTPS) to origin's push URL; HTTP credentials only for the first URL's host
 │   │       ├── operations_push_test.go # BDD tests for push / transport detection
+│   │       ├── operations_push_url_test.go # BDD tests for pushurl / several url entries: the URL dialed, the credential host check
 │   │       ├── operations_repo.go     # Repository-level helpers
 │   │       ├── operations_ssh.go      # SetDefaultSSHHostKeyCallback: consumer host key hook for the default SSH agent fallback
 │   │       ├── operations_test.go     # BDD tests for git operations
@@ -85,7 +86,7 @@ gitforge/
 │   │       ├── ssh_agent.go           # NewSSHAgentAuthFromSocket, DetectSSHAgentSockets: agent signers over connections of their own
 │   │       ├── ssh_known_hosts.go     # known_hosts discovery (WSL Windows profiles too): KnownHostsCallback, SSHHostKeyCallback
 │   │       ├── ssh_fixtures_test.go   # Loopback SSH server and in-memory SSH agent for the SSH tests
-│   │       ├── url_parser.go          # ParseRemoteURL: detects ServiceType from remote URL
+│   │       ├── url_parser.go          # ParseRemoteURL: detects ServiceType from remote URL (scp-like, ssh:// and HTTPS)
 │   │       ├── url_parser_test.go     # BDD tests for URL parsing
 │   │       ├── user_config.go         # Git user config lookup
 │   │       └── helpers/
@@ -308,8 +309,8 @@ Optional single-method interfaces (reached by type assertion, never added to For
 **Git** (`pkg/git/infrastructure`):
 - `NewGitOperations(finder AdapterFinder) *GitOperations` -- creates a GitOperations instance
 - `OpenRepo(projectPath string) (*git.Repository, error)` -- opens a local git repository
-- `PushChangesSSH(repo, refSpec, authMethods) error` -- pushes over SSH; tries explicit auth methods first, falls back to default SSH agent
-- `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from remote URL and forwards auth methods to both transports; also accepts local remotes (`file://` URLs and absolute paths), which need no auth
+- `PushChangesSSH(repo, refSpec, authMethods) error` -- pushes over SSH to origin's push URL; tries explicit auth methods first, falls back to default SSH agent built for that URL
+- `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from the URL the push dials (origin's last URL: its `pushurl` when one is set), passes that URL to go-git as `PushOptions.RemoteURL`, and forwards auth methods to both transports, refusing HTTP credentials for a push URL off the host of origin's first URL; also accepts local remotes (`file://` URLs and absolute paths), which need no auth
 - `CheckBranchExists(repo, branchName) (bool, error)` -- true if the branch exists locally or on the origin remote
 - `ListRemoteBranches(repo, authMethods) ([]string, error)` -- lists origin branches by querying the remote directly (reflects server state, not the stale local clone)
 - `DeleteRemoteBranch(...)` / `DeleteLocalBranch(repo, branchName)` -- remote delete pushes an empty source to the ref; the local companion is needed because a remote-only delete leaves the local branch (and `CheckBranchExists` would still report it present)
@@ -377,7 +378,8 @@ When adding features to gitforge:
 | `pkg/changelog/domain/entities/changelog_test.go`                  | FindLatestVersion, IsUnreleasedEmpty, DeduplicateEntries, InsertChangelogEntry     |
 | `pkg/config/domain/entities/config_test.go`                        | Config.Validate, ProviderConfig.ResolveToken (env var, file, inline)               |
 | `pkg/git/infrastructure/operations_test.go`                        | NewGitOperations, branch/commit/push/clone/tag operations                          |
-| `pkg/git/infrastructure/url_parser_test.go`                        | ParseRemoteURL (GitHub, GitLab, Azure DevOps, SSH, HTTPS)                          |
+| `pkg/git/infrastructure/url_parser_test.go`                        | ParseRemoteURL (GitHub, GitLab, Azure DevOps; scp-like SSH, ssh:// URLs, HTTPS)    |
+| `pkg/git/infrastructure/operations_push_url_test.go`               | Push to origin's push URL (pushurl, several url entries), credential host check    |
 | `pkg/providers/infrastructure/github/github_test.go`               | NewProvider, Name, MatchesURL, GetServiceType                                      |
 | `pkg/providers/infrastructure/github/github_internal_test.go`      | DiscoverRepositories, CreatePullRequest, file access (httptest server)             |
 | `pkg/providers/infrastructure/gitlab/gitlab_test.go`               | NewProvider, Name, MatchesURL, GetServiceType                                      |

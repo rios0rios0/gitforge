@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed `GetRemoteServiceType` naming the forge of whichever remote it read first in a repository with several, so a push to origin could be given another forge''s token: it now reads origin''s first URL, and the other remotes in name order when there is no origin'
+time: '2026-11-20T04:15:28.582578571Z'

@@ -791,6 +791,68 @@ func TestGetRemoteServiceType(t *testing.T) {
 		// then
 		require.Error(t, err)
 	})
+
+	// Remotes are a map, whose iteration order changes from one read to the next, so these
+	// tests ask several times: one answer from another remote is a failure.
+	const reads = 32
+	gitHub := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITHUB).Build().(*doubles.ForgeProviderStub)
+	gitLab := builders.NewForgeProviderStubBuilder().WithServiceType(globalEntities.GITLAB).Build().(*doubles.ForgeProviderStub)
+
+	t.Run("should return origin's service type when other remotes are configured too", func(t *testing.T) {
+		t.Parallel()
+
+		// given -- origin on GitHub, among remotes on GitLab
+		finder := builders.NewAdapterFinderStubBuilder().
+			WithAdapterForURL("https://github.com/org/repo.git", gitHub).
+			WithAdapterByURL(gitLab)
+		repo := createInMemoryRepoWithCommit(t)
+		for _, name := range []string{"origin", "upstream", "backup", "mirror", "fork", "alpha", "zeta", "work"} {
+			remoteURL := "https://gitlab.com/" + name + "/repo.git"
+			if name == "origin" {
+				remoteURL = "https://github.com/org/repo.git"
+			}
+			_, err := repo.CreateRemote(&gitcfg.RemoteConfig{Name: name, URLs: []string{remoteURL}})
+			require.NoError(t, err)
+		}
+		ops := gitops.NewGitOperations(finder.Build().(*doubles.AdapterFinderStub))
+
+		for range reads {
+			// when
+			serviceType, err := ops.GetRemoteServiceType(repo)
+
+			// then
+			require.NoError(t, err)
+			require.Equal(t, globalEntities.GITHUB, serviceType)
+		}
+	})
+
+	t.Run("should return the service type of the first remote by name when there is no origin", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		finder := builders.NewAdapterFinderStubBuilder().
+			WithAdapterForURL("https://github.com/org/repo.git", gitHub).
+			WithAdapterByURL(gitLab)
+		repo := createInMemoryRepoWithCommit(t)
+		for name, remoteURL := range map[string]string{
+			"alpha":    "https://github.com/org/repo.git",
+			"upstream": "https://gitlab.com/upstream/repo.git",
+			"zeta":     "https://gitlab.com/zeta/repo.git",
+		} {
+			_, err := repo.CreateRemote(&gitcfg.RemoteConfig{Name: name, URLs: []string{remoteURL}})
+			require.NoError(t, err)
+		}
+		ops := gitops.NewGitOperations(finder.Build().(*doubles.AdapterFinderStub))
+
+		for range reads {
+			// when
+			serviceType, err := ops.GetRemoteServiceType(repo)
+
+			// then
+			require.NoError(t, err)
+			require.Equal(t, globalEntities.GITHUB, serviceType)
+		}
+	})
 }
 
 func TestGetRemoteRepoURLWithRemote(t *testing.T) {

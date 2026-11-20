@@ -22,7 +22,7 @@ A shared Go library providing common abstractions for working with Git hosting p
 - **Repository Discovery**: Automatically list repositories from organizations/groups
 - **Pull Request Management**: Create PRs/MRs and check for existing ones
 - **File Operations**: Read files, list trees, check file existence via API
-- **Local Git Operations**: Branch, commit, push (SSH/HTTPS) via go-git
+- **Local Git Operations**: Branch, commit, push (SSH/HTTPS) via go-git, to origin's push URL (see [Pushes](#pushes))
 - **SSH Client Configuration**: SSH connections that honour `ssh_config` host aliases, `known_hosts` and SSH agent keys the way the `ssh` binary does (see [SSH client configuration](#ssh-client-configuration))
 - **Commit Signing**: GPG signing with keyring export and passphrase support, and SSH signing via `ssh-keygen`
 - **Changelog Processing**: Full Keep-a-Changelog toolkit (version calculation, deduplication, entry insertion)
@@ -92,6 +92,12 @@ Building blocks for a consumer's own auth methods:
 - **`KnownHostsCallback()`**: the host key callback auth methods should carry, as the transport reads the host key types from the same files.
 - **`RunningUnderWSL()`** and **`SSHConfigSearchDescription()`**: for a consumer's own error messages.
 
+## Pushes
+
+`PushWithTransportDetection` (`pkg/git/infrastructure`) pushes a refspec to origin over the transport of the URL the push dials: SSH for `git@host:path` and `ssh://`, HTTPS for `https://` (plaintext `http://` too, with a warning), and none for a `file://` URL or an absolute path. That URL is origin's push URL: the last of its URLs, which is its `pushurl` when one is set, because that is where go-git pushes (to the last one only, where git pushes to every `pushurl`, or every `url` without one). It is handed to go-git as `PushOptions.RemoteURL` by every push (`PushWithTransportDetection`, `PushChangesSSH`, `PushChangesHTTPS`, `DeleteRemoteBranch`), so the transport chosen and the URL dialed are always the same, and the SSH agent fallback is built for it too.
+
+HTTP credentials, such as the token auth methods the providers' `GetAuthMethods` returns, go only to a push URL on the host of origin's first URL: that is the URL consumers build them for (`GetRemoteServiceType` reads it, ahead of any other remote). A `pushurl`, or a second `url`, on another host fails the push with an error naming both hosts, before anything is dialed. Hosts are compared by name, case-insensitively, without the scheme or the port, so an SSH `url` beside an HTTPS `pushurl` on the same forge still pushes with the token, unless the `url` names an SSH alias (`git@github.com-work:...`), whose name is not the forge's.
+
 ## Credentials
 
 A consumer that has no token configured for a forge asks `pkg/credentials` for one. `NewDefaultCredentialResolver()` (`pkg/credentials/infrastructure`) tries the forge's environment variables first, so an explicitly exported token always wins, then the forge's own CLI, so someone who already ran `gh auth login` or `az login` does not have to export a second token:
@@ -120,7 +126,8 @@ log.Infof("Using the %s token from the %s", globalEntities.AZUREDEVOPS.DisplayNa
 - **GitLab** has no CLI fallback: `glab` has no command that prints a token. The GitLab provider only talks to `gitlab.com`, so when `GITLAB_HOST` or `GL_HOST` names another server, `GITLAB_TOKEN` and `GL_TOKEN` are taken to be that server's and are not used.
 - The CLI runs by the absolute path `PATH` lookup returns, from the user's home directory (the filesystem root when there is none, never the caller's directory: a pip-installed `az` puts its working directory on Python's module path), with no standard input and a 30-second limit (`DefaultCLITimeout`) that kills the CLI's whole process group. Its standard output (the token) never appears in an error; a failure reports its standard error and the command to sign in, and a timeout or cancellation says so instead.
 - **A CLI token is short-lived.** An Azure CLI token lasts about an hour, and `az` may hand back a cached one with minutes left. Resolve again for each run or organization rather than keeping one for a long batch.
-- **Send the token only to the forge's API.** The providers call fixed hosts (`api.github.com`, `dev.azure.com`), which is safe. Do not hand it to git-over-HTTPS authentication for a remote's own host: forges are recognised by a substring of the remote URL, so a remote such as `https://github.com.example.net/...` would receive the user's token.
+- **Send the token only to the forge's API, and check an Azure DevOps organization before discovery.** The GitHub, GitLab and Codeberg providers call fixed hosts (`api.github.com`, `gitlab.com`, `codeberg.org`), and so does Azure DevOps for operations on a repository (`dev.azure.com`). Azure DevOps discovery does not: `DiscoverRepositories` and `ListOrganizationRepositories` take an organization value that begins with `https://` as the organization's base URL, whatever its host, and send the token to that host. Pass a bare organization name (`my-org`), or check that the host is `dev.azure.com` or `<org>.visualstudio.com`, before handing such a value to discovery with a token that did not come from the operator's own configuration, such as one this chain resolved: an organization read from a working directory's or a repository's own config file is not the operator's, and a token was leaked this way.
+- **Do not hand the token to git-over-HTTPS authentication for a remote's own host** either: forges are recognised by a substring of the remote URL, so a remote such as `https://github.com.example.net/...` would receive the user's token.
 
 Each source is its own `CredentialResolver` (`EnvCredentialResolver`, `CLICredentialResolver`), combined with `NewChainCredentialResolver`; `test/doubles` has stubs for the resolver, the CLI runner and the tenant lookup.
 

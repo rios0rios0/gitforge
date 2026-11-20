@@ -3,9 +3,12 @@ package infrastructure
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	log "github.com/sirupsen/logrus"
 
@@ -37,7 +40,8 @@ func (o *GitOperations) GetAuthMethods(
 	return authMethods, nil
 }
 
-// GetRemoteServiceType returns the type of the remote service (e.g. GitHub, GitLab).
+// GetRemoteServiceType returns the type of the remote service (e.g. GitHub, GitLab), read from
+// origin's first URL, or from the first URL of the first remote by name when there is no origin.
 // Exported for use by autobump (github.com/rios0rios0/autobump).
 func (o *GitOperations) GetRemoteServiceType(repo *git.Repository) (globalEntities.ServiceType, error) {
 	cfg, err := repo.Config()
@@ -45,20 +49,31 @@ func (o *GitOperations) GetRemoteServiceType(repo *git.Repository) (globalEntiti
 		return globalEntities.UNKNOWN, fmt.Errorf("could not get repository config: %w", err)
 	}
 
-	var firstRemote string
-	for _, remote := range cfg.Remotes {
-		if len(remote.URLs) == 0 {
-			continue
-		}
-		firstRemote = remote.URLs[0]
-		break
-	}
-
+	firstRemote := serviceRemoteURL(cfg)
 	if firstRemote == "" {
 		return globalEntities.UNKNOWN, errors.New("no remote URLs configured")
 	}
 
 	return o.GetServiceTypeByURL(firstRemote), nil
+}
+
+// serviceRemoteURL returns the URL a repository's service type is read from. Origin comes
+// first: it is the remote every push goes to, and the credentials consumers build from the
+// service type are refused for any push URL off the host of origin's first URL. Remotes are a
+// map, iterated in an order that changes from one read to the next, so a repository with
+// several remotes used to be given the service type of any of them, and a push to origin the
+// credentials of another remote's forge. Without origin, the remotes are read in name order.
+func serviceRemoteURL(cfg *config.Config) string {
+	if origin, hasOrigin := cfg.Remotes[originRemoteName]; hasOrigin && len(origin.URLs) > 0 {
+		return origin.URLs[0]
+	}
+
+	for _, name := range slices.Sorted(maps.Keys(cfg.Remotes)) {
+		if urls := cfg.Remotes[name].URLs; len(urls) > 0 {
+			return urls[0]
+		}
+	}
+	return ""
 }
 
 // GetServiceTypeByURL returns the type of the remote service by URL.

@@ -8,6 +8,8 @@ import (
 type AdapterFinderStub struct {
 	AdapterByServiceTypeValue globalEntities.LocalGitAuthProvider
 	AdapterByURLValue         globalEntities.LocalGitAuthProvider
+	// AdaptersByURL answers GetAdapterByURL for the URLs it holds, ahead of AdapterByURLValue.
+	AdaptersByURL map[string]globalEntities.LocalGitAuthProvider
 }
 
 func (s *AdapterFinderStub) GetAdapterByServiceType(
@@ -16,6 +18,9 @@ func (s *AdapterFinderStub) GetAdapterByServiceType(
 	return s.AdapterByServiceTypeValue
 }
 
-func (s *AdapterFinderStub) GetAdapterByURL(_ string) globalEntities.LocalGitAuthProvider {
+func (s *AdapterFinderStub) GetAdapterByURL(url string) globalEntities.LocalGitAuthProvider {
+	if adapter, found := s.AdaptersByURL[url]; found {
+		return adapter
+	}
 	return s.AdapterByURLValue
 }

@@ -12,6 +12,7 @@ type AdapterFinderStubBuilder struct {
 
 	adapterByServiceType globalEntities.LocalGitAuthProvider
 	adapterByURL         globalEntities.LocalGitAuthProvider
+	adaptersByURL        map[string]globalEntities.LocalGitAuthProvider
 }
 
 // NewAdapterFinderStubBuilder creates a new builder with default values.
@@ -33,9 +34,23 @@ func (b *AdapterFinderStubBuilder) WithAdapterByURL(
 	return b
 }
 
+// WithAdapterForURL makes GetAdapterByURL answer adapter for url alone, ahead of the adapter
+// WithAdapterByURL sets for every URL.
+func (b *AdapterFinderStubBuilder) WithAdapterForURL(
+	url string,
+	adapter globalEntities.LocalGitAuthProvider,
+) *AdapterFinderStubBuilder {
+	if b.adaptersByURL == nil {
+		b.adaptersByURL = make(map[string]globalEntities.LocalGitAuthProvider)
+	}
+	b.adaptersByURL[url] = adapter
+	return b
+}
+
 func (b *AdapterFinderStubBuilder) Build() any {
 	return &doubles.AdapterFinderStub{
 		AdapterByServiceTypeValue: b.adapterByServiceType,
 		AdapterByURLValue:         b.adapterByURL,
+		AdaptersByURL:             b.adaptersByURL,
 	}
 }

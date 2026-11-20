@@ -311,6 +311,7 @@ Optional single-method interfaces (reached by type assertion, never added to For
 **Git** (`pkg/git/infrastructure`):
 - `NewGitOperations(finder AdapterFinder) *GitOperations` -- creates a GitOperations instance
 - `OpenRepo(projectPath string) (*git.Repository, error)` -- opens a local git repository
+- `OriginPushURL(repo) (string, error)` -- the URL a push to origin dials: the last of origin's URLs, which is its `pushurl` when one is set; every push reads its URL the same way
 - `PushChangesSSH(repo, refSpec, authMethods) error` -- pushes over SSH to origin's push URL; tries explicit auth methods first, falls back to default SSH agent built for that URL
 - `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from the URL the push dials (origin's last URL: its `pushurl` when one is set), passes that URL to go-git as `PushOptions.RemoteURL`, and forwards auth methods to both transports, refusing HTTP credentials for a push URL off the host of origin's first URL; also accepts local remotes (`file://` URLs and absolute paths), which need no auth
 - `CheckBranchExists(repo, branchName) (bool, error)` -- true if the branch exists locally or on the origin remote

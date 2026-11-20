@@ -209,18 +209,38 @@ func TestBuildBaseURL(t *testing.T) {
 func TestExtractOrgName(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should extract org name from URL", func(t *testing.T) {
-		t.Parallel()
+	for _, scenario := range []struct {
+		form, rawURL, organization string
+	}{
+		{"a dev.azure.com organization", "https://dev.azure.com/my-org", "my-org"},
+		{"a dev.azure.com repository", "https://dev.azure.com/my-org/my-project/_git/my-repo", "my-org"},
+		{"a dev.azure.com URL with a user name", "https://my-org@dev.azure.com/my-org/my-project/_git/my-repo", "my-org"},
+		{"a visualstudio.com organization", "https://my-org.visualstudio.com", "my-org"},
+		{"a visualstudio.com organization with a slash", "https://my-org.visualstudio.com/", "my-org"},
+		{"a visualstudio.com repository", "https://my-org.visualstudio.com/my-project/_git/my-repo", "my-org"},
+		{
+			"a visualstudio.com collection",
+			"https://my-org.visualstudio.com/DefaultCollection/my-project/_git/my-repo", "my-org",
+		},
+		{"a visualstudio.com host in capitals", "https://My-Org.VisualStudio.COM/my-project", "My-Org"},
+		{"a scp-like SSH remote", "git@ssh.dev.azure.com:v3/my-org/my-project/my-repo", "my-org"},
+		{"an ssh:// remote", "ssh://git@ssh.dev.azure.com:22/v3/my-org/my-project/my-repo", "my-org"},
+		{"a scp-like visualstudio.com SSH remote", "my-org@vs-ssh.visualstudio.com:v3/my-org/my-project/my-repo", "my-org"},
+		{"an ssh:// visualstudio.com remote", "ssh://my-org@vs-ssh.visualstudio.com/v3/my-org/my-project/my-repo", "my-org"},
+	} {
+		t.Run("should return the organization when the URL is "+scenario.form, func(t *testing.T) {
+			t.Parallel()
 
-		// given
-		baseURL := "https://dev.azure.com/my-org"
+			// given
+			rawURL := scenario.rawURL
 
-		// when
-		result := extractOrgName(baseURL)
+			// when
+			result := extractOrgName(rawURL)
 
-		// then
-		assert.Equal(t, "my-org", result)
-	})
+			// then
+			assert.Equal(t, scenario.organization, result)
+		})
+	}
 
 	t.Run("should return raw string when URL is invalid", func(t *testing.T) {
 		t.Parallel()

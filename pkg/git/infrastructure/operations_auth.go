@@ -13,6 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 )
 
 // GetAuthMethods returns the authentication methods for the given service type.
@@ -76,7 +77,10 @@ func serviceRemoteURL(cfg *config.Config) string {
 	return ""
 }
 
-// GetServiceTypeByURL returns the type of the remote service by URL.
+// GetServiceTypeByURL returns the type of the remote service by URL: the service type of the
+// adapter whose MatchesURL accepts it, else Bitbucket or AWS CodeCommit, which have no adapter.
+// Like the adapters, those match an http:// or https:// URL only on their own hosts
+// (globalHelpers.HTTPRemoteServiceType), and any other remote when it contains their name.
 // Exported for use by autobump (github.com/rios0rios0/autobump).
 func (o *GitOperations) GetServiceTypeByURL(remoteURL string) globalEntities.ServiceType {
 	adapter := o.adapterFinder.GetAdapterByURL(remoteURL)
@@ -84,6 +88,12 @@ func (o *GitOperations) GetServiceTypeByURL(remoteURL string) globalEntities.Ser
 		return adapter.GetServiceType()
 	}
 
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(remoteURL); isHTTP {
+		if serviceType == globalEntities.BITBUCKET || serviceType == globalEntities.CODECOMMIT {
+			return serviceType
+		}
+		return globalEntities.UNKNOWN
+	}
 	switch {
 	case strings.Contains(remoteURL, "bitbucket.org"):
 		return globalEntities.BITBUCKET

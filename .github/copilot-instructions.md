@@ -86,7 +86,7 @@ gitforge/
 │   │       ├── ssh_agent.go           # NewSSHAgentAuthFromSocket, DetectSSHAgentSockets: agent signers over connections of their own
 │   │       ├── ssh_known_hosts.go     # known_hosts discovery (WSL Windows profiles too): KnownHostsCallback, SSHHostKeyCallback
 │   │       ├── ssh_fixtures_test.go   # Loopback SSH server and in-memory SSH agent for the SSH tests
-│   │       ├── url_parser.go          # ParseRemoteURL: detects ServiceType from remote URL (scp-like, ssh:// and HTTPS)
+│   │       ├── url_parser.go          # ParseRemoteURL, ParsePullRequestURL: ServiceType and names from a URL (HTTP(S) by exact host; scp-like and ssh:// by name)
 │   │       ├── url_parser_test.go     # BDD tests for URL parsing
 │   │       ├── user_config.go         # Git user config lookup
 │   │       └── helpers/
@@ -119,6 +119,7 @@ gitforge/
 │   │       │   ├── review_provider_test.go # BDD tests for ReviewVerdict, CommentOption, MergeOption helpers
 │   │       │   └── service_type.go          # ServiceType enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT, CODEBERG
 │   │       └── helpers/
+│   │           ├── forge_url.go             # HTTPURLHost, HTTPRemoteServiceType (the one table of forge hosts), VisualStudioOrganization
 │   │           └── versions.go              # SortVersionsDescending, NormalizeVersion
 │   ├── providers/
 │   │   └── infrastructure/
@@ -178,7 +179,8 @@ gitforge/
 │   │   ├── commit_signer_stub.go           # CommitSignerStub (mock CommitSigner)
 │   │   ├── forge_provider_stub.go          # ForgeProviderStub (mock ForgeProvider + LocalGitAuthProvider)
 │   │   ├── mirror_provider_stub.go         # MirrorProviderStub (mock MirrorProvider)
-│   │   └── repository_discoverer_stub.go   # RepositoryDiscovererStub (mock RepositoryDiscoverer)
+│   │   ├── repository_discoverer_stub.go   # RepositoryDiscovererStub (mock RepositoryDiscoverer)
+│   │   └── round_tripper_stub.go           # RoundTripperStub: an http.RoundTripper that fails every request, without the network
 │   └── builders/
 │       ├── adapter_finder_stub_builder.go          # Builder for AdapterFinderStub
 │       ├── forge_provider_stub_builder.go          # Builder for ForgeProviderStub
@@ -300,8 +302,9 @@ Optional single-method interfaces (reached by type assertion, never added to For
 - `(p *ProviderConfig) ResolveToken() string` -- expands `${ENV_VAR}` references and reads from file if path exists
 - `FindConfigFile(appName string) (string, error)` -- searches standard locations (working dir first, then home) for `.{appName}.yaml` config files
 - `FindGlobalConfigFile(appName string) (string, error)` -- searches only the user's home directory, for operator-level config that must not be shadowed by a repository's own `.{appName}.yaml`; callers fall back to `FindConfigFile` on `ErrConfigFileNotFound`
-- `ResolveTokenFromEnv(serviceType ServiceType) string` -- resolves provider token from the standard env var for that service type
-- `TokenEnvHint(serviceType ServiceType) string` -- returns the expected env var name for a service type (e.g. `GITHUB_TOKEN`)
+- `ResolveTokenFromEnv(serviceType ServiceType) string` -- deprecated; returns the first set env var of `TokenEnvVars(serviceType)`, without the credential chain's checks
+- `TokenEnvVars(serviceType ServiceType) []string` -- the env vars that can hold the service type's token, in the order they are read (GitHub: `GH_TOKEN`, then `GITHUB_TOKEN`, gh's own precedence)
+- `TokenEnvHint(serviceType ServiceType) string` -- the same variables for a message (e.g. `GH_TOKEN or GITHUB_TOKEN`)
 
 **Config infrastructure** (`pkg/config/infrastructure`):
 - `LoadConfig(path string) (*Config, error)` -- reads, parses, and validates a YAML config from file or URL
@@ -309,6 +312,7 @@ Optional single-method interfaces (reached by type assertion, never added to For
 **Git** (`pkg/git/infrastructure`):
 - `NewGitOperations(finder AdapterFinder) *GitOperations` -- creates a GitOperations instance
 - `OpenRepo(projectPath string) (*git.Repository, error)` -- opens a local git repository
+- `OriginPushURL(repo) (string, error)` -- the URL a push to origin dials: the last of origin's URLs, which is its `pushurl` when one is set; every push reads its URL the same way
 - `PushChangesSSH(repo, refSpec, authMethods) error` -- pushes over SSH to origin's push URL; tries explicit auth methods first, falls back to default SSH agent built for that URL
 - `PushWithTransportDetection(repo, refSpec, authMethods) error` -- auto-detects SSH/HTTPS from the URL the push dials (origin's last URL: its `pushurl` when one is set), passes that URL to go-git as `PushOptions.RemoteURL`, and forwards auth methods to both transports, refusing HTTP credentials for a push URL off the host of origin's first URL; also accepts local remotes (`file://` URLs and absolute paths), which need no auth
 - `CheckBranchExists(repo, branchName) (bool, error)` -- true if the branch exists locally or on the origin remote
@@ -320,9 +324,12 @@ Optional single-method interfaces (reached by type assertion, never added to For
 - `NewSSHSigner(keyPath string) *SSHSigner` -- creates an SSH commit signer
 - `ResolveSignerFromGitConfig(gpgSign, signingFormat, signingKey, gpgKeyPath, gpgPassphrase, appName) (CommitSigner, error)` -- resolves GPG/SSH signer from git config values
 
-**Version helpers** (`pkg/global/domain/helpers`):
+**Global helpers** (`pkg/global/domain/helpers`):
 - `SortVersionsDescending(versions []string)` -- sorts version strings descending by semver
 - `NormalizeVersion(version string) string` -- ensures a "v" prefix for semver compatibility
+- `HTTPURLHost(rawURL string) (string, bool)` -- the lowercase host of an `http(s)://` remote without user name or port (`""` when it does not parse), and whether the remote is one
+- `HTTPRemoteServiceType(rawURL string) (ServiceType, bool)` -- the forge an `http(s)://` URL is on, by its host alone (`UNKNOWN` for a lookalike), and whether it is one; every provider's `MatchesURL`, `GetServiceTypeByURL`, `ParseRemoteURL` and `ParsePullRequestURL` ask it, and match any other remote (scp-like, `ssh://`) by substring, so SSH host aliases still match
+- `VisualStudioOrganization(host string) (string, bool)` -- the organization of a legacy `<org>.visualstudio.com` host
 
 ## Consumer Projects
 
@@ -368,6 +375,7 @@ When adding features to gitforge:
 | `AdapterFinderStub`         | `AdapterFinder`                         |
 | `CommitSignerStub`          | `CommitSigner`                          |
 | `AuthStub`                  | go-git `transport.AuthMethod`           |
+| `RoundTripperStub`          | `http.RoundTripper` (fails every request, records its URL) |
 
 `test/builders/` provides builder-pattern helpers for constructing stubs in tests.
 
@@ -378,7 +386,7 @@ When adding features to gitforge:
 | `pkg/changelog/domain/entities/changelog_test.go`                  | FindLatestVersion, IsUnreleasedEmpty, DeduplicateEntries, InsertChangelogEntry     |
 | `pkg/config/domain/entities/config_test.go`                        | Config.Validate, ProviderConfig.ResolveToken (env var, file, inline)               |
 | `pkg/git/infrastructure/operations_test.go`                        | NewGitOperations, branch/commit/push/clone/tag operations                          |
-| `pkg/git/infrastructure/url_parser_test.go`                        | ParseRemoteURL (GitHub, GitLab, Azure DevOps; scp-like SSH, ssh:// URLs, HTTPS)    |
+| `pkg/git/infrastructure/url_parser_test.go`                        | ParseRemoteURL, ParsePullRequestURL (scp-like SSH, ssh:// URLs, HTTPS by exact host, visualstudio.com) |
 | `pkg/git/infrastructure/operations_push_url_test.go`               | Push to origin's push URL (pushurl, several url entries), credential host check    |
 | `pkg/providers/infrastructure/github/github_test.go`               | NewProvider, Name, MatchesURL, GetServiceType                                      |
 | `pkg/providers/infrastructure/github/github_internal_test.go`      | DiscoverRepositories, CreatePullRequest, file access (httptest server)             |
@@ -386,6 +394,8 @@ When adding features to gitforge:
 | `pkg/providers/infrastructure/gitlab/gitlab_internal_test.go`      | DiscoverRepositories, CreatePullRequest, file access (httptest server)             |
 | `pkg/providers/infrastructure/azuredevops/azuredevops_test.go`     | NewProvider, Name, MatchesURL, GetServiceType                                      |
 | `pkg/providers/infrastructure/azuredevops/azuredevops_internal_test.go` | DiscoverRepositories, file access (redirectTransport to httptest server)      |
+| `pkg/providers/infrastructure/codeberg/codeberg_test.go`           | MatchesURL (codeberg.org over HTTPS, lookalike hosts, SSH aliases)                 |
+| `pkg/global/domain/helpers/forge_url_test.go`                      | HTTPURLHost, HTTPRemoteServiceType, VisualStudioOrganization                       |
 | `pkg/registry/infrastructure/registry_test.go`                     | NewProviderRegistry, Get, GetDiscoverer, GetAdapterByURL, GetReviewProvider        |
 
 ### Provider Test Patterns

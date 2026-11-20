@@ -9,6 +9,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 	log "github.com/sirupsen/logrus"
 	gl "gitlab.com/gitlab-org/api/client-go/v3"
 )
@@ -16,6 +17,9 @@ import (
 const (
 	providerName = "gitlab"
 	perPage      = 100
+
+	// gitlabHost is gitlab.com, whose remotes MatchesURL accepts.
+	gitlabHost = "gitlab.com"
 )
 
 var errClientNotInitialized = errors.New("gitlab client not initialized")
@@ -41,8 +45,17 @@ func NewProvider(token string) globalEntities.ForgeProvider {
 func (p *Provider) Name() string      { return providerName }
 func (p *Provider) AuthToken() string { return p.token }
 
+// MatchesURL reports whether rawURL is a GitLab remote. An http:// or https:// URL is one only
+// on gitlab.com or www.gitlab.com, because this provider's token travels to the URL's host: a
+// self-managed server such as gitlab.company.com, or gitlab.com.example.net, is another server.
+// Any other remote, scp-like git@host:path, ssh:// or a local path, is one when it contains
+// "gitlab.com", as before: SSH host aliases such as gitlab.com-work are resolved by
+// ssh_config, and SSH carries no token.
 func (p *Provider) MatchesURL(rawURL string) bool {
-	return strings.Contains(rawURL, "gitlab.com")
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(rawURL); isHTTP {
+		return serviceType == globalEntities.GITLAB
+	}
+	return strings.Contains(rawURL, gitlabHost)
 }
 
 // --- LocalGitAuthProvider ---

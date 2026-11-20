@@ -27,7 +27,25 @@ type pushTarget struct {
 	firstURL string
 }
 
-// originPushTarget reads where a push to origin goes.
+// OriginPushURL returns the URL a push to origin dials: the last of origin's URLs, which is
+// its pushurl when one is set, since go-git appends every pushurl to the URLs it reads from
+// url and pushes to the last of them, while fetches and remote listings use the first. Every
+// push here (PushWithTransportDetection, PushChangesSSH, PushChangesHTTPS, DeleteRemoteBranch)
+// reads its URL through the same originPushTarget, so this is the URL it dials. It fails when
+// the repository has no origin remote, or origin has no URL.
+//
+// Exported for use by autobump (github.com/rios0rios0/autobump), whose SSH diagnostics explain
+// a failed push by the URL that push dialed rather than by a copy of this rule.
+func OriginPushURL(repo *git.Repository) (string, error) {
+	target, err := originPushTarget(repo)
+	if err != nil {
+		return "", err
+	}
+	return target.url, nil
+}
+
+// originPushTarget reads where a push to origin goes. It is the one place the push URL is
+// chosen: every push and OriginPushURL read it here.
 func originPushTarget(repo *git.Repository) (pushTarget, error) {
 	remote, err := repo.Remote(originRemoteName)
 	if err != nil {

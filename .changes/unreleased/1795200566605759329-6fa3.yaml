@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed Azure DevOps remotes on `vs-ssh.visualstudio.com`, the SSH host of the legacy `<org>.visualstudio.com` addresses (`<org>@vs-ssh.visualstudio.com:v3/<org>/<project>/<repo>`), which no provider matched: the Azure DevOps provider''s `MatchesURL` now takes them beside those of `ssh.dev.azure.com`, host aliases included, and `ParseRemoteURL` reads them, scp-like or `ssh://`, with the same `v3/<org>/<project>/<repo>` layout'
+time: '2026-11-20T18:49:26.605633475Z'

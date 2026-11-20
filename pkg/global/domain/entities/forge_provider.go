@@ -8,7 +8,11 @@ type ForgeProvider interface {
 	// Name returns the provider identifier (e.g. "github", "gitlab", "azuredevops").
 	Name() string
 
-	// MatchesURL returns true if the given remote URL belongs to this provider.
+	// MatchesURL returns true if the given remote URL belongs to this provider. An http:// or
+	// https:// URL belongs to it only when its host is one of the forge's own (see
+	// helpers.HTTPURLHost): callers send the provider's token to that host, so a host that
+	// merely contains the forge's name must not match. Other remotes, such as scp-like SSH
+	// remotes and their host aliases, may match more loosely, since SSH carries no token.
 	MatchesURL(url string) bool
 
 	// AuthToken returns the authentication token configured for this provider.

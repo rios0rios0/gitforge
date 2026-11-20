@@ -59,31 +59,50 @@ func TestProviderName(t *testing.T) {
 func TestProviderMatchesURL(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should match gitlab.com URLs", func(t *testing.T) {
-		t.Parallel()
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"an HTTPS remote on gitlab.com", "https://gitlab.com/group/subgroup/repo.git"},
+		{"an HTTPS remote on www.gitlab.com", "https://www.gitlab.com/group/repo.git"},
+		{"an HTTPS remote with a user name", "https://oauth2@gitlab.com/group/repo.git"},
+		{"a scp-like SSH remote", "git@gitlab.com:group/repo.git"},
+		{"an SSH host alias", "git@gitlab.com-work:group/repo.git"},
+		{"an ssh:// remote on GitLab's port 443 host", "ssh://git@altssh.gitlab.com:443/group/repo.git"},
+	} {
+		t.Run("should match when the remote is "+scenario.name, func(t *testing.T) {
+			t.Parallel()
 
-		// given
-		provider := gitlab.NewProvider("token")
+			// given
+			provider := gitlab.NewProvider("token")
 
-		// when
-		result := provider.MatchesURL("https://gitlab.com/org/repo.git")
+			// when
+			result := provider.MatchesURL(scenario.rawURL)
 
-		// then
-		assert.True(t, result)
-	})
+			// then
+			assert.True(t, result)
+		})
+	}
 
-	t.Run("should not match non-gitlab URLs", func(t *testing.T) {
-		t.Parallel()
+	// The provider's token travels to an HTTPS remote's host, so a host that merely contains
+	// the forge's name is another server.
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"a self-managed GitLab HTTPS host", "https://gitlab.company.com/group/repo.git"},
+		{"an HTTPS host that starts with gitlab.com", "https://gitlab.com.evil.example/group/repo.git"},
+		{"an HTTPS host that ends with gitlab.com", "https://notgitlab.com/group/repo.git"},
+		{"an HTTPS remote that names gitlab.com in its path", "https://evil.example/gitlab.com/group/repo.git"},
+		{"a remote on another forge", "https://github.com/org/repo.git"},
+	} {
+		t.Run("should not match when the remote is "+scenario.name, func(t *testing.T) {
+			t.Parallel()
 
-		// given
-		provider := gitlab.NewProvider("token")
+			// given
+			provider := gitlab.NewProvider("token")
 
-		// when
-		result := provider.MatchesURL("https://github.com/org/repo.git")
+			// when
+			result := provider.MatchesURL(scenario.rawURL)
 
-		// then
-		assert.False(t, result)
-	})
+			// then
+			assert.False(t, result)
+		})
+	}
 }
 
 func TestProviderCloneURL(t *testing.T) {

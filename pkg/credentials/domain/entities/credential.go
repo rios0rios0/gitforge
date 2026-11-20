@@ -54,7 +54,9 @@ type CLIRunner interface {
 
 	// Output runs the executable at path with args and returns its standard output with
 	// surrounding whitespace trimmed. A failure's error must never carry standard output,
-	// which is where a CLI prints the token.
+	// which is where a CLI prints the token. The executable must not be handed the forge
+	// token variables (GH_TOKEN, GITHUB_TOKEN and the rest): gh prints one back when it is
+	// set, which would undo a refusal of that token by the environment resolver.
 	Output(ctx context.Context, path string, args ...string) (string, error)
 }
 

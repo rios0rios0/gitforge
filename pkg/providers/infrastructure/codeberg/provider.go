@@ -10,6 +10,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gohttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -20,6 +21,9 @@ const (
 	httpTimeout     = 30 * time.Second
 	httpStatusOKMin = 200
 	httpStatusOKMax = 300
+
+	// codebergHost is codeberg.org, whose remotes MatchesURL accepts.
+	codebergHost = "codeberg.org"
 )
 
 // Provider implements ForgeProvider, LocalGitAuthProvider, and MirrorProvider for Codeberg (Forgejo).
@@ -54,8 +58,17 @@ func NewProviderWithClient(token string, client *http.Client) globalEntities.For
 func (p *Provider) Name() string      { return providerName }
 func (p *Provider) AuthToken() string { return p.token }
 
+// MatchesURL reports whether rawURL is a Codeberg remote. An http:// or https:// URL is one only
+// on codeberg.org, because this provider's token travels to the URL's host:
+// codeberg.org.example.net or another Forgejo server is not Codeberg. Any other remote,
+// scp-like git@host:path, ssh:// or a local path, is one when it contains "codeberg.org", as
+// before: SSH host aliases such as codeberg.org-work are resolved by ssh_config, and SSH
+// carries no token.
 func (p *Provider) MatchesURL(rawURL string) bool {
-	return strings.Contains(rawURL, "codeberg.org")
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(rawURL); isHTTP {
+		return serviceType == globalEntities.CODEBERG
+	}
+	return strings.Contains(rawURL, codebergHost)
 }
 
 // --- LocalGitAuthProvider ---

@@ -49,31 +49,55 @@ func TestProviderName(t *testing.T) {
 func TestProviderMatchesURL(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should match github.com URLs", func(t *testing.T) {
-		t.Parallel()
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"an HTTPS remote on github.com", "https://github.com/org/repo.git"},
+		{"an HTTPS remote on www.github.com", "https://www.github.com/org/repo.git"},
+		{"an HTTP remote on github.com", "http://github.com/org/repo.git"},
+		{"an HTTPS remote with a user name and a port", "https://x-access-token@github.com:443/org/repo.git"},
+		{"an HTTPS remote written in capitals", "HTTPS://GitHub.com/org/repo.git"},
+		{"a scp-like SSH remote", "git@github.com:org/repo.git"},
+		{"an SSH host alias", "git@github.com-mine:org/repo.git"},
+		{"an ssh:// remote", "ssh://git@github.com/org/repo.git"},
+		{"an ssh:// remote on GitHub's port 443 host", "ssh://git@ssh.github.com:443/org/repo.git"},
+	} {
+		t.Run("should match when the remote is "+scenario.name, func(t *testing.T) {
+			t.Parallel()
 
-		// given
-		provider := github.NewProvider("token")
+			// given
+			provider := github.NewProvider("token")
 
-		// when
-		result := provider.MatchesURL("https://github.com/org/repo.git")
+			// when
+			result := provider.MatchesURL(scenario.rawURL)
 
-		// then
-		assert.True(t, result)
-	})
+			// then
+			assert.True(t, result)
+		})
+	}
 
-	t.Run("should not match non-github URLs", func(t *testing.T) {
-		t.Parallel()
+	// The provider's token travels to an HTTPS remote's host, so a host that merely contains
+	// the forge's name is another server.
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"an HTTPS host that starts with github.com", "https://github.com.evil.example/org/repo.git"},
+		{"an HTTPS host that ends with github.com", "https://notgithub.com/org/repo.git"},
+		{"a GitHub Enterprise HTTPS host", "https://github.company.com/org/repo.git"},
+		{"an HTTPS remote that names github.com in its path", "https://evil.example/github.com/org/repo.git"},
+		{"an HTTPS remote that names github.com as its user", "https://github.com@evil.example/org/repo.git"},
+		{"an HTTPS remote whose host cannot be read", "https://github.com:not-a-port/org/repo.git"},
+		{"a remote on another forge", "https://gitlab.com/org/repo.git"},
+	} {
+		t.Run("should not match when the remote is "+scenario.name, func(t *testing.T) {
+			t.Parallel()
 
-		// given
-		provider := github.NewProvider("token")
+			// given
+			provider := github.NewProvider("token")
 
-		// when
-		result := provider.MatchesURL("https://gitlab.com/org/repo.git")
+			// when
+			result := provider.MatchesURL(scenario.rawURL)
 
-		// then
-		assert.False(t, result)
-	})
+			// then
+			assert.False(t, result)
+		})
+	}
 }
 
 func TestProviderCloneURL(t *testing.T) {

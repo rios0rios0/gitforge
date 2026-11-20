@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gohttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -51,6 +52,15 @@ const (
 
 	// logFieldPRID is the structured-log field name for the pull request ID.
 	logFieldPRID = "prID"
+
+	// azureDevOpsHost is dev.azure.com, whose remotes MatchesURL accepts beside the legacy
+	// <org>.visualstudio.com.
+	azureDevOpsHost = "dev.azure.com"
+
+	// legacySSHHost is vs-ssh.visualstudio.com, the SSH host of the legacy
+	// <org>.visualstudio.com addresses, whose remotes MatchesURL accepts beside those of
+	// ssh.dev.azure.com.
+	legacySSHHost = "vs-ssh.visualstudio.com"
 )
 
 // Provider implements ForgeProvider, FileAccessProvider, and LocalGitAuthProvider for Azure DevOps.
@@ -95,8 +105,18 @@ func NewProvider(token string) globalEntities.ForgeProvider {
 func (p *Provider) Name() string      { return providerName }
 func (p *Provider) AuthToken() string { return p.token }
 
+// MatchesURL reports whether rawURL is an Azure DevOps remote. An http:// or https:// URL is one
+// only on dev.azure.com or an organization's legacy <org>.visualstudio.com, because this
+// provider's token travels to the URL's host: dev.azure.com.example.net is another server. Any
+// other remote, scp-like git@host:path, ssh:// or a local path, is one when it contains
+// "dev.azure.com" (git@ssh.dev.azure.com:v3/...) or "vs-ssh.visualstudio.com", the SSH host of
+// the legacy addresses (<org>@vs-ssh.visualstudio.com:v3/...): SSH host aliases such as
+// dev.azure.com-work are resolved by ssh_config, and SSH carries no token.
 func (p *Provider) MatchesURL(rawURL string) bool {
-	return strings.Contains(rawURL, "dev.azure.com")
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(rawURL); isHTTP {
+		return serviceType == globalEntities.AZUREDEVOPS
+	}
+	return strings.Contains(rawURL, azureDevOpsHost) || strings.Contains(rawURL, legacySSHHost)
 }
 
 // --- LocalGitAuthProvider ---

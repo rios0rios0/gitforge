@@ -1,0 +1,3 @@
+kind: 'Added'
+body: 'added `OriginPushURL` (`pkg/git/infrastructure`), the URL a push to origin dials: the last of origin''s URLs, which is its `pushurl` when one is set. Every push reads its URL through the same function, so a consumer that explains a failed push, such as autobump''s SSH diagnostics, can use the URL that push dialed instead of copying the rule'
+time: '2026-11-20T18:29:58.696458434Z'

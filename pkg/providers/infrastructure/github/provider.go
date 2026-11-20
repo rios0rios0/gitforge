@@ -11,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	gh "github.com/google/go-github/v93/github"
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
+	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -23,6 +24,9 @@ const (
 
 	// defaultBranchName is the fallback branch name when GitHub does not report one.
 	defaultBranchName = "main"
+
+	// githubHost is github.com, whose remotes MatchesURL accepts.
+	githubHost = "github.com"
 
 	// Pull request state values reported by the GitHub API.
 	prStateOpen   = "open"
@@ -63,8 +67,17 @@ func NewProvider(token string) globalEntities.ForgeProvider {
 func (p *Provider) Name() string      { return providerName }
 func (p *Provider) AuthToken() string { return p.token }
 
+// MatchesURL reports whether rawURL is a GitHub remote. An http:// or https:// URL is one only
+// on github.com or www.github.com, because this provider's token travels to the URL's host:
+// github.com.example.net, notgithub.com and a GitHub Enterprise host such as
+// github.company.com are other servers. Any other remote, scp-like git@host:path, ssh:// or a
+// local path, is one when it contains "github.com", as before: SSH host aliases such as
+// github.com-work are resolved by ssh_config, and SSH carries no token.
 func (p *Provider) MatchesURL(rawURL string) bool {
-	return strings.Contains(rawURL, "github.com")
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(rawURL); isHTTP {
+		return serviceType == globalEntities.GITHUB
+	}
+	return strings.Contains(rawURL, githubHost)
 }
 
 // --- LocalGitAuthProvider ---

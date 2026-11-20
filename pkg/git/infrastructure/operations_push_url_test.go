@@ -350,6 +350,79 @@ func TestPushChangesHTTPSPushURL(t *testing.T) {
 	})
 }
 
+func TestOriginPushURL(t *testing.T) {
+	t.Parallel()
+
+	for _, scenario := range []struct {
+		name           string
+		urls, pushURLs []string
+		pushURL        string
+	}{
+		{
+			name:    "should return origin's url when it is the only one",
+			urls:    []string{"https://github.com/org/repo.git"},
+			pushURL: "https://github.com/org/repo.git",
+		},
+		{
+			name:     "should return the pushurl when one is set beside the url",
+			urls:     []string{"https://github.com/org/repo.git"},
+			pushURLs: []string{"git@github.com-work:org/repo.git"},
+			pushURL:  "git@github.com-work:org/repo.git",
+		},
+		{
+			name:    "should return the last url when origin has several",
+			urls:    []string{"https://github.com/org/repo.git", "https://gitlab.com/group/repo.git"},
+			pushURL: "https://gitlab.com/group/repo.git",
+		},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			repo := newRepoWithOriginURLs(t, scenario.urls, scenario.pushURLs)
+
+			// when
+			pushURL, err := gitops.OriginPushURL(repo)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, scenario.pushURL, pushURL)
+		})
+	}
+
+	t.Run("should fail when the repository has no origin remote", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		repo := createInMemoryRepoWithCommit(t)
+
+		// when
+		pushURL, err := gitops.OriginPushURL(repo)
+
+		// then
+		require.ErrorIs(t, err, git.ErrRemoteNotFound)
+		assert.Empty(t, pushURL)
+	})
+
+	t.Run("should return the URL a push dials when a pushurl is set", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		bare := initBareRepository(t)
+		repo := newRepoWithOriginURLs(t, []string{"https://github.com/org/repo.git"}, []string{bare})
+
+		// when
+		pushURL, urlErr := gitops.OriginPushURL(repo)
+		pushErr := gitops.PushWithTransportDetection(repo, headRefSpec(t, repo), nil)
+
+		// then
+		require.NoError(t, urlErr)
+		require.NoError(t, pushErr)
+		assert.Equal(t, bare, pushURL)
+		assertHeadPushedTo(t, repo, pushURL)
+	})
+}
+
 // newRepoWithOriginURLs builds a repository on disk with one commit whose origin remote has
 // the given url entries, then the given pushurl entries. They are written to .git/config the
 // way git writes them: go-git's RemoteConfig has no field for a pushurl, and reading one from

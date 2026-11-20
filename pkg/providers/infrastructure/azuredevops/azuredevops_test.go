@@ -49,31 +49,56 @@ func TestProviderName(t *testing.T) {
 func TestProviderMatchesURL(t *testing.T) {
 	t.Parallel()
 
-	t.Run("should match dev.azure.com URLs", func(t *testing.T) {
-		t.Parallel()
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"an HTTPS remote on dev.azure.com", "https://dev.azure.com/org/project/_git/repo"},
+		{"an HTTPS remote with the organization as its user", "https://org@dev.azure.com/org/project/_git/repo"},
+		{"an HTTPS remote on an organization's visualstudio.com host", "https://org.visualstudio.com/project/_git/repo"},
+		{"an HTTPS remote in a visualstudio.com collection", "https://org.visualstudio.com/DefaultCollection/project/_git/repo"},
+		{"a scp-like SSH remote", "git@ssh.dev.azure.com:v3/org/project/repo"},
+		{"an SSH host alias", "git@dev.azure.com-work:v3/org/project/repo"},
+		{"an ssh:// remote", "ssh://git@ssh.dev.azure.com/v3/org/project/repo"},
+		{"a scp-like SSH remote on the legacy visualstudio.com host", "org@vs-ssh.visualstudio.com:v3/org/project/repo"},
+		{"an ssh:// remote on the legacy visualstudio.com host", "ssh://org@vs-ssh.visualstudio.com:22/v3/org/project/repo"},
+		{"an SSH host alias of the legacy visualstudio.com host", "org@vs-ssh.visualstudio.com-work:v3/org/project/repo"},
+	} {
+		t.Run("should match when the remote is "+scenario.name, func(t *testing.T) {
+			t.Parallel()
 
-		// given
-		provider := azuredevops.NewProvider("token")
+			// given
+			provider := azuredevops.NewProvider("token")
 
-		// when
-		result := provider.MatchesURL("https://dev.azure.com/org/project/_git/repo")
+			// when
+			result := provider.MatchesURL(scenario.rawURL)
 
-		// then
-		assert.True(t, result)
-	})
+			// then
+			assert.True(t, result)
+		})
+	}
 
-	t.Run("should not match non-azure URLs", func(t *testing.T) {
-		t.Parallel()
+	// The provider's token travels to an HTTPS remote's host, so a host that merely contains
+	// the forge's name is another server.
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"an HTTPS host that starts with dev.azure.com", "https://dev.azure.com.evil.example/org/project/_git/repo"},
+		{"an HTTPS host that ends with dev.azure.com", "https://notdev.azure.com/org/project/_git/repo"},
+		{"an HTTPS host that starts with a visualstudio.com host", "https://org.visualstudio.com.evil.example/project/_git/repo"},
+		{"an HTTPS host two labels under visualstudio.com", "https://org.team.visualstudio.com/project/_git/repo"},
+		{"an HTTPS remote that names dev.azure.com in its path", "https://evil.example/dev.azure.com/org/project/_git/repo"},
+		{"a remote on another forge", "https://github.com/org/repo.git"},
+		{"an SSH remote on a visualstudio.com host other than vs-ssh", "org@org.visualstudio.com:v3/org/project/repo"},
+	} {
+		t.Run("should not match when the remote is "+scenario.name, func(t *testing.T) {
+			t.Parallel()
 
-		// given
-		provider := azuredevops.NewProvider("token")
+			// given
+			provider := azuredevops.NewProvider("token")
 
-		// when
-		result := provider.MatchesURL("https://github.com/org/repo.git")
+			// when
+			result := provider.MatchesURL(scenario.rawURL)
 
-		// then
-		assert.False(t, result)
-	})
+			// then
+			assert.False(t, result)
+		})
+	}
 }
 
 func TestProviderCloneURL(t *testing.T) {

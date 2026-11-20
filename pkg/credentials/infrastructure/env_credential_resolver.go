@@ -18,30 +18,37 @@ const gitlabHost = "gitlab.com"
 // github.com (githubHost).
 const githubAPIHost = "api.github.com"
 
+// gheComHostSuffix ends the host of a GHE.com tenant, <tenant>.ghe.com: GitHub Enterprise
+// Cloud with data residency.
+const gheComHostSuffix = ".ghe.com"
+
 // serverVariable is an environment variable that names the server a token exported next to
 // it belongs to, how its value names that server, and the host it names when that server is
 // the one gitforge's provider calls.
 type serverVariable struct {
 	name string
 	// server returns the host the value names, "" when the value cannot be read (which
-	// counts as another server), and false when the value names no server at all.
+	// counts as another server), and false when the value names no server the token could
+	// belong to.
 	server func(value string) (string, bool)
 	// host is the host the value names when the token is one the provider may be sent;
 	// any other host, or a value that cannot be read, keeps the token from the provider.
 	host string
 }
 
-// githubServerVariables are the variables a GitHub Actions runner names its GitHub server
-// in: GITHUB_SERVER_URL (https://github.com on github.com) and GITHUB_API_URL
-// (https://api.github.com). On a GitHub Enterprise Server or a GHE.com (*.ghe.com) runner
-// they name that server, which issued the job's GITHUB_TOKEN, and a token exported beside
-// them belongs there and must not be sent to api.github.com, the only host gitforge's GitHub
-// provider calls.
+// githubServerVariables are the variables that say a GitHub token belongs to another server
+// than github.com, the only one whose API (api.github.com) gitforge's GitHub provider calls.
+// A GitHub Actions runner names its server in GITHUB_SERVER_URL (https://github.com on
+// github.com) and GITHUB_API_URL (https://api.github.com): on a GitHub Enterprise Server or
+// a GHE.com (*.ghe.com) runner they name that server, which issued the job's GITHUB_TOKEN,
+// and a token exported beside them belongs there too. gh's GH_HOST counts only when it names
+// a GHE.com host (ghHostServer).
 //
 //nolint:gochecknoglobals // read-only lookup table
 var githubServerVariables = []serverVariable{
 	{"GITHUB_SERVER_URL", serverHost, githubHost},
 	{"GITHUB_API_URL", serverHost, githubAPIHost},
+	{"GH_HOST", ghHostServer, githubHost},
 }
 
 // gitlabServerVariables are the variables that tools which read GITLAB_TOKEN or GL_TOKEN
@@ -206,6 +213,24 @@ func serverHost(value string) (string, bool) {
 		return parsed.Hostname(), true
 	}
 	return "", true
+}
+
+// ghHostServer reads gh's GH_HOST as serverHost reads a value, and names a server GH_TOKEN and
+// GITHUB_TOKEN belong to only when it is a GHE.com host: gh sends those tokens to github.com
+// and to *.ghe.com hosts, so with GH_HOST naming a GHE.com tenant they are that tenant's. For
+// a GitHub Enterprise Server host gh takes GH_ENTERPRISE_TOKEN instead and GH_TOKEN stays
+// github.com's, so such a host, like github.com itself, names no server they belong to. A
+// value that cannot be read refuses them, as serverHost's does.
+func ghHostServer(value string) (string, bool) {
+	host, named := serverHost(value)
+	if host == "" {
+		return host, named
+	}
+	if len(host) > len(gheComHostSuffix) &&
+		strings.EqualFold(host[len(host)-len(gheComHostSuffix):], gheComHostSuffix) {
+		return host, true
+	}
+	return "", false
 }
 
 // repositoryHost reads glab's GITLAB_REPO, which names a server only as a URL

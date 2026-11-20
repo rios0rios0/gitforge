@@ -328,6 +328,11 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 		{"GITHUB_API_URL", "https://ghe.example.com/api/v3", "ghe.example.com", "GITHUB_TOKEN", "api.github.com"},
 		{"GITHUB_API_URL", "https://api.octocorp.ghe.com", "api.octocorp.ghe.com", "GH_TOKEN", "api.github.com"},
 		{"GITHUB_API_URL", "api.octocorp.ghe.com", "api.octocorp.ghe.com", "GITHUB_TOKEN", "api.github.com"},
+		// gh sends GH_TOKEN and GITHUB_TOKEN to github.com and to *.ghe.com hosts, so with
+		// GH_HOST naming a GHE.com tenant they are that tenant's.
+		{"GH_HOST", "octocorp.ghe.com", "octocorp.ghe.com", "GH_TOKEN", "github.com"},
+		{"GH_HOST", "https://octocorp.ghe.com/", "octocorp.ghe.com", "GITHUB_TOKEN", "github.com"},
+		{"GH_HOST", "OctoCorp.GHE.com:443", "OctoCorp.GHE.com", "GH_TOKEN", "github.com"},
 	} {
 		t.Run("should not send a GitHub token to github.com when "+scenario.variable+" is "+scenario.value,
 			func(t *testing.T) {
@@ -357,6 +362,7 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 	}{
 		{"GITHUB_SERVER_URL", "ghe.example.com:not-a-port", "github.com"},
 		{"GITHUB_API_URL", "https://api.github.com:not-a-port", "api.github.com"},
+		{"GH_HOST", "octocorp.ghe.com:not-a-port", "github.com"},
 	} {
 		t.Run("should refuse the GitHub token without showing "+scenario.variable+" when it cannot read "+
 			scenario.value, func(t *testing.T) {
@@ -405,6 +411,10 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 		{"GITHUB_SERVER_URL", "GitHub.com:443"},
 		{"GITHUB_API_URL", "https://api.github.com"},
 		{"GITHUB_API_URL", "https://api.github.com/"},
+		{"GH_HOST", "github.com"},
+		{"GH_HOST", "https://ghes.example.com:8443/"},
+		{"GH_HOST", "ghe.com"},
+		{"GH_HOST", "notghe.com"},
 	} {
 		t.Run("should use the GitHub token when "+scenario.variable+" is "+scenario.value, func(t *testing.T) {
 			t.Parallel()
@@ -425,6 +435,24 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 			assert.Equal(t, "fixture-github-token", credential.Token)
 		})
 	}
+
+	t.Run("should keep GH_TOKEN for github.com when GH_HOST names a GitHub Enterprise Server", func(t *testing.T) {
+		t.Parallel()
+
+		// given: gh sends GH_ENTERPRISE_TOKEN to such a host, never GH_TOKEN
+		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+			"GH_TOKEN": "fixture-github-token",
+			"GH_HOST":  "ghes.example.com",
+		})}
+
+		// when
+		credential, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITHUB})
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "fixture-github-token", credential.Token)
+		assert.Equal(t, "GH_TOKEN environment variable", credential.Source)
+	})
 
 	t.Run("should use the GitHub token when a github.com Actions runner names its server", func(t *testing.T) {
 		t.Parallel()
@@ -453,6 +481,7 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 			"GITLAB_TOKEN":      "fixture-gitlab-token",
 			"GITHUB_SERVER_URL": "https://ghe.example.com",
 			"GITHUB_API_URL":    "https://ghe.example.com/api/v3",
+			"GH_HOST":           "octocorp.ghe.com",
 		})}
 
 		// when

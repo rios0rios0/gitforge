@@ -76,6 +76,30 @@ func TestListOrganizationRepositoriesInternal(t *testing.T) {
 		}, repos)
 	})
 
+	t.Run("should name the organization of a visualstudio.com address in every repository", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /_apis/git/repositories", func(w http.ResponseWriter, _ *http.Request) {
+			writeRepositories(w, []map[string]any{
+				{"id": "repo-1", "name": "Legacy", "project": map[string]string{"id": "proj-1", "name": "Project One"}},
+			})
+		})
+		server := httptest.NewServer(mux)
+		defer server.Close()
+		p := newTestProvider(t, server)
+
+		// when
+		repos, err := p.ListOrganizationRepositories(context.Background(), "https://my-org.visualstudio.com")
+
+		// then
+		require.NoError(t, err)
+		require.Len(t, repos, 1)
+		assert.Equal(t, "my-org", repos[0].Organization)
+		assert.Equal(t, "Project One", repos[0].Project)
+	})
+
 	t.Run("should follow the continuation token until the listing ends", func(t *testing.T) {
 		t.Parallel()
 

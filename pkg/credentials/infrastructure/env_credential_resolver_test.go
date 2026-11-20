@@ -128,17 +128,27 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 		assert.Empty(t, credential.Token)
 	})
 
-	// glab names its server in GITLAB_URI and its API host in GITLAB_API_HOST; semantic-release's
-	// GitLab plugin pairs GL_TOKEN and GITLAB_TOKEN with GL_URL or GITLAB_URL.
+	// glab names its server in GITLAB_URI, GITLAB_API_HOST or GITLAB_REPO; semantic-release's
+	// GitLab plugin pairs GL_TOKEN and GITLAB_TOKEN with GL_URL or GITLAB_URL, Lerna with
+	// GL_API_URL, Terraform's provider with GITLAB_BASE_URL; and a GitLab CI job names its own
+	// server, which those tools fall back to.
 	for _, scenario := range []struct {
 		variable, value, host, tokenVariable string
 	}{
 		{"GITLAB_URI", "gitlab.example.com", "gitlab.example.com", "GITLAB_TOKEN"},
 		{"GITLAB_API_HOST", "api.gitlab.example.com:8443", "api.gitlab.example.com", "GITLAB_TOKEN"},
+		{"GITLAB_REPO", "https://gitlab.example.com/group/project", "gitlab.example.com", "GITLAB_TOKEN"},
+		{"GITLAB_REPO", "git@gitlab.example.com:group/project.git", "gitlab.example.com", "GITLAB_TOKEN"},
 		{"GL_URL", "https://gitlab.example.com/", "gitlab.example.com", "GL_TOKEN"},
 		{"GITLAB_URL", "https://gitlab.example.com/gitlab/api/v4", "gitlab.example.com", "GL_TOKEN"},
+		{"GL_API_URL", "https://gitlab.example.com/api/v4", "gitlab.example.com", "GL_TOKEN"},
+		{"GITLAB_BASE_URL", "https://gitlab.example.com/api/v4/", "gitlab.example.com", "GITLAB_TOKEN"},
+		{"CI_SERVER_URL", "https://gitlab.example.com", "gitlab.example.com", "GITLAB_TOKEN"},
+		{"CI_SERVER_HOST", "gitlab.example.com", "gitlab.example.com", "GITLAB_TOKEN"},
+		{"CI_SERVER_FQDN", "gitlab.example.com:8443", "gitlab.example.com", "GITLAB_TOKEN"},
+		{"CI_API_V4_URL", "https://gitlab.example.com/api/v4", "gitlab.example.com", "GL_TOKEN"},
 	} {
-		t.Run("should not send a GitLab token to gitlab.com when "+scenario.variable+" names another server",
+		t.Run("should not send a GitLab token to gitlab.com when "+scenario.variable+" is "+scenario.value,
 			func(t *testing.T) {
 				t.Parallel()
 
@@ -159,6 +169,69 @@ func TestEnvCredentialResolverResolve(t *testing.T) {
 					", so "+scenario.tokenVariable+" is not sent to gitlab.com")
 				assert.Empty(t, credential.Token)
 			})
+	}
+
+	t.Run("should refuse the GitLab token without showing a server value it cannot read", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+			"GITLAB_TOKEN": "fixture-gitlab-token",
+			"GITLAB_URL":   "gitlab.example.com:not-a-port",
+		})}
+
+		// when
+		credential, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITLAB})
+
+		// then
+		require.ErrorIs(t, err, entities.ErrNoCredential)
+		require.EqualError(t, err, "GITLAB_URL does not name gitlab.com, so GITLAB_TOKEN is not sent there")
+		assert.Empty(t, credential.Token)
+	})
+
+	t.Run("should name only the host when a server URL carries a user name", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+			"GITLAB_TOKEN": "fixture-gitlab-token",
+			"GITLAB_URL":   "https://fixture-user@gitlab.example.com/",
+		})}
+
+		// when
+		_, err := resolver.Resolve(t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITLAB})
+
+		// then
+		require.EqualError(t, err,
+			"GITLAB_URL names the GitLab server gitlab.example.com, so GITLAB_TOKEN is not sent to gitlab.com")
+	})
+
+	for _, scenario := range []struct {
+		variable, value string
+	}{
+		{"GITLAB_REPO", "group/subgroup/project"},
+		{"GITLAB_REPO", "git@gitlab.com:group/project.git"},
+		{"CI_SERVER_HOST", "gitlab.com"},
+		{"CI_API_V4_URL", "https://gitlab.com/api/v4"},
+	} {
+		t.Run("should use the GitLab token when "+scenario.variable+" is "+scenario.value, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			resolver := &infrastructure.EnvCredentialResolver{Lookup: lookupFrom(map[string]string{
+				"GITLAB_TOKEN":    "fixture-gitlab-token",
+				scenario.variable: scenario.value,
+			})}
+
+			// when
+			credential, err := resolver.Resolve(
+				t.Context(), entities.CredentialRequest{ServiceType: globalEntities.GITLAB},
+			)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, "fixture-gitlab-token", credential.Token)
+		})
 	}
 
 	t.Run("should use the GitLab token when GITLAB_URL names gitlab.com", func(t *testing.T) {

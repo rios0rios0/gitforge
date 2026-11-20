@@ -42,10 +42,12 @@ func TokenEnvVars(serviceType entities.ServiceType) []string {
 // provider-specific environment variables for the given service type.
 // Returns an empty string if no token is found.
 //
-// Exported for use by autobump and autoupdate to resolve authentication
-// tokens from the environment when no explicit token is configured. The
-// credentials bounded context (pkg/credentials) reads the same variables
-// and falls back to the forge's own CLI.
+// Deprecated: it makes none of the checks the credentials bounded context
+// (pkg/credentials) makes before it hands out an environment token, such as
+// refusing a GitLab token while a variable names a server other than
+// gitlab.com, and no consumer calls it any more. Use that package's
+// EnvCredentialResolver, or NewDefaultCredentialResolver, which then falls
+// back to the forge's own CLI.
 func ResolveTokenFromEnv(serviceType entities.ServiceType) string {
 	for _, envVar := range tokenEnvVars[serviceType] {
 		if token := os.Getenv(envVar); token != "" {

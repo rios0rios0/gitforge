@@ -74,8 +74,8 @@ func (p *Provider) AuthToken() string { return p.token }
 // local path, is one when it contains "github.com", as before: SSH host aliases such as
 // github.com-work are resolved by ssh_config, and SSH carries no token.
 func (p *Provider) MatchesURL(rawURL string) bool {
-	if host, isHTTP := globalHelpers.HTTPURLHost(rawURL); isHTTP {
-		return host == githubHost || host == "www."+githubHost
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(rawURL); isHTTP {
+		return serviceType == globalEntities.GITHUB
 	}
 	return strings.Contains(rawURL, githubHost)
 }

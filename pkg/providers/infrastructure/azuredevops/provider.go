@@ -113,9 +113,8 @@ func (p *Provider) AuthToken() string { return p.token }
 // the legacy addresses (<org>@vs-ssh.visualstudio.com:v3/...): SSH host aliases such as
 // dev.azure.com-work are resolved by ssh_config, and SSH carries no token.
 func (p *Provider) MatchesURL(rawURL string) bool {
-	if host, isHTTP := globalHelpers.HTTPURLHost(rawURL); isHTTP {
-		_, isLegacy := visualStudioOrganization(host)
-		return host == azureDevOpsHost || isLegacy
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(rawURL); isHTTP {
+		return serviceType == globalEntities.AZUREDEVOPS
 	}
 	return strings.Contains(rawURL, azureDevOpsHost) || strings.Contains(rawURL, legacySSHHost)
 }

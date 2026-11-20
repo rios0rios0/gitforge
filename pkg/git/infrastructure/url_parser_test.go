@@ -520,3 +520,213 @@ func TestParsePullRequestURL(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid Azure DevOps PR URL format")
 	})
 }
+
+func TestParseRemoteURLRecognisesForgesByHost(t *testing.T) {
+	t.Parallel()
+
+	for _, scenario := range []struct {
+		name, rawURL string
+		expected     infrastructure.RemoteURLInfo
+	}{
+		{
+			"an HTTPS remote on www.github.com", "https://www.github.com/rios0rios0/autobump",
+			infrastructure.RemoteURLInfo{ServiceType: globalEntities.GITHUB, Organization: "rios0rios0", RepoName: "autobump"},
+		},
+		{
+			"an HTTPS remote written in capitals", "HTTPS://GitHub.com/rios0rios0/autobump.git",
+			infrastructure.RemoteURLInfo{ServiceType: globalEntities.GITHUB, Organization: "rios0rios0", RepoName: "autobump"},
+		},
+		{
+			"an HTTPS remote with a user name and a port", "https://x-access-token@github.com:443/rios0rios0/autobump.git",
+			infrastructure.RemoteURLInfo{ServiceType: globalEntities.GITHUB, Organization: "rios0rios0", RepoName: "autobump"},
+		},
+		{
+			"an HTTPS remote on gitlab.com with a user name", "https://oauth2@gitlab.com/group/subgroup/myrepo.git",
+			infrastructure.RemoteURLInfo{ServiceType: globalEntities.GITLAB, Organization: "group/subgroup", RepoName: "myrepo"},
+		},
+		{
+			"an HTTPS remote on dev.azure.com with the organization as its user",
+			"https://myorg@dev.azure.com/myorg/myproject/_git/myrepo",
+			infrastructure.RemoteURLInfo{
+				ServiceType: globalEntities.AZUREDEVOPS, Organization: "myorg", Project: "myproject", RepoName: "myrepo",
+			},
+		},
+		{
+			"an HTTPS remote on an organization's visualstudio.com host",
+			"https://myorg.visualstudio.com/myproject/_git/myrepo",
+			infrastructure.RemoteURLInfo{
+				ServiceType: globalEntities.AZUREDEVOPS, Organization: "myorg", Project: "myproject", RepoName: "myrepo",
+			},
+		},
+		{
+			"an HTTPS remote in a visualstudio.com collection",
+			"https://myorg.visualstudio.com/DefaultCollection/myproject/_git/myrepo",
+			infrastructure.RemoteURLInfo{
+				ServiceType: globalEntities.AZUREDEVOPS, Organization: "myorg", Project: "myproject", RepoName: "myrepo",
+			},
+		},
+		{
+			"a git:// remote, read by the forge's name as before", "git://github.com/rios0rios0/autobump.git",
+			infrastructure.RemoteURLInfo{ServiceType: globalEntities.GITHUB, Organization: "rios0rios0", RepoName: "autobump"},
+		},
+	} {
+		t.Run("should parse "+scenario.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			rawURL := scenario.rawURL
+
+			// when
+			info, err := infrastructure.ParseRemoteURL(rawURL)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, &scenario.expected, info)
+		})
+	}
+
+	// A token sent on the answer travels to the remote's host, so a host that merely contains
+	// a forge's name is no forge's.
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"an HTTPS host that starts with github.com", "https://github.com.evil.example/rios0rios0/autobump.git"},
+		{"an HTTPS host that ends with github.com", "https://notgithub.com/rios0rios0/autobump.git"},
+		{"a GitHub Enterprise HTTPS host", "https://github.company.com/rios0rios0/autobump.git"},
+		{"an HTTPS remote that names github.com in its path", "https://evil.example/github.com/rios0rios0/autobump.git"},
+		{"an HTTPS host that starts with gitlab.com", "https://gitlab.com.evil.example/group/myrepo.git"},
+		{"an HTTPS host that ends with gitlab.com", "https://notgitlab.com/group/myrepo.git"},
+		{"an HTTPS host that starts with dev.azure.com", "https://dev.azure.com.evil.example/myorg/myproject/_git/myrepo"},
+		{"an HTTPS remote that names dev.azure.com in its path", "https://evil.example/dev.azure.com/myorg/myproject/_git/myrepo"},
+	} {
+		t.Run("should refuse "+scenario.name+" when its host is no forge's own", func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			rawURL := scenario.rawURL
+
+			// when
+			info, err := infrastructure.ParseRemoteURL(rawURL)
+
+			// then
+			require.ErrorContains(t, err, "unsupported remote URL format")
+			assert.Nil(t, info)
+		})
+	}
+
+	t.Run("should refuse a visualstudio.com remote that names no repository", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		rawURL := "https://myorg.visualstudio.com/myproject"
+
+		// when
+		info, err := infrastructure.ParseRemoteURL(rawURL)
+
+		// then
+		require.ErrorContains(t, err, "unsupported remote URL format")
+		assert.Nil(t, info)
+	})
+
+	t.Run("should not show the user information of an HTTPS remote when it refuses one", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		rawURL := "https://fixture-user@github.com.evil.example/rios0rios0/autobump.git"
+
+		// when
+		_, err := infrastructure.ParseRemoteURL(rawURL)
+
+		// then
+		require.ErrorContains(t, err, "github.com.evil.example/rios0rios0/autobump.git")
+		assert.NotContains(t, err.Error(), "fixture-user")
+	})
+}
+
+func TestParsePullRequestURLRecognisesForgesByHost(t *testing.T) {
+	t.Parallel()
+
+	for _, scenario := range []struct {
+		name, rawURL string
+		expected     infrastructure.PullRequestURLInfo
+	}{
+		{
+			"a pull request on www.github.com", "https://www.github.com/rios0rios0/code-guru/pull/42",
+			infrastructure.PullRequestURLInfo{
+				ServiceType: globalEntities.GITHUB, Organization: "rios0rios0", RepoName: "code-guru", PRID: 42,
+			},
+		},
+		{
+			"a pull request URL with a port", "https://github.com:443/rios0rios0/code-guru/pull/42",
+			infrastructure.PullRequestURLInfo{
+				ServiceType: globalEntities.GITHUB, Organization: "rios0rios0", RepoName: "code-guru", PRID: 42,
+			},
+		},
+		{
+			"a pull request on an organization's visualstudio.com host",
+			"https://myorg.visualstudio.com/myproject/_git/myrepo/pullrequest/123",
+			infrastructure.PullRequestURLInfo{
+				ServiceType: globalEntities.AZUREDEVOPS, Organization: "myorg", Project: "myproject",
+				RepoName: "myrepo", PRID: 123,
+			},
+		},
+		{
+			"a pull request in a visualstudio.com collection",
+			"https://myorg.visualstudio.com/DefaultCollection/myproject/_git/myrepo/pullrequest/123",
+			infrastructure.PullRequestURLInfo{
+				ServiceType: globalEntities.AZUREDEVOPS, Organization: "myorg", Project: "myproject",
+				RepoName: "myrepo", PRID: 123,
+			},
+		},
+	} {
+		t.Run("should parse "+scenario.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			rawURL := scenario.rawURL
+
+			// when
+			info, err := infrastructure.ParsePullRequestURL(rawURL)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, &scenario.expected, info)
+		})
+	}
+
+	for _, scenario := range []struct{ name, rawURL string }{
+		{"an HTTPS host that starts with github.com", "https://github.com.evil.example/rios0rios0/code-guru/pull/42"},
+		{"an HTTPS host that ends with github.com", "https://notgithub.com/rios0rios0/code-guru/pull/42"},
+		{"a GitHub Enterprise host", "https://github.company.com/rios0rios0/code-guru/pull/42"},
+		{
+			"an HTTPS host that starts with dev.azure.com",
+			"https://dev.azure.com.evil.example/myorg/myproject/_git/myrepo/pullrequest/123",
+		},
+	} {
+		t.Run("should refuse "+scenario.name+" when its host is no forge's own", func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			rawURL := scenario.rawURL
+
+			// when
+			info, err := infrastructure.ParsePullRequestURL(rawURL)
+
+			// then
+			require.ErrorContains(t, err, "unsupported provider host")
+			assert.Nil(t, info)
+		})
+	}
+
+	t.Run("should refuse a visualstudio.com URL that names no pull request", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		rawURL := "https://myorg.visualstudio.com/myproject/_git/myrepo"
+
+		// when
+		info, err := infrastructure.ParsePullRequestURL(rawURL)
+
+		// then
+		require.ErrorContains(t, err, "invalid Azure DevOps PR URL format")
+		assert.Nil(t, info)
+	})
+}

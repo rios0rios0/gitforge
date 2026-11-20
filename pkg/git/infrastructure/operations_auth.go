@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -16,11 +15,6 @@ import (
 	globalEntities "github.com/rios0rios0/gitforge/v4/pkg/global/domain/entities"
 	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 )
-
-// codeCommitHostPattern matches the host of an AWS CodeCommit HTTPS remote:
-// git-codecommit.<region>.amazonaws.com, its FIPS endpoint git-codecommit-fips.<region>..., and
-// the China regions' amazonaws.com.cn.
-var codeCommitHostPattern = regexp.MustCompile(`^git-codecommit(-fips)?\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$`)
 
 // GetAuthMethods returns the authentication methods for the given service type.
 // It delegates to the appropriate adapter based on the service type.
@@ -85,8 +79,8 @@ func serviceRemoteURL(cfg *config.Config) string {
 
 // GetServiceTypeByURL returns the type of the remote service by URL: the service type of the
 // adapter whose MatchesURL accepts it, else Bitbucket or AWS CodeCommit, which have no adapter.
-// Like the adapters, those match an http:// or https:// URL only on their own hosts, and any
-// other remote when it contains their name.
+// Like the adapters, those match an http:// or https:// URL only on their own hosts
+// (globalHelpers.HTTPRemoteServiceType), and any other remote when it contains their name.
 // Exported for use by autobump (github.com/rios0rios0/autobump).
 func (o *GitOperations) GetServiceTypeByURL(remoteURL string) globalEntities.ServiceType {
 	adapter := o.adapterFinder.GetAdapterByURL(remoteURL)
@@ -94,31 +88,18 @@ func (o *GitOperations) GetServiceTypeByURL(remoteURL string) globalEntities.Ser
 		return adapter.GetServiceType()
 	}
 
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(remoteURL); isHTTP {
+		if serviceType == globalEntities.BITBUCKET || serviceType == globalEntities.CODECOMMIT {
+			return serviceType
+		}
+		return globalEntities.UNKNOWN
+	}
 	switch {
-	case matchesBitbucketURL(remoteURL):
+	case strings.Contains(remoteURL, "bitbucket.org"):
 		return globalEntities.BITBUCKET
-	case matchesCodeCommitURL(remoteURL):
+	case strings.Contains(remoteURL, "git-codecommit"):
 		return globalEntities.CODECOMMIT
 	default:
 		return globalEntities.UNKNOWN
 	}
-}
-
-// matchesBitbucketURL reports whether remoteURL is a Bitbucket Cloud remote: an http(s) URL on
-// bitbucket.org or www.bitbucket.org, or another remote that contains "bitbucket.org".
-func matchesBitbucketURL(remoteURL string) bool {
-	const bitbucketHost = "bitbucket.org"
-	if host, isHTTP := globalHelpers.HTTPURLHost(remoteURL); isHTTP {
-		return host == bitbucketHost || host == "www."+bitbucketHost
-	}
-	return strings.Contains(remoteURL, bitbucketHost)
-}
-
-// matchesCodeCommitURL reports whether remoteURL is an AWS CodeCommit remote: an http(s) URL on a
-// host codeCommitHostPattern matches, or another remote that contains "git-codecommit".
-func matchesCodeCommitURL(remoteURL string) bool {
-	if host, isHTTP := globalHelpers.HTTPURLHost(remoteURL); isHTTP {
-		return codeCommitHostPattern.MatchString(host)
-	}
-	return strings.Contains(remoteURL, "git-codecommit")
 }

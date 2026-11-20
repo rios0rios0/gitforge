@@ -65,8 +65,8 @@ func (p *Provider) AuthToken() string { return p.token }
 // before: SSH host aliases such as codeberg.org-work are resolved by ssh_config, and SSH
 // carries no token.
 func (p *Provider) MatchesURL(rawURL string) bool {
-	if host, isHTTP := globalHelpers.HTTPURLHost(rawURL); isHTTP {
-		return host == codebergHost
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(rawURL); isHTTP {
+		return serviceType == globalEntities.CODEBERG
 	}
 	return strings.Contains(rawURL, codebergHost)
 }

@@ -86,7 +86,7 @@ gitforge/
 │   │       ├── ssh_agent.go           # NewSSHAgentAuthFromSocket, DetectSSHAgentSockets: agent signers over connections of their own
 │   │       ├── ssh_known_hosts.go     # known_hosts discovery (WSL Windows profiles too): KnownHostsCallback, SSHHostKeyCallback
 │   │       ├── ssh_fixtures_test.go   # Loopback SSH server and in-memory SSH agent for the SSH tests
-│   │       ├── url_parser.go          # ParseRemoteURL: detects ServiceType from remote URL (scp-like, ssh:// and HTTPS)
+│   │       ├── url_parser.go          # ParseRemoteURL, ParsePullRequestURL: ServiceType and names from a URL (HTTP(S) by exact host; scp-like and ssh:// by name)
 │   │       ├── url_parser_test.go     # BDD tests for URL parsing
 │   │       ├── user_config.go         # Git user config lookup
 │   │       └── helpers/
@@ -119,7 +119,7 @@ gitforge/
 │   │       │   ├── review_provider_test.go # BDD tests for ReviewVerdict, CommentOption, MergeOption helpers
 │   │       │   └── service_type.go          # ServiceType enum: UNKNOWN, GITHUB, GITLAB, AZUREDEVOPS, BITBUCKET, CODECOMMIT, CODEBERG
 │   │       └── helpers/
-│   │           ├── forge_url.go             # HTTPURLHost: the host of an http(s) remote, which MatchesURL compares with the forge's own hosts
+│   │           ├── forge_url.go             # HTTPURLHost, HTTPRemoteServiceType (the one table of forge hosts), VisualStudioOrganization
 │   │           └── versions.go              # SortVersionsDescending, NormalizeVersion
 │   ├── providers/
 │   │   └── infrastructure/
@@ -326,7 +326,9 @@ Optional single-method interfaces (reached by type assertion, never added to For
 **Global helpers** (`pkg/global/domain/helpers`):
 - `SortVersionsDescending(versions []string)` -- sorts version strings descending by semver
 - `NormalizeVersion(version string) string` -- ensures a "v" prefix for semver compatibility
-- `HTTPURLHost(rawURL string) (string, bool)` -- the lowercase host of an `http(s)://` remote without user name or port (`""` when it does not parse), and whether the remote is one; every provider's `MatchesURL` takes an HTTP(S) remote only on its forge's own hosts, and any other remote (scp-like, `ssh://`) by substring, so SSH host aliases still match
+- `HTTPURLHost(rawURL string) (string, bool)` -- the lowercase host of an `http(s)://` remote without user name or port (`""` when it does not parse), and whether the remote is one
+- `HTTPRemoteServiceType(rawURL string) (ServiceType, bool)` -- the forge an `http(s)://` URL is on, by its host alone (`UNKNOWN` for a lookalike), and whether it is one; every provider's `MatchesURL`, `GetServiceTypeByURL`, `ParseRemoteURL` and `ParsePullRequestURL` ask it, and match any other remote (scp-like, `ssh://`) by substring, so SSH host aliases still match
+- `VisualStudioOrganization(host string) (string, bool)` -- the organization of a legacy `<org>.visualstudio.com` host
 
 ## Consumer Projects
 
@@ -382,7 +384,7 @@ When adding features to gitforge:
 | `pkg/changelog/domain/entities/changelog_test.go`                  | FindLatestVersion, IsUnreleasedEmpty, DeduplicateEntries, InsertChangelogEntry     |
 | `pkg/config/domain/entities/config_test.go`                        | Config.Validate, ProviderConfig.ResolveToken (env var, file, inline)               |
 | `pkg/git/infrastructure/operations_test.go`                        | NewGitOperations, branch/commit/push/clone/tag operations                          |
-| `pkg/git/infrastructure/url_parser_test.go`                        | ParseRemoteURL (GitHub, GitLab, Azure DevOps; scp-like SSH, ssh:// URLs, HTTPS)    |
+| `pkg/git/infrastructure/url_parser_test.go`                        | ParseRemoteURL, ParsePullRequestURL (scp-like SSH, ssh:// URLs, HTTPS by exact host, visualstudio.com) |
 | `pkg/git/infrastructure/operations_push_url_test.go`               | Push to origin's push URL (pushurl, several url entries), credential host check    |
 | `pkg/providers/infrastructure/github/github_test.go`               | NewProvider, Name, MatchesURL, GetServiceType                                      |
 | `pkg/providers/infrastructure/github/github_internal_test.go`      | DiscoverRepositories, CreatePullRequest, file access (httptest server)             |
@@ -391,7 +393,7 @@ When adding features to gitforge:
 | `pkg/providers/infrastructure/azuredevops/azuredevops_test.go`     | NewProvider, Name, MatchesURL, GetServiceType                                      |
 | `pkg/providers/infrastructure/azuredevops/azuredevops_internal_test.go` | DiscoverRepositories, file access (redirectTransport to httptest server)      |
 | `pkg/providers/infrastructure/codeberg/codeberg_test.go`           | MatchesURL (codeberg.org over HTTPS, lookalike hosts, SSH aliases)                 |
-| `pkg/global/domain/helpers/forge_url_test.go`                      | HTTPURLHost                                                                        |
+| `pkg/global/domain/helpers/forge_url_test.go`                      | HTTPURLHost, HTTPRemoteServiceType, VisualStudioOrganization                       |
 | `pkg/registry/infrastructure/registry_test.go`                     | NewProviderRegistry, Get, GetDiscoverer, GetAdapterByURL, GetReviewProvider        |
 
 ### Provider Test Patterns

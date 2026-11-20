@@ -3,6 +3,8 @@ package azuredevops
 import (
 	"net/url"
 	"strings"
+
+	globalHelpers "github.com/rios0rios0/gitforge/v4/pkg/global/domain/helpers"
 )
 
 func normalizeOrgURL(org string) string {
@@ -19,10 +21,6 @@ func buildBaseURL(orgName string) string {
 	}
 	return "https://dev.azure.com/" + strings.Split(orgName, "/")[0]
 }
-
-// visualStudioHostSuffix ends the host of an organization's legacy Azure DevOps address,
-// https://<org>.visualstudio.com.
-const visualStudioHostSuffix = ".visualstudio.com"
 
 // extractOrgName returns the organization an Azure DevOps URL names: the first path segment of
 // https://dev.azure.com/<org>/..., the first label of the host of the legacy
@@ -43,7 +41,7 @@ func extractOrgName(baseURL string) string {
 	if err != nil {
 		return baseURL
 	}
-	if organization, isLegacy := visualStudioOrganization(u.Hostname()); isLegacy {
+	if organization, isLegacy := globalHelpers.VisualStudioOrganization(u.Hostname()); isLegacy {
 		return organization
 	}
 	return strings.Split(strings.Trim(u.Path, "/"), "/")[0]
@@ -67,21 +65,6 @@ func sshRemotePath(rawURL string) (string, bool) {
 		return "", false
 	}
 	return path, true
-}
-
-// visualStudioOrganization returns the organization a legacy Azure DevOps host names,
-// <org>.visualstudio.com, and whether host is one: a single label before visualstudio.com,
-// whose letter case does not matter.
-func visualStudioOrganization(host string) (string, bool) {
-	if len(host) <= len(visualStudioHostSuffix) ||
-		!strings.EqualFold(host[len(host)-len(visualStudioHostSuffix):], visualStudioHostSuffix) {
-		return "", false
-	}
-	organization := host[:len(host)-len(visualStudioHostSuffix)]
-	if strings.Contains(organization, ".") {
-		return "", false
-	}
-	return organization, true
 }
 
 // stripUsernameFromURL removes the username from a URL if present.

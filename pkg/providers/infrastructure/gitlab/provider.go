@@ -52,8 +52,8 @@ func (p *Provider) AuthToken() string { return p.token }
 // "gitlab.com", as before: SSH host aliases such as gitlab.com-work are resolved by
 // ssh_config, and SSH carries no token.
 func (p *Provider) MatchesURL(rawURL string) bool {
-	if host, isHTTP := globalHelpers.HTTPURLHost(rawURL); isHTTP {
-		return host == gitlabHost || host == "www."+gitlabHost
+	if serviceType, isHTTP := globalHelpers.HTTPRemoteServiceType(rawURL); isHTTP {
+		return serviceType == globalEntities.GITLAB
 	}
 	return strings.Contains(rawURL, gitlabHost)
 }

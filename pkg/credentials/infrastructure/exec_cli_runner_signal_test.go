@@ -43,15 +43,20 @@ const consumerSurvived = 3
 const sighup = syscall.Signal(1)
 
 // stubCLIScript is the CLI the consumer runs. It traps INT, TERM and HUP, writing the name of
-// the signal to the marker file ($1) and exiting, and otherwise sleeps. It writes its process
-// ID ($2) once the traps are set, which tells the test it may send the signal. sleep runs in
-// the foreground, so a trap runs only after sleep has ended: a signal that reaches the shell
-// but not the rest of its process group leaves the stub asleep.
+// the signal to the marker file ($1) and exiting, and otherwise sleeps. sleep runs in the
+// foreground, so a trap runs only after sleep has ended: a signal that reaches the shell but
+// not the rest of its process group leaves the stub asleep.
+//
+// Its process ID ($2) tells the test it may send the signal, so the process that sleeps writes
+// it: a subshell, which starts with the trapped signals back at their default action, writes
+// the shell's ID ($$ keeps it in a subshell) and then becomes sleep. Written by the shell before
+// it started sleep, the ID let the signal arrive while the shell was still looking sleep up or
+// starting it: only the shell got the signal, its trap waited out the 30 seconds of sleep, and
+// the consumer's deadline killed the stub first.
 const stubCLIScript = `trap 'printf INT > "$1"; exit 0' INT
 trap 'printf TERM > "$1"; exit 0' TERM
 trap 'printf HUP > "$1"; exit 0' HUP
-printf '%s' "$$" > "$2"
-sleep 30
+(printf '%s' "$$" > "$2"; exec sleep 30)
 `
 
 func TestMain(m *testing.M) {
@@ -150,7 +155,8 @@ func startSignalConsumer(t *testing.T, directory string) (*exec.Cmd, *bytes.Buff
 }
 
 // waitForStubPID waits for the stub CLI to write its process ID, which it does once its traps
-// are set, and returns it. The stub is killed when the test ends, if it is still running.
+// are set and the process that sleeps is running, and returns it. The stub is killed when the
+// test ends, if it is still running.
 func waitForStubPID(t *testing.T, path string, consumerOutput *bytes.Buffer) int {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)

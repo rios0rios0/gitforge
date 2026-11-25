@@ -22,6 +22,16 @@ Exceptions are acceptable depending on the circumstances (critical bug fixes tha
 
 ## [Unreleased]
 
+## [4.9.1] - 2026-11-25
+
+### Changed
+
+- changed the Go module `gitlab.com/gitlab-org/api/client-go/v3` from `v3.54.1` to `v3.56.1`
+
+### Fixed
+
+- fixed `TestExecCLIRunnerSignals` failing at random when the test signalled the stub CLI before its foreground `sleep` had started, which left the signal with the shell alone and its trap waiting out the sleep: the subshell that becomes `sleep` now writes the process ID the test waits for
+
 ## [4.9.0] - 2026-11-20
 
 ### Added

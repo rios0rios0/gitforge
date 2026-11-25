@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed `TestExecCLIRunnerSignals` failing at random when the test signalled the stub CLI before its foreground `sleep` had started, which left the signal with the shell alone and its trap waiting out the sleep: the subshell that becomes `sleep` now writes the process ID the test waits for'
-time: '2026-11-24T16:37:38.528101746Z'

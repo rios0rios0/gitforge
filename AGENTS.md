@@ -13,7 +13,7 @@ go build ./...          # Compile check (~2s)
 make lint               # golangci-lint via pipeline scripts (~3-5s)
 make test               # Full test suite (~3s clean, <1s cached)
 make sast               # CodeQL, Semgrep, Hadolint, ShellCheck, Gitleaks (~1-3min)
-go test ./...           # Quick check during development; skips //go:build unit files
+go test ./...           # Quick check during development; runs every unit test
 ```
 
 Never run `golangci-lint`, `semgrep`, `gitleaks`, etc. directly — always use `make` targets. There is no `make build` or `make run`.
@@ -56,7 +56,7 @@ Two optional single-method interfaces sit beside the hierarchy: `OpenPullRequest
 
 ## Testing
 
-All tests use BDD structure (`// given` / `// when` / `// then`), `t.Parallel()`, and `testify` assertions. Some test files carry a `//go:build unit` tag (newer tests adopted it; not all have been migrated), so a bare `go test ./...` silently skips them — `make test` is the canonical command that runs the full suite. Test doubles live in `test/doubles/` (stubs) and `test/builders/` (builder pattern).
+All tests use BDD structure (`// given` / `// when` / `// then`), `t.Parallel()`, and `testify` assertions. Unit tests carry no build tag (the team's testing standard bans the `unit` tag), so a bare `go test ./...` runs them all; `make test` stays the canonical command for the full suite, with the integration phase and the coverage and test reports. Test doubles live in `test/doubles/` (stubs) and `test/builders/` (builder pattern).
 
 **Provider test patterns:**
 - GitHub/GitLab: override SDK `BaseURL` → `httptest.Server`

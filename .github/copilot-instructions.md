@@ -10,7 +10,7 @@ Always reference these instructions first and fall back to search or bash comman
 
 - Install dependencies: `go mod download`
 - Build (compile check): `go build ./...`
-- Run tests: `make test`. A bare `go test ./...` is a quick check during development but skips files tagged `//go:build unit`.
+- Run tests: `make test`. A bare `go test ./...` is a quick check during development and runs every unit test (unit tests carry no build tag).
 - Run linting: `make lint` -- NEVER run `golangci-lint` directly.
 - Run security analysis: `make sast` -- NEVER run `gitleaks`, `semgrep`, `hadolint`, `shellcheck`, or `codeql` directly.
 - Tidy dependencies: `go mod tidy`
@@ -409,7 +409,7 @@ When adding features to gitforge:
 
 ```bash
 make test             # Full test suite via pipeline scripts (ALWAYS use this)
-go test ./...         # Quick check during development; skips //go:build unit files
+go test ./...         # Quick check during development; runs every unit test
 ```
 
 ## Validation
@@ -446,7 +446,7 @@ go test ./...         # Quick check during development; skips //go:build unit fi
 # Full validation cycle
 go build ./... && make lint && make test
 
-# Quick test cycle during development (skips //go:build unit files)
+# Quick test cycle during development (runs every unit test)
 go test ./...
 
 # Full security + quality gate

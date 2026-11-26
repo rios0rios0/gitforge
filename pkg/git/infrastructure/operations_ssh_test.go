@@ -1,6 +1,4 @@
-//go:build unit
-
-package infrastructure
+package infrastructure_test
 
 import (
 	"net"
@@ -15,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
+
+	gitops "github.com/rios0rios0/gitforge/v4/pkg/git/infrastructure"
 )
 
 // acceptAllHostKeys is a stand-in callback: the tests assert which callback the
@@ -47,16 +47,16 @@ func newFakeAgentSocket(t *testing.T) string {
 // TestSetDefaultSSHHostKeyCallback is deliberately not parallel: it mutates the
 // package-level fallback hook and the process environment.
 func TestSetDefaultSSHHostKeyCallback(t *testing.T) {
-	defer SetDefaultSSHHostKeyCallback(nil)
+	defer gitops.SetDefaultSSHHostKeyCallback(nil)
 	agentSock := newFakeAgentSocket(t)
 
 	t.Run("should leave the fallback auth nil when no callback is installed", func(t *testing.T) {
 		// given
-		SetDefaultSSHHostKeyCallback(nil)
+		gitops.SetDefaultSSHHostKeyCallback(nil)
 		t.Setenv("SSH_AUTH_SOCK", agentSock)
 
 		// when
-		auth := defaultSSHAuth("ssh://git@github.com/org/repo.git")
+		auth := gitops.DefaultSSHAuth("ssh://git@github.com/org/repo.git")
 
 		// then
 		assert.Nil(t, auth)
@@ -64,11 +64,11 @@ func TestSetDefaultSSHHostKeyCallback(t *testing.T) {
 
 	t.Run("should build an agent auth carrying the installed callback", func(t *testing.T) {
 		// given
-		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
+		gitops.SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", agentSock)
 
 		// when
-		auth := defaultSSHAuth("ssh://git@github.com/org/repo.git")
+		auth := gitops.DefaultSSHAuth("ssh://git@github.com/org/repo.git")
 
 		// then
 		require.NotNil(t, auth)
@@ -86,11 +86,11 @@ func TestSetDefaultSSHHostKeyCallback(t *testing.T) {
 
 	t.Run("should keep the user the remote URL names", func(t *testing.T) {
 		// given
-		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
+		gitops.SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", agentSock)
 
 		// when
-		auth := defaultSSHAuth("ssh://bob@gitlab.com/org/repo.git")
+		auth := gitops.DefaultSSHAuth("ssh://bob@gitlab.com/org/repo.git")
 
 		// then
 		require.NotNil(t, auth)
@@ -101,11 +101,11 @@ func TestSetDefaultSSHHostKeyCallback(t *testing.T) {
 
 	t.Run("should not build a fallback auth for a non-SSH remote", func(t *testing.T) {
 		// given
-		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
+		gitops.SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", agentSock)
 
 		// when
-		auth := defaultSSHAuth("https://github.com/org/repo.git")
+		auth := gitops.DefaultSSHAuth("https://github.com/org/repo.git")
 
 		// then
 		assert.Nil(t, auth)
@@ -113,11 +113,11 @@ func TestSetDefaultSSHHostKeyCallback(t *testing.T) {
 
 	t.Run("should not build a fallback auth when SSH_AUTH_SOCK is unset", func(t *testing.T) {
 		// given
-		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
+		gitops.SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", "")
 
 		// when
-		auth := defaultSSHAuth("ssh://git@github.com/org/repo.git")
+		auth := gitops.DefaultSSHAuth("ssh://git@github.com/org/repo.git")
 
 		// then
 		assert.Nil(t, auth)
@@ -125,11 +125,11 @@ func TestSetDefaultSSHHostKeyCallback(t *testing.T) {
 
 	t.Run("should not build a fallback auth when the agent socket is dead", func(t *testing.T) {
 		// given -- the WSL case: a relay that exited and left its socket path behind
-		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
+		gitops.SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", filepath.Join(t.TempDir(), "dead.sock"))
 
 		// when
-		auth := defaultSSHAuth("ssh://git@github.com/org/repo.git")
+		auth := gitops.DefaultSSHAuth("ssh://git@github.com/org/repo.git")
 
 		// then
 		assert.Nil(t, auth)
@@ -139,22 +139,22 @@ func TestSetDefaultSSHHostKeyCallback(t *testing.T) {
 // TestDefaultSSHAuthForRemote is deliberately not parallel: it mutates the package-level
 // fallback hook and the process environment.
 func TestDefaultSSHAuthForRemote(t *testing.T) {
-	defer SetDefaultSSHHostKeyCallback(nil)
+	defer gitops.SetDefaultSSHHostKeyCallback(nil)
 	agentSock := newFakeAgentSocket(t)
 
 	t.Run("should return nil when the remote has no URL", func(t *testing.T) {
 		// given
-		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
+		gitops.SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", agentSock)
 		remote := git.NewRemote(memory.NewStorage(), &gitcfg.RemoteConfig{Name: "origin"})
 
 		// when / then
-		assert.Nil(t, defaultSSHAuthForRemote(remote))
+		assert.Nil(t, gitops.DefaultSSHAuthForRemote(remote))
 	})
 
 	t.Run("should build the fallback auth from the remote's first URL", func(t *testing.T) {
 		// given
-		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
+		gitops.SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 		t.Setenv("SSH_AUTH_SOCK", agentSock)
 		repo := newInMemoryRepo(t)
 		_, err := repo.CreateRemote(&gitcfg.RemoteConfig{
@@ -166,17 +166,21 @@ func TestDefaultSSHAuthForRemote(t *testing.T) {
 		require.NoError(t, err)
 
 		// when
-		auth := defaultSSHAuthForRemote(remote)
+		auth := gitops.DefaultSSHAuthForRemote(remote)
 
 		// then
 		assert.NotNil(t, auth)
 	})
 
+	// Not parallel: a parallel subtest resumes after the deferred reset above and would leave
+	// the process-wide callback installed for every later test.
+	//
+	//nolint:paralleltest // sequential: it installs the process-wide fallback host key hook
 	t.Run("should tolerate a nil remote", func(t *testing.T) {
 		// given
-		SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
+		gitops.SetDefaultSSHHostKeyCallback(acceptAllHostKeys)
 
 		// when / then
-		assert.Nil(t, defaultSSHAuthForRemote(nil))
+		assert.Nil(t, gitops.DefaultSSHAuthForRemote(nil))
 	})
 }

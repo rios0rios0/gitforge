@@ -93,7 +93,7 @@ test/builders/, test/doubles/    builders and hand-written stubs
 ```bash
 make lint && make test && make sast
 go build ./...
-go test ./pkg/...   # skips //go:build unit files; `make test` is the full suite
+go test ./pkg/...   # every unit test; `make test` is the full suite
 ```
 
 ### Local quality gates

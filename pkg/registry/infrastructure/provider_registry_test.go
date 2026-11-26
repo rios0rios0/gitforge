@@ -1,5 +1,3 @@
-//go:build unit
-
 package infrastructure_test
 
 import (

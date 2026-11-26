@@ -1,0 +1,3 @@
+kind: 'Changed'
+body: 'removed the prohibited `unit` build tag from the 6 unit test files that still carried it, so a plain `go test ./...`, IDE runs and the linter now see all 254 tests (240 before), and fixed the 4 lint findings this made visible: a line rewrap, the SSH fallback test moved to the external test package, and a `paralleltest` note on the two tests that must stay sequential because they install the process-wide SSH host key hook'
+time: '2026-11-26T23:37:37.318888554Z'

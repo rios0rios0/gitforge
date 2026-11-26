@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"net"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/skeema/knownhosts"
 	"golang.org/x/crypto/ssh"
@@ -129,3 +130,13 @@ func ListSSHAgentSigners(dial func() (net.Conn, error)) ([]ssh.Signer, error) {
 
 // DefaultSSHHostKeyCallback exports getDefaultSSHHostKeyCallback for testing.
 var DefaultSSHHostKeyCallback = getDefaultSSHHostKeyCallback //nolint:gochecknoglobals // test export
+
+// DefaultSSHAuth exports defaultSSHAuth for testing.
+func DefaultSSHAuth(remoteURL string) transport.AuthMethod {
+	return defaultSSHAuth(remoteURL)
+}
+
+// DefaultSSHAuthForRemote exports defaultSSHAuthForRemote for testing.
+func DefaultSSHAuthForRemote(remote *git.Remote) transport.AuthMethod {
+	return defaultSSHAuthForRemote(remote)
+}

@@ -1,5 +1,3 @@
-//go:build unit
-
 package infrastructure_test
 
 import (
@@ -214,7 +212,9 @@ func TestDeleteLocalBranch(t *testing.T) {
 }
 
 // TestListRemoteBranchesWithFallbackCallback is deliberately not parallel: it mutates
-// the package-level fallback host key hook.
+// the package-level fallback host key hook, which the parallel listing and push tests read.
+//
+//nolint:paralleltest // sequential: it installs the process-wide fallback host key hook
 func TestListRemoteBranchesWithFallbackCallback(t *testing.T) {
 	defer gitops.SetDefaultSSHHostKeyCallback(nil)
 
